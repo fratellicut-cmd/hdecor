@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { verifierSession } from '@/lib/dal';
 import { clientServeur } from '@/lib/supabase/serveur';
 import { schemaFiltresClients } from '@/lib/validation/clients';
-import { nomAffiche } from '@/domain/clients';
+import { formaterTelephone, nomAffiche } from '@/domain/clients';
 import { RechercheClients } from '@/components/clients/RechercheClients';
 import { Message } from '@/components/ui/Message';
 
@@ -55,7 +55,7 @@ export default async function PageClients({ searchParams }: PageProps<'/clients'
             <Link href={`/clients/${c.id}`} className="flex min-h-16 flex-col justify-center rounded-xl border border-trait bg-white px-4 py-2">
               <span className="font-semibold">{nomAffiche(c)}</span>
               <span className="text-sm text-encre-douce">
-                {[c.type === 'professionnel' ? 'Professionnel' : null, c.fact_ville, c.telephone].filter(Boolean).join(' · ') || ' '}
+                {[c.type === 'professionnel' ? 'Professionnel' : null, c.fact_ville, c.telephone ? formaterTelephone(c.telephone) : null].filter(Boolean).join(' · ') || ' '}
               </span>
             </Link>
           </li>

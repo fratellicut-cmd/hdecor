@@ -6,6 +6,8 @@ export type EtatFormulaire = {
   succes?: string;
   erreurs?: Record<string, string>;
   valeurs?: Record<string, string>;
+  /** Fiche existante qui ressemble à la saisie (création d'un client). */
+  doublon?: { id: string; nom: string };
 };
 
 export const ETAT_INITIAL: EtatFormulaire = {};

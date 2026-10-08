@@ -27,15 +27,19 @@ export default async function Accueil() {
       <h1 className="text-2xl font-bold">Bonjour</h1>
       {manques.length > 0 ? (
         <Message type="alerte">
-          Avant la première facture, complétez dans les Paramètres : {manques.join(', ')}.{' '}
-          <Link href="/parametres" className="underline underline-offset-4">Compléter</Link>
+          <p>Avant la première facture, complétez dans les Paramètres : {manques.join(', ')}.</p>
+          <Link href="/parametres" className="mt-2 inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-anthracite px-4 text-creme">
+            Compléter les paramètres
+          </Link>
         </Message>
       ) : null}
       {param?.valeurs_a_verifier?.length ? (
         <Message type="info">{param.valeurs_a_verifier.length} valeur(s) par défaut restent À VÉRIFIER dans les conditions.</Message>
       ) : null}
       <Carte titre="Clients" action={<Link href="/clients/nouveau" className="inline-flex min-h-12 items-center rounded-xl bg-anthracite px-4 font-semibold text-creme">+ Nouveau</Link>}>
-        <p><Link href="/clients" className="underline underline-offset-4">{nbClients ?? 0} client(s)</Link></p>
+        <Link href="/clients" className="flex min-h-12 items-center underline underline-offset-4">
+          {nbClients ?? 0} client{(nbClients ?? 0) > 1 ? 's' : ''} : voir la liste
+        </Link>
       </Carte>
     </div>
   );

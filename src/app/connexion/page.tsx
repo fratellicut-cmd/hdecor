@@ -20,9 +20,12 @@ export default async function PageConnexion({ searchParams }: PageProps<'/connex
       <Marque grande />
       <h1 className="text-2xl font-bold">Connexion</h1>
       {erreur ? <Message type="erreur">{erreur}</Message> : null}
+      {p.expiree === '1' ? (
+        <Message type="alerte">Votre session a expiré. Reconnectez-vous : la saisie en cours est gardée sur ce téléphone.</Message>
+      ) : null}
       <FormulaireConnexion suite={suite} />
       <p className="text-center text-sm text-encre-douce">
-        <a href="/confidentialite" className="underline underline-offset-4">Confidentialité et données personnelles</a>
+        <a href="/confidentialite" className="inline-flex min-h-11 items-center underline underline-offset-4">Confidentialité et données personnelles</a>
       </p>
     </main>
   );

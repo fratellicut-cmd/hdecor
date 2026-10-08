@@ -9,9 +9,10 @@ language sql
 immutable
 set search_path = ''
 as $$
-  select translate(lower(coalesce(p, '')),
-    'àâäáãåçéèêëíìîïñóòôöõúùûüýÿœæ',
-    'aaaaaaceeeeiiiinooooouuuuyyoa');
+  -- Ligatures développées (« Lætitia » est trouvée par « laetitia »).
+  select translate(replace(replace(lower(coalesce(p, '')), 'œ', 'oe'), 'æ', 'ae'),
+    'àâäáãåçéèêëíìîïñóòôöõúùûüýÿ',
+    'aaaaaaceeeeiiiinooooouuuuyy');
 $$;
 
 -- Recherche instantanée (nom, prénom, raison sociale, email, téléphone,

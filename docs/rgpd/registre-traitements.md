@@ -16,7 +16,7 @@
 | Personnes concernées | Clients particuliers et professionnels (personnes de contact), prospects. |
 | Données | Civilité, nom, prénom, raison sociale, SIRET, n° de TVA, email, téléphone, adresse de facturation, adresse de chantier, notes, provenance du contact, documents (devis, factures, paiements), photos de chantier, signature (à partir de la phase Devis). **Aucune donnée sensible** : le champ « Notes » le rappelle. |
 | Destinataires | Le dirigeant (seul utilisateur). Le comptable (exports). Les sous-traitants techniques ci-dessous. |
-| Durée : prospect sans devis, facture ni chantier | Anonymisation automatique après **36 mois** sans activité (durée paramétrable dans Paramètres > Conditions, **À VÉRIFIER**). Tâche planifiée chaque nuit (`/api/cron/conservation`). |
+| Durée : prospect ou client **sans facture émise ni devis accepté** (aucun devis, devis refusé, remplacé ou expiré, chantier non facturé) | Anonymisation automatique après **36 mois** sans activité sur la fiche, ses devis et ses chantiers (durée paramétrable dans Paramètres > Conditions, **À VÉRIFIER**). La tâche planifiée tourne chaque nuit (`/api/cron/conservation`). **Elle ne purge rien tant que cette durée n'est pas confirmée**, car la purge est irréversible. Les PDF des devis non acceptés et les photos sont supprimés du stockage. |
 | Durée : factures émises, devis acceptés, signatures | Conservées telles qu'émises au titre de l'obligation de conservation des pièces comptables (**10 ans, À VÉRIFIER** par le comptable). Ces pièces ne sont pas effacées par une demande d'effacement. |
 | Durée : attestation de TVA signée d'un devis refusé | Conservée comme preuve (décision du 08/10/2026), durée **À VÉRIFIER** par le comptable. |
 | Mesures de sécurité | Voir la section « Mesures de sécurité » plus bas. |
@@ -60,16 +60,17 @@
 - **En-têtes :** CSP stricte avec nonce, interdiction d'afficher l'application dans un cadre, Referrer-Policy et Permissions-Policy.
 - **Journal :** liste blanche, aucune donnée personnelle (testé automatiquement).
 - **Saisie gardée sur le téléphone en cas de coupure :**
-  - elle est stockée localement ;
-  - effacée après enregistrement, à la déconnexion, et au bout de 7 jours au plus.
+  - elle est stockée localement (navigateur) ;
+  - effacée après enregistrement, après l'effacement du client, à la déconnexion volontaire ;
+  - dans tous les cas, au bout de **24 heures** au plus : les brouillons expirés sont purgés à chaque ouverture de l'application.
 
 ## Exercice des droits
 
 | Droit | Comment |
 |---|---|
-| Accès et portabilité | Fiche client > « Exporter les données de ce client » (fichier JSON). |
+| Accès et portabilité | Fiche client > « Exporter les données de ce client » (fichier JSON). Il contient la fiche, les chantiers, les devis (lignes, échéances), les factures (lignes, paiements), les PV, attestations, signatures, envois, photos et documents. Les fichiers eux-mêmes (PDF, photos) sont désignés par leur nom et transmis à part. |
 | Rectification | Fiche client > Modifier. |
-| Effacement | Fiche client > « Effacer ce client » (anonymisation). Les fichiers sont supprimés du stockage ; en cas d'échec, une reprise automatique a lieu chaque nuit. Les pièces comptables sont conservées. |
+| Effacement | Fiche client > « Effacer ce client » (anonymisation définitive : la fiche ne peut plus être modifiée ni « restaurée », règle imposée par la base). Les fichiers sont supprimés du stockage ; en cas d'échec, reprise automatique chaque nuit (10 tentatives, puis alerte). Les pièces comptables sont conservées. |
 | Réclamation | Auprès de la CNIL (www.cnil.fr). |
 | Délai de réponse | Délai légal d'un mois. **À VÉRIFIER** |
 

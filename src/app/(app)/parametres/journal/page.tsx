@@ -62,7 +62,7 @@ export default async function PageJournal({ searchParams }: PageProps<'/parametr
               <p className="font-semibold">
                 {libelleAction(e.action)} :{' '}
                 {e.table_nom === 'clients' && e.ligne_id && e.action !== 'DELETE'
-                  ? <Link href={`/clients/${e.ligne_id}`} className="underline underline-offset-4">{objet}</Link>
+                  ? <Link href={`/clients/${e.ligne_id}`} className="inline-flex min-h-11 items-center underline underline-offset-4">{objet}</Link>
                   : objet}
               </p>
               {detail ? <p className="text-sm break-words">{detail}</p> : null}

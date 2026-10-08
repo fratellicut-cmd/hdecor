@@ -1,8 +1,10 @@
 import 'server-only';
 import { cache } from 'react';
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { clientServeur } from '@/lib/supabase/serveur';
 import { niveauAuth } from '@/lib/niveau-auth';
+import { cheminInterneSur } from '@/lib/redirection';
 
 /**
  * Couche d'accès aux données (DAL) : point de passage OBLIGATOIRE de toute
@@ -20,7 +22,7 @@ export const verifierSession = cache(async (): Promise<Session> => {
   const supabase = await clientServeur();
   const { data, error } = await supabase.auth.getClaims();
   const claims = data?.claims;
-  if (error || !claims?.sub) redirect('/connexion');
+  if (error || !claims?.sub) redirect(await connexionApresExpiration());
 
   // Double authentification : si l'utilisateur l'a activée, la session
   // doit être au niveau aal2 avant d'accéder aux données.
@@ -44,3 +46,18 @@ export const verifierSession = cache(async (): Promise<Session> => {
     niveauAuth: niveau.actuel,
   };
 });
+
+/**
+ * Session absente ou expirée pendant une action (envoi d'un formulaire) :
+ * retour à la connexion, puis à la page d'origine (même site uniquement).
+ * La saisie en cours est gardée sur le téléphone (garde de saisie).
+ */
+async function connexionApresExpiration(): Promise<string> {
+  const h = await headers();
+  let suite = '/';
+  try {
+    const origine = new URL(h.get('referer') ?? '');
+    if (origine.host === h.get('host')) suite = cheminInterneSur(origine.pathname + origine.search);
+  } catch { /* pas de page d'origine exploitable */ }
+  return `/connexion?expiree=1&suite=${encodeURIComponent(suite)}`;
+}

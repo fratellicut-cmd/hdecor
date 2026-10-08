@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { z } from 'zod';
 import { verifierSession } from '@/lib/dal';
 import { clientServeur } from '@/lib/supabase/serveur';
 import { schemaCodeTotp, schemaNouveauMotDePasse } from '@/lib/validation/auth';
@@ -55,9 +56,10 @@ export async function confirmerTotp(etat: EtatTotp, formData: FormData): Promise
 export async function desactiverTotp(_: EtatFormulaire, formData: FormData): Promise<EtatFormulaire> {
   const session = await verifierSession();
   if (session.niveauAuth !== 'aal2') return { message: 'Reconnectez-vous avec votre code avant de désactiver la double authentification.' };
-  const facteurId = String(formData.get('facteurId') ?? '');
+  const facteurId = z.uuid().safeParse(formData.get('facteurId'));
+  if (!facteurId.success) return { message: 'Demande invalide. Rechargez la page.' };
   const supabase = await clientServeur();
-  const { error } = await supabase.auth.mfa.unenroll({ factorId: facteurId });
+  const { error } = await supabase.auth.mfa.unenroll({ factorId: facteurId.data });
   if (error) return { message: 'La double authentification n’a pas pu être désactivée.' };
   revalidatePath('/compte');
   return { succes: 'Double authentification désactivée.' };

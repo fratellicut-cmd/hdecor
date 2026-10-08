@@ -4,14 +4,17 @@ import { adminTests, seConnecter, surveillerConsole } from './outils';
 
 // Noms uniques : les parcours sont rejouables sans remise à zéro de la base.
 const unique = () => Date.now().toString(36).slice(-5);
+// Numéro différent à chaque fiche : sinon l'alerte de doublon (même téléphone) s'affiche.
+const telephone = () => `07 ${String(Math.floor(Math.random() * 1e8)).padStart(8, '0').replace(/(\d\d)(?=\d)/g, '$1 ')}`;
 
 test.beforeEach(async ({ page }) => { await seConnecter(page); });
 
 async function creerParticulier(page: Page, nom: string, prenom = 'Hélène') {
+  const tel = telephone();
   await page.goto('/clients/nouveau');
   await page.getByLabel('Nom', { exact: true }).fill(nom);
   await page.getByLabel('Prénom').fill(prenom);
-  await page.getByLabel('Téléphone').fill('06 12 34 56 78');
+  await page.getByLabel('Téléphone').fill(tel);
   await page.getByLabel('Ville').fill('Thionville');
   await page.getByRole('button', { name: 'Enregistrer' }).click();
   await expect(page.getByRole('heading', { level: 1, name: `${prenom} ${nom}` })).toBeVisible();
@@ -20,6 +23,7 @@ async function creerParticulier(page: Page, nom: string, prenom = 'Hélène') {
 test('création : erreurs signalées sans perte de saisie, puis fiche et recherche sans accent', async ({ page }) => {
   const erreurs = surveillerConsole(page);
   const nom = `Müller-${unique()}`;
+  const tel = telephone();
   await page.goto('/clients');
   await page.getByRole('link', { name: '+ Nouveau' }).click();
   await page.getByLabel('Prénom').fill('Hélène');
@@ -31,10 +35,10 @@ test('création : erreurs signalées sans perte de saisie, puis fiche et recherc
 
   await page.getByLabel('Nom', { exact: true }).fill(nom);
   await page.getByLabel('Email').fill('helene@exemple.test');
-  await page.getByLabel('Téléphone').fill('06 12 34 56 78');
+  await page.getByLabel('Téléphone').fill(tel);
   await page.getByRole('button', { name: 'Enregistrer' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Fiche enregistrée.' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Appeler' })).toHaveAttribute('href', 'tel:0612345678');
+  await expect(page.getByRole('link', { name: 'Appeler' })).toHaveAttribute('href', `tel:${tel.replace(/\s/g, '')}`);
 
   // Recherche instantanée : sans accent, en minuscules.
   await page.goto('/clients');

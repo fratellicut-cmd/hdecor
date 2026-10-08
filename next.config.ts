@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Pas d'en-tête « X-Powered-By : Next.js » (inutile d'annoncer la pile).
+  poweredByHeader: false,
   turbopack: {
     rules: {
       "*.css": {

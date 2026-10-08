@@ -1,8 +1,8 @@
 'use client';
 
-import { useActionState } from 'react';
 import { enregistrerConditions } from '@/app/(app)/parametres/actions';
-import { ETAT_INITIAL } from '@/lib/etat-formulaire';
+import { useFormulaire } from '@/components/formulaire/useFormulaire';
+import { MessagesGarde, RappelEnvoi } from '@/components/formulaire/MessagesGarde';
 import type { Ligne } from '@/lib/supabase/types';
 import { montantVersSaisie, pourcentageVersSaisie } from '@/domain/formats';
 import { Bouton } from '@/components/ui/Bouton';
@@ -13,7 +13,7 @@ import { RetourFormulaire } from './RetourFormulaire';
 type P = Ligne<'parametres_entreprise'>;
 
 export function FormulaireConditions({ p }: { p: P }) {
-  const [etat, action, enCours] = useActionState(enregistrerConditions, ETAT_INITIAL);
+  const { etat, action, enCours, formRef, garde } = useFormulaire('parametres:conditions', enregistrerConditions);
   const e = etat.erreurs ?? {};
   const sv = etat.valeurs;
   const val = (cle: string, defaut: string) => sv?.[cle] ?? defaut;
@@ -21,8 +21,9 @@ export function FormulaireConditions({ p }: { p: P }) {
   const confirmer = (cle: string) =>
     aVerifier(cle) ? <CaseACocher nom="confirmes" valeur={cle} libelle="Valeur confirmée (par moi ou le comptable)" /> : null;
   return (
-    <form action={action} className="flex flex-col gap-4" noValidate>
+    <form ref={formRef} action={action} onSubmit={garde.surEnvoi} className="flex flex-col gap-4" noValidate>
       <RetourFormulaire etat={etat} />
+      <MessagesGarde garde={garde} />
       <h3 className="text-lg font-bold">Paiement</h3>
       <Champ libelle="Délai de paiement (jours)" nom="delai_paiement_jours" inputMode="numeric" defaultValue={val('delai_paiement_jours', String(p.delai_paiement_jours))} erreur={e.delai_paiement_jours} aVerifier={aVerifier('delai_paiement_jours')} />
       {confirmer('delai_paiement_jours')}
@@ -55,6 +56,7 @@ export function FormulaireConditions({ p }: { p: P }) {
         aVerifier={aVerifier('duree_conservation_prospects_mois')}
         aide="Passé ce délai sans activité, la fiche est anonymisée automatiquement (chaque nuit). Durée à faire valider." />
       {confirmer('duree_conservation_prospects_mois')}
+      <RappelEnvoi garde={garde} etat={etat} />
       <Bouton type="submit" disabled={enCours}>{enCours ? 'Enregistrement…' : 'Enregistrer'}</Bouton>
     </form>
   );

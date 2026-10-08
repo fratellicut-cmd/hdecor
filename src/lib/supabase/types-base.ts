@@ -393,14 +393,14 @@ isOneToOne: false
                   ]
                 },"documents_chantier": {
                   Row: {
-                    "chantier_id": string,"chemin": string,"created_at": string,"id": string,"nom": string,"organisation_id": string,"type": string
+                    "chantier_id": string,"chemin": string,"created_at": string,"espace": string,"id": string,"nom": string,"organisation_id": string,"type": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "chantier_id": string,"chemin": string,"created_at"?: string,"id"?: string,"nom": string,"organisation_id": string,"type": string
+                    "chantier_id": string,"chemin": string,"created_at"?: string,"espace"?: string,"id"?: string,"nom": string,"organisation_id": string,"type": string
                   }
                   Update: {
-                    "chantier_id"?: string,"chemin"?: string,"created_at"?: string,"id"?: string,"nom"?: string,"organisation_id"?: string,"type"?: string
+                    "chantier_id"?: string,"chemin"?: string,"created_at"?: string,"espace"?: string,"id"?: string,"nom"?: string,"organisation_id"?: string,"type"?: string
                   }
                   Relationships: [
                     {
@@ -617,14 +617,14 @@ isOneToOne: false
                   ]
                 },"fichiers_a_supprimer": {
                   Row: {
-                    "chemin": string,"cree_le": string,"derniere_erreur": string | null,"id": number,"organisation_id": string,"tentatives": number
+                    "chemin": string,"cree_le": string,"derniere_erreur": string | null,"espace": string,"id": number,"organisation_id": string,"tentatives": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "chemin": string,"cree_le"?: string,"derniere_erreur"?: string | null,"id"?: never,"organisation_id": string,"tentatives"?: number
+                    "chemin": string,"cree_le"?: string,"derniere_erreur"?: string | null,"espace": string,"id"?: never,"organisation_id": string,"tentatives"?: number
                   }
                   Update: {
-                    "chemin"?: string,"cree_le"?: string,"derniere_erreur"?: string | null,"id"?: never,"organisation_id"?: string,"tentatives"?: number
+                    "chemin"?: string,"cree_le"?: string,"derniere_erreur"?: string | null,"espace"?: string,"id"?: never,"organisation_id"?: string,"tentatives"?: number
                   }
                   Relationships: [
                     {
@@ -1411,8 +1411,10 @@ isOneToOne: false
                 }
           }
           Functions: {
-            "anonymiser_client":
-{ Args: { "p_client_id": string }; Returns: string[]
+            "anonymiser_client_interne":
+{ Args: { "p_client_id": string }; Returns: {
+              "chemin": string,"espace": string
+            }[]
                            },
 "appliquer_rls_standard":
 { Args: { "p_table": unknown }; Returns: undefined
@@ -1425,6 +1427,9 @@ isOneToOne: false
                            },
 "chemin_de_l_organisation":
 { Args: { "p_chemin": string,"p_organisation_id": string }; Returns: boolean
+                           },
+"confirmer_valeurs":
+{ Args: { "p_confirmees": (string)[],"p_organisation_id": string }; Returns: boolean
                            },
 "controler_totaux_lignes":
 { Args: { "p_lignes_par_taux": Json,"p_regime": Database["public"]['Enums']["regime_tva"],"p_remise_bp": number,"p_total_ht": number,"p_total_tva": number,"p_ventilation": Json }; Returns: undefined
@@ -1565,6 +1570,9 @@ isOneToOne: false
                            },
 "ventilation_bien_formee":
 { Args: { "p": Json }; Returns: boolean
+                           },
+"vider_fiche_client":
+{ Args: { "p_client_id": string }; Returns: undefined
                            }
           }
           Enums: {

@@ -1,20 +1,21 @@
 'use client';
 
-import { useActionState } from 'react';
 import { ajouterAssurance } from '@/app/(app)/parametres/actions';
-import { ETAT_INITIAL } from '@/lib/etat-formulaire';
+import { useFormulaire } from '@/components/formulaire/useFormulaire';
+import { MessagesGarde, RappelEnvoi } from '@/components/formulaire/MessagesGarde';
 import { Bouton } from '@/components/ui/Bouton';
 import { Champ } from '@/components/ui/Champ';
 import { Selection } from '@/components/ui/Autres';
 import { RetourFormulaire } from './RetourFormulaire';
 
 export function FormulaireAssurance() {
-  const [etat, action, enCours] = useActionState(ajouterAssurance, ETAT_INITIAL);
+  const { etat, action, enCours, formRef, garde } = useFormulaire('parametres:assurance', ajouterAssurance);
   const e = etat.erreurs ?? {};
   const v = etat.valeurs ?? {};
   return (
-    <form action={action} className="flex flex-col gap-4" noValidate key={etat.succes ?? 'saisie'}>
+    <form ref={formRef} action={action} onSubmit={garde.surEnvoi} className="flex flex-col gap-4" noValidate key={etat.succes ?? 'saisie'}>
       <RetourFormulaire etat={etat} />
+      <MessagesGarde garde={garde} />
       <Selection libelle="Type" nom="type" defaultValue={v.type ?? 'decennale'} erreur={e.type}>
         <option value="decennale">Assurance décennale</option>
         <option value="rc_pro">Responsabilité civile professionnelle</option>
@@ -26,6 +27,7 @@ export function FormulaireAssurance() {
         <Champ libelle="Fin (si connue)" nom="fin" defaultValue={v.fin} type="date" erreur={e.fin} />
       </div>
       <Champ libelle="Zone géographique couverte" nom="zone_couverte" defaultValue={v.zone_couverte} required erreur={e.zone_couverte} />
+      <RappelEnvoi garde={garde} etat={etat} />
       <Bouton type="submit" disabled={enCours}>{enCours ? 'Ajout…' : 'Ajouter l’assurance'}</Bouton>
     </form>
   );

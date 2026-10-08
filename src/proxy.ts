@@ -22,7 +22,9 @@ const PAGES_PUBLIQUES = [
 function estPublique(chemin: string) {
   return PAGES_PUBLIQUES.some((p) => chemin === p || chemin.startsWith(p + '/'))
     || chemin.startsWith('/icones/')
-    || chemin.startsWith('/api/cron/');
+    // Tâche planifiée : protégée par son propre secret (CRON_SECRET). Chemin
+    // exact : une future route sous /api/cron/ ne sera pas publique par défaut.
+    || chemin === '/api/cron/conservation';
 }
 
 function politiqueContenu(nonce: string) {
@@ -72,7 +74,11 @@ export async function proxy(request: NextRequest) {
 
   const chemin = request.nextUrl.pathname;
   let reponse: NextResponse;
-  if (!connecte && !estPublique(chemin)) {
+  // Envoi d'un formulaire (Server Action) sans session : on ne le redirige PAS
+  // ici (le navigateur verrait un échec réseau). L'action passe par la DAL
+  // (verifierSession), qui refuse et renvoie proprement vers la connexion.
+  const actionServeur = request.method === 'POST' && request.headers.has('next-action');
+  if (!connecte && !estPublique(chemin) && !actionServeur) {
     const url = request.nextUrl.clone();
     url.pathname = '/connexion';
     url.search = chemin === '/' ? '' : `?suite=${encodeURIComponent(chemin + request.nextUrl.search)}`;

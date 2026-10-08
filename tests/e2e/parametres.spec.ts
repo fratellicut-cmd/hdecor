@@ -67,7 +67,14 @@ test('assurances : ajout puis suppression', async ({ page }) => {
   await page.getByRole('button', { name: 'Ajouter l’assurance' }).click();
   await expect(page.getByRole('heading', { name: 'Décennale : Assureur Exemple' })).toBeVisible();
   await expect(page.getByText('Du 01/01/2026 au 31/12/2026')).toBeVisible();
-  await page.getByRole('heading', { name: 'Décennale : Assureur Exemple' }).locator('..').getByRole('button', { name: 'Supprimer' }).click();
+  const carte = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Décennale : Assureur Exemple' }) });
+  await carte.getByText('Supprimer…').click();
+  // Sans la case : le navigateur bloque ; on retire le contrôle pour vérifier le refus du serveur.
+  await carte.locator('input[name="confirmation"]').evaluate((e) => e.removeAttribute('required'));
+  await carte.getByRole('button', { name: 'Supprimer l’assurance' }).click();
+  await expect(carte.getByText('Cochez la case pour confirmer la suppression.')).toBeVisible();
+  await carte.getByLabel('Je confirme la suppression de cette assurance.').check();
+  await carte.getByRole('button', { name: 'Supprimer l’assurance' }).click();
   await expect(page.getByRole('heading', { name: 'Décennale : Assureur Exemple' })).toHaveCount(0);
 });
 
@@ -77,4 +84,26 @@ test('statut fiscal : paliers incohérents refusés, franchise par défaut', asy
   await page.getByLabel('1re alerte (%)').fill('96');
   await page.getByRole('button', { name: 'Enregistrer' }).click();
   await expect(page.getByText('Le premier palier d’alerte doit être inférieur ou égal au second.')).toBeVisible();
+});
+
+test('statut fiscal : une mention confirmée puis modifiée repasse À VÉRIFIER', async ({ page }) => {
+  await page.goto('/parametres/fiscal');
+  const mention = page.getByLabel(/Mention de franchise/);
+  const texte = await mention.inputValue();
+  await page.getByLabel('Je confirme cette mention (validée par le comptable)').check();
+  await page.getByRole('button', { name: 'Enregistrer' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Enregistré.' })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('État : mention confirmée.')).toBeVisible();
+  // La case n'est jamais pré-cochée : modifier le texte suffit à le repasser À VÉRIFIER.
+  await expect(page.getByLabel('Je confirme cette mention (validée par le comptable)')).not.toBeChecked();
+  await mention.fill(`${texte} `.trim() + ' (modifiée)');
+  await page.getByRole('button', { name: 'Enregistrer' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Enregistré.' })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('État : mention À VÉRIFIER.')).toBeVisible();
+  // Remise en état pour les autres parcours.
+  await mention.fill(texte);
+  await page.getByRole('button', { name: 'Enregistrer' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Enregistré.' })).toBeVisible();
 });

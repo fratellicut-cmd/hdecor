@@ -4,7 +4,8 @@
  * Charte H'DECOR : doré (#B8860B -> #E6C068), anthracite (#1F1F1F),
  * blanc cassé (#FAF8F4). Le doré n'est JAMAIS une couleur de texte sur fond
  * clair (contraste insuffisant au soleil) : il sert aux filets, aplats et
- * accents. Les couleurs de texte sont vérifiées par un test de contraste.
+ * accents. Les couleurs de texte sont vérifiées par un test de contraste
+ * (src/lib/__tests__/contraste.test.ts).
  */
 @theme {
   --color-or-fonce: #b8860b;

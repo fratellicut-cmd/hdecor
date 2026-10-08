@@ -43,6 +43,8 @@ hdecor-kit/
 
 Claude Code te guidera pour chacun. Ne lui donne jamais tes mots de passe : il utilise des variables d'environnement que tu renseignes toi-même.
 
+Procédure détaillée de mise en ligne (réglages Supabase, variables Vercel, création du compte) : `docs/MISE_EN_PRODUCTION.md`.
+
 ## Comment piloter (ton rôle de directeur)
 
 - **Une phase à la fois.** À la fin de chaque phase, Claude Code te présente un compte rendu et tu valides avant la suivante.

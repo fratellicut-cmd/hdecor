@@ -685,17 +685,21 @@ insert into public.rappels (organisation_id, type, echeance, titre, chantier_id)
 values ('aaaaaaaa-0000-0000-0000-00000000000a', 'libre', now(), 'Rappeler Mme Lefèvre 0600000000', 'aaaaaaaa-0000-0000-0000-0000000ca002');
 insert into public.temps_passes (organisation_id, chantier_id, jour, minutes, note)
 values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca002', public.aujourd_hui_paris(), 60, 'Mme Lefèvre absente');
-select tests.echoue($$select public.anonymiser_client('aaaaaaaa-0000-0000-0000-0000000c0002')$$, 'permission denied',
+select tests.echoue($$select public.anonymiser_client_interne('aaaaaaaa-0000-0000-0000-0000000c0002')$$, 'permission denied',
   'RGPD : une session passe obligatoirement par effacer_client (file des fichiers)');
 select tests.echoue($$select * from public.fichiers_a_supprimer$$, 'permission denied',
   'RGPD : la file des fichiers à supprimer est invisible pour une session');
 select tests.egal(public.effacer_client('aaaaaaaa-0000-0000-0000-0000000c0002'), 2,
   'RGPD : effacement du client, 2 fichiers mis en file');
 reset role;
-select tests.egal((select array_agg(chemin order by chemin) from public.fichiers_a_supprimer),
-  array['aaaaaaaa-0000-0000-0000-00000000000a/d7.pdf', 'aaaaaaaa-0000-0000-0000-00000000000a/photos/p1.jpg'],
-  'RGPD : PDF du devis non accepté et photos inscrits dans la file, dans la même transaction');
+select tests.egal((select array_agg(espace || ':' || chemin order by chemin) from public.fichiers_a_supprimer),
+  array['documents:aaaaaaaa-0000-0000-0000-00000000000a/d7.pdf', 'photos:aaaaaaaa-0000-0000-0000-00000000000a/photos/p1.jpg'],
+  'RGPD : PDF du devis non accepté et photos inscrits dans la file, avec leur espace de stockage');
 set role authenticated;
+select tests.echoue($$update public.clients set nom = 'Durand', anonymise_le = null where id = 'aaaaaaaa-0000-0000-0000-0000000c0002'$$,
+  'Fiche anonymisée', 'RGPD : une fiche anonymisée ne peut pas être « dé-anonymisée » par l''API');
+select tests.echoue($$select public.effacer_client('aaaaaaaa-0000-0000-0000-0000000c0002')$$,
+  'déjà anonymisé', 'RGPD : un second effacement est refusé proprement');
 select tests.egal(
   (select count(*) from public.evenements where chantier_id = 'aaaaaaaa-0000-0000-0000-0000000ca002' and (titre ilike '%lef%' or notes is not null))
   + (select count(*) from public.rappels where chantier_id = 'aaaaaaaa-0000-0000-0000-0000000ca002' and titre ilike '%lef%')
@@ -742,7 +746,7 @@ select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prokind = 'f' and p.prorettype <> 'trigger'::regtype
      and has_function_privilege('authenticated', p.oid, 'execute')),
-  'aujourd_hui_paris,chemin_de_l_organisation,deductions_bien_formees,effacer_client,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,organisation_du_chemin,rechercher_clients,refuser_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,texte_recherche,ventilation_attendue,ventilation_bien_formee',
+  'aujourd_hui_paris,chemin_de_l_organisation,confirmer_valeurs,deductions_bien_formees,effacer_client,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,organisation_du_chemin,rechercher_clients,refuser_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,texte_recherche,ventilation_attendue,ventilation_bien_formee',
   'sécurité : liste COMPLÈTE des fonctions appelables par une session');
 select tests.echoue($$select public.purger_journal_audit(now() - interval '20 years')$$, 'permission denied',
   'sécurité : purge du journal réservée au serveur');
@@ -1297,6 +1301,14 @@ insert into public.clients (organisation_id, nom, prenom, email, telephone, fact
 values ('aaaaaaaa-0000-0000-0000-00000000000a', 'Hélène', 'Müller', 'h.muller@exemple.test', '06 12 34 56 78', 'Thionville'),
        ('aaaaaaaa-0000-0000-0000-00000000000a', 'Pourcent%', 'Test_', null, '+33 7 99 88 77 66', null);
 select tests.egal((select count(*) from public.rechercher_clients('helene')), 1::bigint, 'recherche sans accent trouve « Hélène »');
+insert into public.clients (organisation_id, nom, prenom) values ('aaaaaaaa-0000-0000-0000-00000000000a', 'Œuvray', 'Lætitia');
+select tests.egal((select count(*) from public.rechercher_clients('laetitia oeuvray')), 0::bigint, 'recherche : mots dans l''ordre de la fiche');
+select tests.egal((select count(*) from public.rechercher_clients('oeuvray laetitia')), 1::bigint, 'recherche : ligatures œ et æ développées');
+select tests.egal(public.confirmer_valeurs('aaaaaaaa-0000-0000-0000-00000000000a', array['delai_paiement_jours']), true,
+  'confirmation atomique d''une valeur À VÉRIFIER');
+select tests.egal((select 'delai_paiement_jours' = any (valeurs_a_verifier) or not ('validite_devis_jours' = any (valeurs_a_verifier))
+                   from public.parametres_entreprise where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'),
+  false, 'confirmation : seule la valeur confirmée est retirée de la liste');
 select tests.egal((select count(*) from public.rechercher_clients('MULLER')), 1::bigint, 'recherche insensible à la casse et aux trémas');
 select tests.egal((select count(*) from public.rechercher_clients('0612345678')), 1::bigint, 'recherche par téléphone sans espaces');
 select tests.egal((select count(*) from public.rechercher_clients('+33 6.12')), 1::bigint, 'recherche par numéro avec indicatif et points');
@@ -1315,6 +1327,8 @@ select tests.echoue($$select public.purger_prospects_inactifs()$$, 'permission d
 set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000001';
 select tests.egal((select count(*) from public.clients), 0::bigint, 'B ne voit pas les clients de A');
 select tests.egal((select count(*) from public.rechercher_clients('helene')), 0::bigint, 'B ne trouve pas les clients de A par la recherche');
+select tests.egal(public.confirmer_valeurs('aaaaaaaa-0000-0000-0000-00000000000a', array['validite_devis_jours']), false,
+  'B ne peut pas confirmer les valeurs de A');
 select tests.echoue($$select public.effacer_client('aaaaaaaa-0000-0000-0000-0000000c0001')$$, 'introuvable', 'B ne peut pas effacer un client de A (identifiant deviné)');
 select tests.egal((select count(*) from public.devis), 0::bigint, 'B ne voit pas les devis de A');
 select tests.egal((select count(*) from public.factures), 0::bigint, 'B ne voit pas les factures de A');
@@ -1411,6 +1425,10 @@ update public.clients set created_at = now() - interval '5 years', updated_at = 
 where nom = 'Hélène';
 set session_replication_role = origin;
 set role service_role;
+select tests.egal(public.purger_prospects_inactifs(), 0,
+  'purge : aucune anonymisation tant que la durée de conservation est À VÉRIFIER');
+update public.parametres_entreprise set valeurs_a_verifier = array_remove(valeurs_a_verifier, 'duree_conservation_prospects_mois')
+where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a';
 select tests.egal(public.purger_prospects_inactifs() >= 1, true, 'purge : prospect inactif depuis 5 ans anonymisé');
 select tests.egal((select count(*) from public.clients where nom = 'Hélène'), 0::bigint, 'purge : plus de nom en clair');
 select tests.egal((select count(*) from public.clients where id = 'aaaaaaaa-0000-0000-0000-0000000c0001' and anonymise_le is null), 1::bigint,

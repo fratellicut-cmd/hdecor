@@ -1,8 +1,8 @@
 'use client';
 
-import { useActionState } from 'react';
 import { enregistrerEntreprise } from '@/app/(app)/parametres/actions';
-import { ETAT_INITIAL } from '@/lib/etat-formulaire';
+import { useFormulaire } from '@/components/formulaire/useFormulaire';
+import { MessagesGarde, RappelEnvoi } from '@/components/formulaire/MessagesGarde';
 import type { Ligne } from '@/lib/supabase/types';
 import { formaterIban } from '@/lib/validation/identifiants';
 import { Bouton } from '@/components/ui/Bouton';
@@ -13,12 +13,13 @@ type P = Pick<Ligne<'parametres_entreprise'>, 'raison_sociale' | 'forme_juridiqu
   | 'adresse_ligne1' | 'adresse_ligne2' | 'code_postal' | 'ville' | 'telephone' | 'email' | 'iban' | 'bic'>;
 
 export function FormulaireEntreprise({ p }: { p: P }) {
-  const [etat, action, enCours] = useActionState(enregistrerEntreprise, ETAT_INITIAL);
+  const { etat, action, enCours, formRef, garde } = useFormulaire('parametres:entreprise', enregistrerEntreprise);
   const e = etat.erreurs ?? {};
   const v = (cle: keyof P) => (etat.valeurs?.[cle] ?? p[cle] ?? '') as string;
   return (
-    <form action={action} className="flex flex-col gap-4" noValidate>
+    <form ref={formRef} action={action} onSubmit={garde.surEnvoi} className="flex flex-col gap-4" noValidate>
       <RetourFormulaire etat={etat} />
+      <MessagesGarde garde={garde} />
       <Champ libelle="Raison sociale" nom="raison_sociale" defaultValue={v('raison_sociale')} required erreur={e.raison_sociale} />
       <Champ libelle="Forme juridique" nom="forme_juridique" defaultValue={v('forme_juridique')} required erreur={e.forme_juridique}
         aide="Pour une entreprise individuelle : « EI » (mention à faire valider par le comptable)." />
@@ -36,6 +37,7 @@ export function FormulaireEntreprise({ p }: { p: P }) {
       <Champ libelle="Email" nom="email" type="email" defaultValue={v('email')} inputMode="email" erreur={e.email} autoComplete="email" />
       <Champ libelle="IBAN" nom="iban" defaultValue={etat.valeurs?.iban ?? (p.iban ? formaterIban(p.iban) : '')} erreur={e.iban} autoCapitalize="characters" />
       <Champ libelle="BIC" nom="bic" defaultValue={v('bic')} erreur={e.bic} autoCapitalize="characters" />
+      <RappelEnvoi garde={garde} etat={etat} />
       <Bouton type="submit" disabled={enCours}>{enCours ? 'Enregistrement…' : 'Enregistrer'}</Bouton>
     </form>
   );

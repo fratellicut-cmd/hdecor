@@ -38,10 +38,11 @@ export function CaseACocher({ libelle, nom, valeur, erreur, ...props }: React.In
   return (
     <div className="flex flex-col gap-1">
       <label htmlFor={id} className="flex min-h-12 cursor-pointer items-center gap-3">
-        <input id={id} type="checkbox" name={nom} value={valeur ?? 'on'} className="h-6 w-6 accent-anthracite" {...props} />
+        <input id={id} type="checkbox" name={nom} value={valeur ?? 'on'} className="h-6 w-6 accent-anthracite"
+          aria-invalid={erreur ? true : undefined} aria-describedby={erreur ? `${id}-erreur` : undefined} {...props} />
         <span>{libelle}</span>
       </label>
-      {erreur ? <p className="text-sm font-semibold text-danger">{erreur}</p> : null}
+      {erreur ? <p id={`${id}-erreur`} className="text-sm font-semibold text-danger">{erreur}</p> : null}
     </div>
   );
 }

@@ -61,7 +61,7 @@ export default function PageConfidentialite() {
         </p>
         <p className="mt-2">
           En cas de désaccord, vous pouvez saisir la CNIL :{' '}
-          <a href="https://www.cnil.fr" className="underline underline-offset-4" rel="noopener noreferrer">www.cnil.fr</a>.
+          <a href="https://www.cnil.fr" className="inline-flex min-h-11 items-center underline underline-offset-4" rel="noopener noreferrer">www.cnil.fr</a>.
         </p>
       </Section>
     </main>

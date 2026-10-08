@@ -23,6 +23,19 @@ const eslintConfig = defineConfig([
           message: 'Client « service » (contourne la RLS) : réservé aux fichiers listés dans eslint.config.mjs.',
         }],
       }],
+      // Ferme le contournement « createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY) ».
+      'no-restricted-syntax': ['error',
+        ...['SUPABASE_SERVICE_ROLE_KEY', 'CRON_SECRET'].flatMap((nom) => [
+          {
+            selector: `MemberExpression[object.object.name='process'][object.property.name='env'][property.name='${nom}']`,
+            message: `${nom} : secret serveur réservé aux fichiers listés dans eslint.config.mjs.`,
+          },
+          {
+            selector: `MemberExpression[object.object.name='process'][object.property.name='env'][property.value='${nom}']`,
+            message: `${nom} : secret serveur réservé aux fichiers listés dans eslint.config.mjs.`,
+          },
+        ]),
+      ],
     },
   },
   globalIgnores([

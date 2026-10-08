@@ -1,20 +1,20 @@
 'use client';
 
-import { useActionState, useRef, useState } from 'react';
+import Link from 'next/link';
+import { useState } from 'react';
 import { enregistrerClient } from '@/app/(app)/clients/actions';
-import { ETAT_INITIAL } from '@/lib/etat-formulaire';
 import type { Ligne } from '@/lib/supabase/types';
 import { CIVILITES } from '@/lib/validation/clients';
-import { useGardeSaisie } from '@/components/formulaire/useGardeSaisie';
+import { useFormulaire } from '@/components/formulaire/useFormulaire';
+import { MessagesGarde, RappelEnvoi } from '@/components/formulaire/MessagesGarde';
 import { cleBrouillonClient } from '@/components/formulaire/cles';
 import { RetourFormulaire } from '@/components/parametres/RetourFormulaire';
 import { Bouton } from '@/components/ui/Bouton';
 import { Champ } from '@/components/ui/Champ';
-import { Message } from '@/components/ui/Message';
 import { Selection, TexteLong } from '@/components/ui/Autres';
 
 type C = Pick<Ligne<'clients'>, 'type' | 'civilite' | 'nom' | 'prenom' | 'raison_sociale' | 'siret' | 'tva_intra' | 'email'
-  | 'telephone' | 'fact_ligne1' | 'fact_ligne2' | 'fact_code_postal' | 'fact_ville' | 'notes' | 'source'>;
+  | 'telephone' | 'fact_ligne1' | 'fact_ligne2' | 'fact_code_postal' | 'fact_ville' | 'notes' | 'source'> & { updated_at?: string };
 
 const VIDE: C = {
   type: 'particulier', civilite: null, nom: '', prenom: null, raison_sociale: null, siret: null, tva_intra: null,
@@ -23,21 +23,18 @@ const VIDE: C = {
 };
 
 export function FormulaireClient({ id, client = VIDE }: { id?: string; client?: C }) {
-  const [etat, action, enCours] = useActionState(enregistrerClient, ETAT_INITIAL);
-  const formRef = useRef<HTMLFormElement>(null);
-  const { recupere, horsLigne, surEnvoi } = useGardeSaisie(cleBrouillonClient(id), formRef);
+  // Version de la fiche : un brouillon plus ancien qu'une modification n'est pas remis d'office.
+  const { etat, action, enCours, formRef, garde } = useFormulaire(cleBrouillonClient(id), enregistrerClient,
+    { version: id ? (client.updated_at ?? null) : undefined });
   const e = etat.erreurs ?? {};
   const v = (cle: keyof C) => (etat.valeurs?.[cle] ?? client[cle] ?? '') as string;
   const [type, setType] = useState<C['type']>((etat.valeurs?.type as C['type'] | undefined) ?? client.type);
   const pro = type === 'professionnel';
 
   return (
-    <form ref={formRef} action={action} onSubmit={surEnvoi} className="flex flex-col gap-4" noValidate>
+    <form ref={formRef} action={action} onSubmit={garde.surEnvoi} className="flex flex-col gap-4" noValidate>
       {id ? <input type="hidden" name="id" value={id} /> : null}
-      {horsLigne ? (
-        <Message type="alerte">Hors connexion : rien n’a été envoyé, votre saisie est gardée sur ce téléphone. Réessayez au retour du réseau.</Message>
-      ) : null}
-      {recupere ? <Message type="info">Saisie non enregistrée récupérée sur ce téléphone. Vérifiez-la puis enregistrez.</Message> : null}
+      <MessagesGarde garde={garde} />
       <RetourFormulaire etat={etat} />
 
       <fieldset className="flex flex-col gap-2">
@@ -87,6 +84,18 @@ export function FormulaireClient({ id, client = VIDE }: { id?: string; client?: 
       <TexteLong libelle="Notes" nom="notes" defaultValue={v('notes')} erreur={e.notes}
         placeholder="Informations utiles au chantier. Pas de données sensibles (santé, opinions…)." />
 
+      {etat.doublon ? (
+        <div role="alert" className="flex flex-col gap-3 rounded-xl border-2 border-alerte bg-alerte-fond p-3 text-alerte">
+          <p className="font-semibold">Un client « {etat.doublon.nom} » existe déjà (même téléphone, ou même nom et prénom).</p>
+          <div className="grid grid-cols-2 gap-2">
+            <Link href={`/clients/${etat.doublon.id}`} className="inline-flex min-h-12 items-center justify-center rounded-xl border-2 border-anthracite bg-white px-3 text-center font-semibold text-encre">
+              Ouvrir sa fiche
+            </Link>
+            <Bouton type="submit" name="creer_quand_meme" value="1" variante="secondaire" disabled={enCours}>Créer quand même</Bouton>
+          </div>
+        </div>
+      ) : null}
+      <RappelEnvoi garde={garde} etat={etat} />
       <Bouton type="submit" disabled={enCours}>{enCours ? 'Enregistrement…' : 'Enregistrer'}</Bouton>
     </form>
   );

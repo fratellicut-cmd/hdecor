@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import { z } from 'zod';
 import { verifierSession } from '@/lib/dal';
 import { clientServeur } from '@/lib/supabase/serveur';
-import { contactProfessionnel, lienTelephone, nomAffiche } from '@/domain/clients';
+import { contactProfessionnel, formaterTelephone, lienTelephone, nomAffiche } from '@/domain/clients';
 import { formaterDate, formaterEuros } from '@/domain/formats';
 import { libelleStatut, libelleTypeFacture } from '@/domain/statuts';
 import { effacerClient } from '../actions';
@@ -18,11 +18,7 @@ import { Message } from '@/components/ui/Message';
 export const metadata: Metadata = { title: 'Fiche client' };
 
 const MESSAGES_EFFACEMENT = {
-  ok: { type: 'succes', texte: 'Client anonymisé. Les factures émises sont conservées (obligation légale).' },
-  'fichiers-en-attente': {
-    type: 'alerte',
-    texte: 'Client anonymisé. Certains fichiers n’ont pas encore pu être supprimés du stockage : ils le seront automatiquement par la tâche de nuit.',
-  },
+  ok: { type: 'succes', texte: 'Client anonymisé. Ses fichiers sont supprimés en arrière-plan. Les factures émises sont conservées (obligation légale).' },
   echec: { type: 'erreur', texte: 'L’effacement a échoué. Rien n’a été modifié. Vérifiez la connexion et réessayez.' },
   'non-confirme': { type: 'erreur', texte: 'Cochez la case de confirmation pour effacer ce client.' },
 } as const;
@@ -34,7 +30,7 @@ export default async function PageClient({ params, searchParams }: PageProps<'/c
   const sp = await searchParams;
   const supabase = await clientServeur();
 
-  const [{ data: client }, { data: devis }, { data: factures }, { data: chantiers }] = await Promise.all([
+  const [{ data: client, error: erreurClient }, { data: devis, error: e1 }, { data: factures, error: e2 }, { data: chantiers, error: e3 }] = await Promise.all([
     supabase.from('clients').select('*').eq('id', id.data).maybeSingle(),
     supabase.from('v_devis').select('id, numero, version, objet, statut_affiche, date_emission, total_ttc_cents, created_at')
       .eq('client_id', id.data).order('created_at', { ascending: false }),
@@ -43,7 +39,12 @@ export default async function PageClient({ params, searchParams }: PageProps<'/c
     supabase.from('v_chantiers').select('id, nom, ville, statut_affiche, date_debut_prevue, created_at')
       .eq('client_id', id.data).order('created_at', { ascending: false }),
   ]);
+  // Échec technique : page d'erreur (« Réessayer »), jamais un faux « introuvable ».
+  if (erreurClient) throw new Error('Lecture de la fiche client impossible.');
   if (!client) notFound();
+  // Historique incomplet : on le dit, et l'effacement définitif est masqué
+  // (son avertissement dépend des factures).
+  const historiqueCharge = !e1 && !e2 && !e3;
 
   const anonymise = client.anonymise_le !== null;
   const contact = contactProfessionnel(client);
@@ -55,7 +56,8 @@ export default async function PageClient({ params, searchParams }: PageProps<'/c
 
   return (
     <div className="flex flex-col gap-4">
-      {sp.enregistre === '1' ? <EffacerBrouillon cles={[cleBrouillonClient(), cleBrouillonClient(client.id)]} /> : null}
+      {sp.enregistre === '1' || sp.effacement === 'ok'
+        ? <EffacerBrouillon cles={[cleBrouillonClient(), cleBrouillonClient(client.id)]} /> : null}
       <div className="flex flex-col gap-1">
         <Link href="/clients" className="inline-flex min-h-12 items-center underline underline-offset-4">← Clients</Link>
         <h1 className="text-2xl font-bold break-words">{nomAffiche(client)}</h1>
@@ -67,6 +69,9 @@ export default async function PageClient({ params, searchParams }: PageProps<'/c
 
       {sp.enregistre === '1' ? <Message type="succes">Fiche enregistrée.</Message> : null}
       {effacement ? <Message type={effacement.type}>{effacement.texte}</Message> : null}
+      {!historiqueCharge ? (
+        <Message type="erreur">L’historique (chantiers, devis, factures) n’a pas pu être chargé. Rechargez la page.</Message>
+      ) : null}
 
       {!anonymise ? (
         <>
@@ -89,7 +94,7 @@ export default async function PageClient({ params, searchParams }: PageProps<'/c
             <dl className="grid grid-cols-1 gap-2">
               {contact ? <Ligne terme="Contact" valeur={contact} /> : null}
               {client.type === 'particulier' && client.civilite ? <Ligne terme="Civilité" valeur={client.civilite} /> : null}
-              {client.telephone ? <Ligne terme="Téléphone" valeur={client.telephone} /> : null}
+              {client.telephone ? <Ligne terme="Téléphone" valeur={formaterTelephone(client.telephone)} /> : null}
               {client.email ? <Ligne terme="Email" valeur={client.email} /> : null}
               {adresse.length ? <Ligne terme="Adresse de facturation" valeur={adresse.join('\n')} /> : null}
               {client.siret ? <Ligne terme="SIRET" valeur={client.siret} /> : null}
@@ -114,7 +119,7 @@ export default async function PageClient({ params, searchParams }: PageProps<'/c
               </li>
             ))}
           </ul>
-        ) : <p className="text-encre-douce">Aucun chantier.</p>}
+        ) : <p className="text-encre-douce">{e3 ? 'Non chargé.' : 'Aucun chantier.'}</p>}
       </Carte>
 
       <Carte titre="Devis">
@@ -132,7 +137,7 @@ export default async function PageClient({ params, searchParams }: PageProps<'/c
               </li>
             ))}
           </ul>
-        ) : <p className="text-encre-douce">Aucun devis.</p>}
+        ) : <p className="text-encre-douce">{e1 ? 'Non chargé.' : 'Aucun devis.'}</p>}
       </Carte>
 
       <Carte titre="Factures">
@@ -151,7 +156,7 @@ export default async function PageClient({ params, searchParams }: PageProps<'/c
               </li>
             ))}
           </ul>
-        ) : <p className="text-encre-douce">Aucune facture.</p>}
+        ) : <p className="text-encre-douce">{e2 ? 'Non chargé.' : 'Aucune facture.'}</p>}
       </Carte>
 
       {!anonymise ? (
@@ -161,6 +166,7 @@ export default async function PageClient({ params, searchParams }: PageProps<'/c
               className="inline-flex min-h-12 items-center justify-center rounded-xl border-2 border-anthracite bg-white px-5 font-semibold">
               Exporter les données de ce client
             </a>
+            {historiqueCharge ? (
             <details className="rounded-xl border-2 border-danger p-3">
               <summary className="flex min-h-12 cursor-pointer items-center font-semibold text-danger">Effacer ce client (droit à l’effacement)</summary>
               <form action={effacerClient} className="mt-3 flex flex-col gap-3">
@@ -173,6 +179,7 @@ export default async function PageClient({ params, searchParams }: PageProps<'/c
                 <Bouton type="submit" variante="danger">Effacer définitivement</Bouton>
               </form>
             </details>
+            ) : null}
           </div>
         </Carte>
       ) : null}

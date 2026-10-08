@@ -14,7 +14,7 @@
     "verify": "npm run typecheck && npm run lint && npm run test",
     "local:start": "bash scripts/supabase-sans-docker/demarrer.sh",
     "local:stop": "bash scripts/supabase-sans-docker/arreter.sh",
-    "types:db": "supabase gen types typescript --db-url \"$DB_URL\" --schema public > src/lib/supabase/types-base.ts"
+    "types:db": "bash scripts/generer-types.sh"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

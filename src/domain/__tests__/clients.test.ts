@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { celluleCsv, contactProfessionnel, fichierCsv, lienTelephone, nomAffiche } from '../clients';
+import { celluleCsv, contactProfessionnel, fichierCsv, formaterTelephone, lienTelephone, nomAffiche } from '../clients';
+import { texteRecherche } from '../recherche';
 import { libelleStatut, libelleTypeFacture } from '../statuts';
 
 const base = { civilite: null, prenom: null, raison_sociale: null, anonymise_le: null };
@@ -53,7 +54,7 @@ describe('export CSV', () => {
   });
   it('fichier : BOM UTF-8, séparateur « ; », fins de ligne CRLF', () => {
     const f = fichierCsv(['Nom', 'Ville'], [['Hélène', 'Metz'], ['A;B', null]]);
-    expect(f).toBe('﻿Nom;Ville\r\nHélène;Metz\r\n"A;B";\r\n');
+    expect(f).toBe('\uFEFFNom;Ville\r\nHélène;Metz\r\n"A;B";\r\n');
   });
 });
 
@@ -69,5 +70,24 @@ describe('libellés de statut', () => {
   it('type de facture', () => {
     expect(libelleTypeFacture('avoir')).toBe('Avoir');
     expect(libelleTypeFacture('acompte')).toBe('Acompte');
+  });
+});
+
+describe('formaterTelephone', () => {
+  it.each([
+    ['0612345678', '06 12 34 56 78'],
+    ['06.12.34.56.78', '06 12 34 56 78'],
+    ['+33612345678', '+33 6 12 34 56 78'],
+    ['+33 6 12 34 56 78', '+33 6 12 34 56 78'],
+    ['+352 621 123 456', '+352 621 123 456'],
+    ['12', '12'],
+  ])('%s -> %s', (t, attendu) => expect(formaterTelephone(t)).toBe(attendu));
+});
+
+describe('texteRecherche (comparaison des doublons)', () => {
+  it('ignore casse, accents et ligatures', () => {
+    expect(texteRecherche(' Lætitia ')).toBe('laetitia');
+    expect(texteRecherche('HÉLÈNE')).toBe(texteRecherche('helene'));
+    expect(texteRecherche('Œuvray')).toBe('oeuvray');
   });
 });

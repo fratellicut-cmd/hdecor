@@ -42,5 +42,15 @@ export function celluleCsv(valeur: string | null | undefined): string {
 
 /** Fichier CSV complet : BOM UTF-8 (accents corrects dans Excel), lignes CRLF. */
 export function fichierCsv(entetes: string[], lignes: (string | null | undefined)[][]): string {
-  return `﻿${[entetes, ...lignes].map((l) => l.map(celluleCsv).join(';')).join('\r\n')}\r\n`;
+  return `\uFEFF${[entetes, ...lignes].map((l) => l.map(celluleCsv).join(';')).join('\r\n')}\r\n`;
+}
+
+/** Affichage d'un numéro : « 06 12 34 56 78 », « +33 6 12 34 56 78 », sinon tel quel. */
+export function formaterTelephone(telephone: string): string {
+  const t = telephone.trim();
+  const d = t.replace(/\D/g, '');
+  const paires = (s: string) => s.match(/.{1,2}/g)!.join(' ');
+  if (/^0\d{9}$/.test(d) && !t.startsWith('+')) return paires(d);
+  if (t.startsWith('+33') && /^33\d{9}$/.test(d)) return `+33 ${d[2]} ${paires(d.slice(3))}`;
+  return t;
 }

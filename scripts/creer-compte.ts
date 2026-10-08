@@ -21,18 +21,34 @@ const { values } = parseArgs({
   },
 });
 
+/** Lit une ligne sans l'afficher dans le terminal (un « * » par caractère). */
+async function saisieMasquee(question: string): Promise<string> {
+  if (!process.stdin.isTTY) {
+    const rl = createInterface({ input: process.stdin });
+    const ligne = await rl.question('');
+    rl.close();
+    return ligne;
+  }
+  process.stdout.write(question);
+  const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+  // N'affiche rien de la saisie : on remplace l'écho du terminal par des « * ».
+  const sortie = rl as unknown as { _writeToOutput: (s: string) => void };
+  sortie._writeToOutput = (s: string) => { if (s.includes('\n') || s.includes('\r')) process.stdout.write('\n'); else process.stdout.write('*'); };
+  const reponse = await rl.question('');
+  rl.close();
+  return reponse;
+}
+
 async function main() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const cle = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !cle) throw new Error('NEXT_PUBLIC_SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY sont requises.');
   if (!values.email || !values['raison-sociale']) throw new Error('--email et --raison-sociale sont requis.');
 
+  // MOT_DE_PASSE_INITIAL : réservé à l'automatisation (CI) ; à la main, la
+  // saisie masquée ci-dessous évite tout passage par l'historique du shell.
   let motDePasse = process.env.MOT_DE_PASSE_INITIAL ?? '';
-  if (!motDePasse) {
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
-    motDePasse = await rl.question('Mot de passe (12 caractères minimum) : ');
-    rl.close();
-  }
+  if (!motDePasse) motDePasse = await saisieMasquee('Mot de passe (12 caractères minimum) : ');
   if (motDePasse.length < 12) throw new Error('Mot de passe trop court (12 caractères minimum).');
 
   const admin = createClient(url, cle, { auth: { persistSession: false, autoRefreshToken: false } });
