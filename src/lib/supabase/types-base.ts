@@ -839,14 +839,14 @@ isOneToOne: false
                   ]
                 },"parametres_entreprise": {
                   Row: {
-                    "acompte_pct_defaut_bp": number,"adresse_ligne1": string | null,"adresse_ligne2": string | null,"avis_google_url": string | null,"bic": string | null,"code_postal": string | null,"coef_marge_bp": number,"delai_paiement_jours": number,"delai_paiement_max_jours": number,"email": string | null,"escompte_texte": string,"forme_juridique": string,"iban": string | null,"immatriculation": string | null,"indemnite_recouvrement_cents": number,"logo_chemin": string | null,"marge_perte_bp": number,"mediateur_coordonnees": string | null,"mediateur_nom": string | null,"mediateur_site": string | null,"mention_franchise": string,"mention_franchise_a_verifier": boolean,"mentions_pied": string | null,"nom_dirigeant": string | null,"numero_tva_intra": string | null,"organisation_id": string,"raison_sociale": string | null,"regime_tva": Database["public"]['Enums']["regime_tva"],"relance_devis_active": boolean,"relance_devis_jours": number,"seuil_alerte_1_bp": number,"seuil_alerte_2_bp": number,"seuil_ca_micro_cents": number | null,"seuil_franchise_tva_cents": number | null,"seuils_confirmes_le": string | null,"siret": string | null,"taux_horaire_cents": number | null,"taux_penalites_bp": number | null,"telephone": string | null,"updated_at": string,"valeurs_a_verifier": (string)[],"validite_devis_jours": number,"ville": string | null
+                    "acompte_pct_defaut_bp": number,"adresse_ligne1": string | null,"adresse_ligne2": string | null,"avis_google_url": string | null,"bic": string | null,"code_postal": string | null,"coef_marge_bp": number,"delai_paiement_jours": number,"delai_paiement_max_jours": number,"duree_conservation_prospects_mois": number,"email": string | null,"escompte_texte": string,"forme_juridique": string,"iban": string | null,"immatriculation": string | null,"indemnite_recouvrement_cents": number,"logo_chemin": string | null,"marge_perte_bp": number,"mediateur_coordonnees": string | null,"mediateur_nom": string | null,"mediateur_site": string | null,"mention_franchise": string,"mention_franchise_a_verifier": boolean,"mentions_pied": string | null,"nom_dirigeant": string | null,"numero_tva_intra": string | null,"organisation_id": string,"raison_sociale": string | null,"regime_tva": Database["public"]['Enums']["regime_tva"],"relance_devis_active": boolean,"relance_devis_jours": number,"seuil_alerte_1_bp": number,"seuil_alerte_2_bp": number,"seuil_ca_micro_cents": number | null,"seuil_franchise_tva_cents": number | null,"seuils_confirmes_le": string | null,"siret": string | null,"taux_horaire_cents": number | null,"taux_penalites_bp": number | null,"telephone": string | null,"updated_at": string,"valeurs_a_verifier": (string)[],"validite_devis_jours": number,"ville": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "acompte_pct_defaut_bp"?: number,"adresse_ligne1"?: string | null,"adresse_ligne2"?: string | null,"avis_google_url"?: string | null,"bic"?: string | null,"code_postal"?: string | null,"coef_marge_bp"?: number,"delai_paiement_jours"?: number,"delai_paiement_max_jours"?: number,"email"?: string | null,"escompte_texte"?: string,"forme_juridique"?: string,"iban"?: string | null,"immatriculation"?: string | null,"indemnite_recouvrement_cents"?: number,"logo_chemin"?: string | null,"marge_perte_bp"?: number,"mediateur_coordonnees"?: string | null,"mediateur_nom"?: string | null,"mediateur_site"?: string | null,"mention_franchise"?: string,"mention_franchise_a_verifier"?: boolean,"mentions_pied"?: string | null,"nom_dirigeant"?: string | null,"numero_tva_intra"?: string | null,"organisation_id": string,"raison_sociale"?: string | null,"regime_tva"?: Database["public"]['Enums']["regime_tva"],"relance_devis_active"?: boolean,"relance_devis_jours"?: number,"seuil_alerte_1_bp"?: number,"seuil_alerte_2_bp"?: number,"seuil_ca_micro_cents"?: number | null,"seuil_franchise_tva_cents"?: number | null,"seuils_confirmes_le"?: string | null,"siret"?: string | null,"taux_horaire_cents"?: number | null,"taux_penalites_bp"?: number | null,"telephone"?: string | null,"updated_at"?: string,"valeurs_a_verifier"?: (string)[],"validite_devis_jours"?: number,"ville"?: string | null
+                    "acompte_pct_defaut_bp"?: number,"adresse_ligne1"?: string | null,"adresse_ligne2"?: string | null,"avis_google_url"?: string | null,"bic"?: string | null,"code_postal"?: string | null,"coef_marge_bp"?: number,"delai_paiement_jours"?: number,"delai_paiement_max_jours"?: number,"duree_conservation_prospects_mois"?: number,"email"?: string | null,"escompte_texte"?: string,"forme_juridique"?: string,"iban"?: string | null,"immatriculation"?: string | null,"indemnite_recouvrement_cents"?: number,"logo_chemin"?: string | null,"marge_perte_bp"?: number,"mediateur_coordonnees"?: string | null,"mediateur_nom"?: string | null,"mediateur_site"?: string | null,"mention_franchise"?: string,"mention_franchise_a_verifier"?: boolean,"mentions_pied"?: string | null,"nom_dirigeant"?: string | null,"numero_tva_intra"?: string | null,"organisation_id": string,"raison_sociale"?: string | null,"regime_tva"?: Database["public"]['Enums']["regime_tva"],"relance_devis_active"?: boolean,"relance_devis_jours"?: number,"seuil_alerte_1_bp"?: number,"seuil_alerte_2_bp"?: number,"seuil_ca_micro_cents"?: number | null,"seuil_franchise_tva_cents"?: number | null,"seuils_confirmes_le"?: string | null,"siret"?: string | null,"taux_horaire_cents"?: number | null,"taux_penalites_bp"?: number | null,"telephone"?: string | null,"updated_at"?: string,"valeurs_a_verifier"?: (string)[],"validite_devis_jours"?: number,"ville"?: string | null
                   }
                   Update: {
-                    "acompte_pct_defaut_bp"?: number,"adresse_ligne1"?: string | null,"adresse_ligne2"?: string | null,"avis_google_url"?: string | null,"bic"?: string | null,"code_postal"?: string | null,"coef_marge_bp"?: number,"delai_paiement_jours"?: number,"delai_paiement_max_jours"?: number,"email"?: string | null,"escompte_texte"?: string,"forme_juridique"?: string,"iban"?: string | null,"immatriculation"?: string | null,"indemnite_recouvrement_cents"?: number,"logo_chemin"?: string | null,"marge_perte_bp"?: number,"mediateur_coordonnees"?: string | null,"mediateur_nom"?: string | null,"mediateur_site"?: string | null,"mention_franchise"?: string,"mention_franchise_a_verifier"?: boolean,"mentions_pied"?: string | null,"nom_dirigeant"?: string | null,"numero_tva_intra"?: string | null,"organisation_id"?: string,"raison_sociale"?: string | null,"regime_tva"?: Database["public"]['Enums']["regime_tva"],"relance_devis_active"?: boolean,"relance_devis_jours"?: number,"seuil_alerte_1_bp"?: number,"seuil_alerte_2_bp"?: number,"seuil_ca_micro_cents"?: number | null,"seuil_franchise_tva_cents"?: number | null,"seuils_confirmes_le"?: string | null,"siret"?: string | null,"taux_horaire_cents"?: number | null,"taux_penalites_bp"?: number | null,"telephone"?: string | null,"updated_at"?: string,"valeurs_a_verifier"?: (string)[],"validite_devis_jours"?: number,"ville"?: string | null
+                    "acompte_pct_defaut_bp"?: number,"adresse_ligne1"?: string | null,"adresse_ligne2"?: string | null,"avis_google_url"?: string | null,"bic"?: string | null,"code_postal"?: string | null,"coef_marge_bp"?: number,"delai_paiement_jours"?: number,"delai_paiement_max_jours"?: number,"duree_conservation_prospects_mois"?: number,"email"?: string | null,"escompte_texte"?: string,"forme_juridique"?: string,"iban"?: string | null,"immatriculation"?: string | null,"indemnite_recouvrement_cents"?: number,"logo_chemin"?: string | null,"marge_perte_bp"?: number,"mediateur_coordonnees"?: string | null,"mediateur_nom"?: string | null,"mediateur_site"?: string | null,"mention_franchise"?: string,"mention_franchise_a_verifier"?: boolean,"mentions_pied"?: string | null,"nom_dirigeant"?: string | null,"numero_tva_intra"?: string | null,"organisation_id"?: string,"raison_sociale"?: string | null,"regime_tva"?: Database["public"]['Enums']["regime_tva"],"relance_devis_active"?: boolean,"relance_devis_jours"?: number,"seuil_alerte_1_bp"?: number,"seuil_alerte_2_bp"?: number,"seuil_ca_micro_cents"?: number | null,"seuil_franchise_tva_cents"?: number | null,"seuils_confirmes_le"?: string | null,"siret"?: string | null,"taux_horaire_cents"?: number | null,"taux_penalites_bp"?: number | null,"telephone"?: string | null,"updated_at"?: string,"valeurs_a_verifier"?: (string)[],"validite_devis_jours"?: number,"ville"?: string | null
                   }
                   Relationships: [
                     {
@@ -1430,6 +1430,9 @@ isOneToOne: false
 "facture_par_jeton":
 { Args: { "p_jeton": string }; Returns: Json
                            },
+"initialiser_organisation":
+{ Args: { "p_email": string,"p_nom_dirigeant": string,"p_raison_sociale": string,"p_user_id": string }; Returns: string
+                           },
 "lien_valide":
 { Args: { "p_finalite": string,"p_jeton": string }; Returns: {
               "cree_le": string,
@@ -1455,6 +1458,9 @@ isOneToOne: false
 "marquer_facture_envoyee":
 { Args: { "p_facture_id": string }; Returns: undefined
                            },
+"niveau_auth_suffisant":
+{ Args: Record<PropertyKey, never>; Returns: boolean
+                           },
 "nouvelle_version_devis":
 { Args: { "p_devis_id": string }; Returns: string
                            },
@@ -1467,6 +1473,40 @@ isOneToOne: false
 "purger_journal_audit":
 { Args: { "p_avant": string }; Returns: number
                            },
+"purger_prospects_inactifs":
+{ Args: Record<PropertyKey, never>; Returns: number
+                           },
+"rechercher_clients":
+{ Args: { "p_decalage"?: number,"p_inclure_anonymises"?: boolean,"p_limite"?: number,"p_texte"?: string,"p_type"?: Database["public"]['Enums']["type_client"] }; Returns: {
+              "anonymise_le": string | null,
+"civilite": string | null,
+"consentement_le": string | null,
+"created_at": string,
+"email": string | null,
+"fact_code_postal": string | null,
+"fact_ligne1": string | null,
+"fact_ligne2": string | null,
+"fact_pays": string,
+"fact_ville": string | null,
+"id": string,
+"nom": string,
+"notes": string | null,
+"organisation_id": string,
+"prenom": string | null,
+"raison_sociale": string | null,
+"siret": string | null,
+"source": string | null,
+"telephone": string | null,
+"tva_intra": string | null,
+"type": Database["public"]['Enums']["type_client"],
+"updated_at": string
+            }[]
+                          SetofOptions: {
+        from: "*"
+        to: "clients"
+        isOneToOne: false
+        isSetofReturn: true
+      } },
 "refuser_devis":
 { Args: { "p_devis_id": string,"p_motif": string }; Returns: undefined
                            },
@@ -1493,6 +1533,9 @@ isOneToOne: false
 { Args: { "p_facture_id": string }; Returns: {
               "avoirs_cents": number,"du_cents": number,"paye_cents": number,"rembourse_cents": number,"reste_a_payer_cents": number,"reste_a_rembourser_cents": number,"trop_percu_cents": number
             }[]
+                           },
+"texte_recherche":
+{ Args: { "p": string }; Returns: string
                            },
 "ventilation_attendue":
 { Args: { "p_lignes_par_taux": Json,"p_regime": Database["public"]['Enums']["regime_tva"],"p_remise_bp": number }; Returns: Json

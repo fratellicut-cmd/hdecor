@@ -730,7 +730,7 @@ select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prokind = 'f' and p.prorettype <> 'trigger'::regtype
      and has_function_privilege('authenticated', p.oid, 'execute')),
-  'anonymiser_client,aujourd_hui_paris,chemin_de_l_organisation,deductions_bien_formees,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,organisation_du_chemin,refuser_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,ventilation_attendue,ventilation_bien_formee',
+  'anonymiser_client,aujourd_hui_paris,chemin_de_l_organisation,deductions_bien_formees,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,organisation_du_chemin,rechercher_clients,refuser_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,texte_recherche,ventilation_attendue,ventilation_bien_formee',
   'sécurité : liste COMPLÈTE des fonctions appelables par une session');
 select tests.echoue($$select public.purger_journal_audit(now() - interval '20 years')$$, 'permission denied',
   'sécurité : purge du journal réservée au serveur');
@@ -1280,11 +1280,26 @@ reset request.jwt.claims;
 set role authenticated;
 set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
 
+-- Phase 1 : recherche de clients (RLS, accents, téléphone, caractères spéciaux)
+insert into public.clients (organisation_id, nom, prenom, email, telephone, fact_ville)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'Hélène', 'Müller', 'h.muller@exemple.test', '06 12 34 56 78', 'Thionville'),
+       ('aaaaaaaa-0000-0000-0000-00000000000a', 'Pourcent%', 'Test_', null, null, null);
+select tests.egal((select count(*) from public.rechercher_clients('helene')), 1::bigint, 'recherche sans accent trouve « Hélène »');
+select tests.egal((select count(*) from public.rechercher_clients('MULLER')), 1::bigint, 'recherche insensible à la casse et aux trémas');
+select tests.egal((select count(*) from public.rechercher_clients('0612345678')), 1::bigint, 'recherche par téléphone sans espaces');
+select tests.egal((select count(*) from public.rechercher_clients('12 34')), 1::bigint, 'recherche par morceau de téléphone avec espace');
+select tests.egal((select count(*) from public.rechercher_clients('%')), 1::bigint, '« % » cherché comme caractère, pas comme joker');
+select tests.egal((select count(*) from public.rechercher_clients('t_')), 1::bigint, '« _ » cherché comme caractère, pas comme joker');
+select tests.egal((select count(*) from public.rechercher_clients('thion')), 1::bigint, 'recherche par ville');
+select tests.egal((select count(*) from public.rechercher_clients(p_type => 'professionnel')), 0::bigint, 'filtre par type');
+select tests.echoue($$select public.purger_prospects_inactifs()$$, 'permission denied', 'purge des prospects réservée au serveur');
+
 -- -----------------------------------------------------------------------------
 -- 4. Utilisateur B : ne voit ni ne touche rien de A
 -- -----------------------------------------------------------------------------
 set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000001';
 select tests.egal((select count(*) from public.clients), 0::bigint, 'B ne voit pas les clients de A');
+select tests.egal((select count(*) from public.rechercher_clients('helene')), 0::bigint, 'B ne trouve pas les clients de A par la recherche');
 select tests.egal((select count(*) from public.devis), 0::bigint, 'B ne voit pas les devis de A');
 select tests.egal((select count(*) from public.factures), 0::bigint, 'B ne voit pas les factures de A');
 select tests.egal((select count(*) from public.v_factures), 0::bigint, 'B ne voit rien via la vue v_factures');
@@ -1371,6 +1386,19 @@ select tests.echoue(
     where devis_id = 'aaaaaaaa-0000-0000-0000-0000000d0001'$$,
   'figées', 'service : crochet d''anonymisation fermé pour un devis accepté ou encore signable');
 select set_config('hdecor.anonymisation', 'off', false);
+
+-- Vieillissement de la fiche : le trigger maj_updated_at remettrait la date à
+-- now(), on le contourne le temps de préparer la donnée (superutilisateur).
+reset role;
+set session_replication_role = replica;
+update public.clients set created_at = now() - interval '5 years', updated_at = now() - interval '5 years'
+where nom = 'Hélène';
+set session_replication_role = origin;
+set role service_role;
+select tests.egal(public.purger_prospects_inactifs() >= 1, true, 'purge : prospect inactif depuis 5 ans anonymisé');
+select tests.egal((select count(*) from public.clients where nom = 'Hélène'), 0::bigint, 'purge : plus de nom en clair');
+select tests.egal((select count(*) from public.clients where id = 'aaaaaaaa-0000-0000-0000-0000000c0001' and anonymise_le is null), 1::bigint,
+  'purge : un client avec documents n''est pas touché');
 
 -- Triggers : même le propriétaire de la base ne modifie pas une facture émise
 reset role;
