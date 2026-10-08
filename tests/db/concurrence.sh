@@ -145,6 +145,23 @@ for ordre in avoir_dabord finale_dabord; do
     exit 1
   fi
 done
+# Course émission de devis / changement du client du chantier (audit sécurité,
+# passe 6) : le changement de client doit attendre l'émission, puis être refusé.
+CH=$(q "insert into public.chantiers (organisation_id, client_id, nom) values ('$ORG', 'aaaaaaaa-0000-0000-0000-0000000c0001', 'Course') returning id")
+q "insert into public.clients (id, organisation_id, nom) values ('aaaaaaaa-0000-0000-0000-0000000c0009', '$ORG', 'Autre') on conflict do nothing returning id" > /dev/null
+DV=$(q "insert into public.devis (organisation_id, client_id, chantier_id, validite_jours, regime_tva, total_ht_cents, total_tva_cents, total_ttc_cents, ventilation_tva) values ('$ORG', 'aaaaaaaa-0000-0000-0000-0000000c0001', '$CH', 30, 'franchise', 10000, 0, 10000, '[{\"taux_bp\":0,\"base_ht_cents\":10000,\"tva_cents\":0}]') returning id")
+q "insert into public.devis_lignes (organisation_id, devis_id, ordre, designation, quantite_e4, unite, prix_unitaire_ht_cents, taux_tva_bp, total_ht_cents) values ('$ORG', '$DV', 1, 'X', 10000, 'u', 10000, 0, 10000) returning id" > /dev/null
+psql -X -qtA -d "$DB" -c "$ENTETE" -c "begin; select public.emettre_devis('$DV', '{}', '{}', '{}', '$ORG/dcourse.pdf', repeat('c', 64)); select pg_sleep(1.5); commit;" > /dev/null &
+sleep 0.5
+psql -X -qtA -d "$DB" -c "$ENTETE update public.chantiers set client_id = 'aaaaaaaa-0000-0000-0000-0000000c0009' where id = '$CH'" > /dev/null 2>&1 || true   # refus attendu
+wait
+C=$(q "select client_id from public.chantiers where id = '$CH'")
+if [ "$C" != "aaaaaaaa-0000-0000-0000-0000000c0001" ]; then
+  echo "ÉCHEC course émission / client du chantier : le client a changé malgré le devis émis" >&2
+  exit 1
+fi
+echo "NOTICE:  OK course émission / client du chantier : changement de client refusé après l'émission"
+
 V=$(q "select coalesce(string_agg(invariant || ' : ' || violations, ' | '), '') from verif.invariants() where violations > 0")
 if [ -n "$V" ]; then
   echo "ÉCHEC invariants après les courses : $V" >&2

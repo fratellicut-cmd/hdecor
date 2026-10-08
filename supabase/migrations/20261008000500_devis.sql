@@ -457,6 +457,9 @@ begin
   if v_somme_lignes = 0 then
     raise exception 'Un devis sans ligne chiffrée ne peut pas être émis.' using errcode = 'P0001';
   end if;
+  -- FOR SHARE : un changement simultané du client du chantier attend la fin
+  -- de cette émission (puis est refusé par proteger_client_chantier).
+  perform 1 from public.chantiers where id = v_devis.chantier_id for share;
   if v_devis.chantier_id is not null and exists (
        select 1 from public.chantiers c where c.id = v_devis.chantier_id and c.client_id <> v_devis.client_id) then
     raise exception 'Le chantier du devis appartient à un autre client.' using errcode = 'P0001';

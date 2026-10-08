@@ -296,6 +296,10 @@ begin
   --   * facture liée à un devis : même client, et même chantier que le devis ;
   --   * facture liée à un chantier : chantier du même client ;
   --   * avoir : même client que sa facture d'origine, qui n'est pas un avoir.
+  -- FOR SHARE sur le(s) chantier(s) concerné(s) : voir emettre_devis.
+  perform 1 from public.chantiers
+  where id = v_f.chantier_id or id = (select chantier_id from public.devis where id = v_f.devis_id)
+  order by id for share;
   if v_f.devis_id is not null and exists (
        select 1 from public.devis d where d.id = v_f.devis_id
        and (d.client_id <> v_f.client_id

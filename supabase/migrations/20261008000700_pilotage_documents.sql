@@ -226,6 +226,13 @@ begin
   if tg_op in ('UPDATE', 'DELETE') and old.signature_id is not null then
     raise exception 'Un document signé ne se modifie ni ne se supprime.' using errcode = 'P0001';
   end if;
+  -- Une attestation ne se signe que pour un devis émis (envoyé ou accepté) :
+  -- jamais sur un brouillon, qui doit rester supprimable (effacement RGPD).
+  if tg_table_name = 'attestations_tva' and tg_op in ('INSERT', 'UPDATE') and new.signature_id is not null
+     and not exists (select 1 from public.devis d where d.id = (to_jsonb(new) ->> 'devis_id')::uuid
+                     and d.statut in ('envoye', 'accepte')) then
+    raise exception 'Une attestation ne se signe que pour un devis envoyé ou accepté.' using errcode = 'P0001';
+  end if;
   if tg_op in ('INSERT', 'UPDATE') and new.signature_id is not null and not exists (
        select 1 from public.signatures s
        where s.id = new.signature_id and s.organisation_id = new.organisation_id

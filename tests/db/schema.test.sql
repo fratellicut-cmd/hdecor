@@ -1061,6 +1061,25 @@ select tests.echoue(
   $$update public.pv_reception set signature_id = (select id from public.signatures where document_id = 'aaaaaaaa-0000-0000-0000-0000000d0001')
     where id = 'aaaaaaaa-0000-0000-0000-0000000b0001'$$,
   'ne correspond pas', 'signature d''un devis réutilisée pour un PV : refusée même hors API');
+-- Attestation signée sur un devis brouillon : refusée (l'effacement RGPD doit rester possible)
+insert into public.devis (id, organisation_id, client_id, validite_jours, regime_tva,
+  total_ht_cents, total_tva_cents, total_ttc_cents, ventilation_tva)
+values ('aaaaaaaa-0000-0000-0000-0000000d0b01', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000c0001',
+  30, 'assujetti', 0, 0, 0, '[]');
+insert into public.taux_tva (organisation_id, taux_bp, libelle, attestation_requise)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 1000, '10 % (EXEMPLE)', true) on conflict do nothing;
+insert into public.attestations_tva (id, organisation_id, devis_id, taux_bp)
+values ('aaaaaaaa-0000-0000-0000-0000000b7001', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000d0b01', 1000);
+insert into public.signatures (id, organisation_id, document_type, document_id, methode, signataire_nom, mention,
+  image_chemin, document_sha256)
+values ('aaaaaaaa-0000-0000-0000-0000000b7501', 'aaaaaaaa-0000-0000-0000-00000000000a', 'attestation_tva',
+  'aaaaaaaa-0000-0000-0000-0000000b7001', 'sur_place', 'Paul Durand', 'Lu et approuvé',
+  'aaaaaaaa-0000-0000-0000-00000000000a/sig/at1.png', repeat('b', 64));
+select tests.echoue(
+  $$update public.attestations_tva set signature_id = 'aaaaaaaa-0000-0000-0000-0000000b7501' where id = 'aaaaaaaa-0000-0000-0000-0000000b7001'$$,
+  'devis envoyé ou accepté', 'attestation signée sur un devis brouillon refusée (même hors API)');
+delete from public.attestations_tva where id = 'aaaaaaaa-0000-0000-0000-0000000b7001';
+delete from public.devis where id = 'aaaaaaaa-0000-0000-0000-0000000d0b01';
 -- PV réellement signé : figé
 insert into public.signatures (id, organisation_id, document_type, document_id, methode, signataire_nom, mention,
   image_chemin, document_sha256)
