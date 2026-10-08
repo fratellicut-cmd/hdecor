@@ -1260,6 +1260,26 @@ set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
 select tests.egal((select string_agg(invariant || ' : ' || violations, ' | ') from verif.invariants() where violations > 0),
   null::text, 'invariants globaux I1 à I9 : aucune violation');
 
+-- Phase 1 : double authentification imposée par la base (RLS)
+reset role;
+insert into auth.mfa_factors (id, user_id, factor_type, status, created_at, updated_at)
+values (gen_random_uuid(), 'aaaaaaaa-0000-0000-0000-000000000001', 'totp', 'verified', now(), now());
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+set request.jwt.claims = '{"sub":"aaaaaaaa-0000-0000-0000-000000000001","aal":"aal1"}';
+select tests.egal((select count(*) from public.clients), 0::bigint,
+  'double authentification : session aal1 d''un compte avec code TOTP -> aucune donnée');
+select tests.echoue($$select public.emettre_facture('aaaaaaaa-0000-0000-0000-0000000f0009', '{}', '{}', '{}', 'x', repeat('a', 64))$$,
+  'introuvable', 'double authentification : aucune fonction métier en aal1');
+set request.jwt.claims = '{"sub":"aaaaaaaa-0000-0000-0000-000000000001","aal":"aal2"}';
+select tests.egal((select count(*) > 0 from public.clients), true,
+  'double authentification : session aal2 -> données visibles');
+reset role;
+delete from auth.mfa_factors where user_id = 'aaaaaaaa-0000-0000-0000-000000000001';
+reset request.jwt.claims;
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+
 -- -----------------------------------------------------------------------------
 -- 4. Utilisateur B : ne voit ni ne touche rien de A
 -- -----------------------------------------------------------------------------

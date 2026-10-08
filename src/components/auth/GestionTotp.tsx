@@ -31,6 +31,7 @@ export function GestionTotp({ facteurActifId }: { facteurActifId: string | null 
   if (!courant?.facteurId) {
     return (
       <div className="flex flex-col gap-3">
+        {etatDesactivation.succes ? <Message type="succes">{etatDesactivation.succes}</Message> : null}
         <p>Option recommandée : en plus du mot de passe, un code à 6 chiffres donné par une application (Google Authenticator, Microsoft Authenticator…).</p>
         {enrolement?.message ? <Message type="erreur">{enrolement.message}</Message> : null}
         <Bouton type="button" variante="secondaire" disabled={preparation} onClick={() => demarrer(async () => setEnrolement(await commencerTotp()))}>
