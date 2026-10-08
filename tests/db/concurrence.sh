@@ -119,3 +119,35 @@ begin
   raise notice 'OK course à l''émission : 2 acomptes de 60,00 simultanés sur un devis de 100,00 -> 1 seul émis';
 end $$;
 SQL
+
+# -----------------------------------------------------------------------------
+# Course avoir / finale (audit chef-de-projet, passe 6) : un avoir sur un
+# acompte et une finale qui DÉDUIT cet acompte, émis au même instant, dans
+# les deux ordres. Attendu : un seul des deux passe, invariants respectés.
+# -----------------------------------------------------------------------------
+ICI="$(cd "$(dirname "$0")" && pwd)"
+psql -q -X -v ON_ERROR_STOP=1 -d "$DB" -o /dev/null -f "$ICI/verif.sql"
+ENTETE="set role authenticated; set request.jwt.claim.sub = '$USR';"
+q() { psql -X -qtA -d "$DB" -c "$ENTETE $1" | tail -1; }
+for ordre in avoir_dabord finale_dabord; do
+  D=$(q "select verif.devis(null, 100000)")
+  A=$(q "select verif.fac('acompte', '$D', null, 30000)")
+  AVOIR="select verif.essai(format('select verif.avoir(%L, ''correction'', 30000)', '$A'::text));"
+  FINALE="select verif.essai(format('select verif.fac(''finale'', %L, null, 100000, array[%L::uuid])', '$D'::text, '$A'::text));"
+  if [ "$ordre" = avoir_dabord ]; then P=$AVOIR; S=$FINALE; else P=$FINALE; S=$AVOIR; fi
+  psql -X -qtA -d "$DB" -c "$ENTETE" -c "begin; $P select pg_sleep(1.5); commit;" > /dev/null &
+  sleep 0.5
+  timeout 20 psql -X -qtA -d "$DB" -c "$ENTETE $S" > /dev/null
+  wait
+  N=$(q "select count(*) from public.factures where statut = 'emise' and ((type = 'finale' and devis_id = '$D') or (type = 'avoir' and facture_origine_id = '$A'))")
+  if [ "$N" != "1" ]; then
+    echo "ÉCHEC course avoir / finale ($ordre) : $N émissions au lieu d'une" >&2
+    exit 1
+  fi
+done
+V=$(q "select coalesce(string_agg(invariant || ' : ' || violations, ' | '), '') from verif.invariants() where violations > 0")
+if [ -n "$V" ]; then
+  echo "ÉCHEC invariants après les courses : $V" >&2
+  exit 1
+fi
+echo "NOTICE:  OK course avoir / finale : dans les deux ordres, une seule émission ; invariants I1 à I9 respectés"

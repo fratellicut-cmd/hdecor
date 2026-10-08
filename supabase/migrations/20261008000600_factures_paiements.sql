@@ -281,6 +281,13 @@ begin
   if v_f.devis_id is not null then
     select * into v_devis from public.devis where id = v_f.devis_id for update;
   end if;
+  -- Verrou des acomptes déduits (ordre stable) : un avoir émis au même
+  -- instant sur l'un d'eux (qui, lui, verrouille l'acompte) est sérialisé
+  -- avec cette émission, et l'un des deux est refusé.
+  perform 1 from public.factures
+  where id in (select (d ->> 'facture_id')::uuid from jsonb_array_elements(v_f.deductions) d)
+  order by id
+  for update;
   perform public.controler_ventilation(v_f.ventilation_tva, v_f.total_ht_cents, v_f.total_tva_cents,
     case when v_f.autoliquidation then 'franchise'::public.regime_tva else v_f.regime_tva end);
 
@@ -539,6 +546,21 @@ as $$
   from d, e;
 $$;
 
+-- Solde d'un avoir : remboursé sur CET avoir, et reste à rembourser
+-- (plafonné à l'avoir et au trop-perçu réel de la facture d'origine).
+create or replace function public.solde_avoir(p_avoir_id uuid)
+returns table (rembourse_cents bigint, reste_a_rembourser_cents bigint)
+language sql
+stable
+set search_path = ''
+as $$
+  with a as (select total_ttc_cents, facture_origine_id from public.factures where id = p_avoir_id and type = 'avoir'),
+  p as (select coalesce(sum(montant_cents), 0)::bigint as s from public.paiements where facture_id = p_avoir_id)
+  select p.s,
+         greatest(0, least(a.total_ttc_cents - p.s, so.reste_a_rembourser_cents))::bigint
+  from a, p, lateral public.solde_facture(a.facture_origine_id) so;
+$$;
+
 create or replace function public.controler_paiement()
 returns trigger
 language plpgsql
@@ -548,7 +570,6 @@ declare
   v_f       public.factures%rowtype;
   v_s       record;
   v_annule  public.paiements%rowtype;
-  v_paye_avoir bigint;
 begin
   if tg_op <> 'INSERT' then
     raise exception 'Un paiement enregistré ne se modifie pas : saisissez une annulation.'
@@ -585,13 +606,10 @@ begin
   if v_f.type = 'avoir' then
     -- Remboursement : plafonné à l'avoir ET au trop-perçu réel de l'origine.
     perform 1 from public.factures where id = v_f.facture_origine_id for update;
-    select coalesce(sum(montant_cents), 0) into v_paye_avoir from public.paiements where facture_id = v_f.id;
-    if v_paye_avoir + new.montant_cents > v_f.total_ttc_cents then
-      raise exception 'Ce remboursement dépasse le montant de l''avoir.' using errcode = 'P0001';
-    end if;
-    select * into v_s from public.solde_facture(v_f.facture_origine_id);
+    select * into v_s from public.solde_avoir(v_f.id);
     if new.montant_cents > v_s.reste_a_rembourser_cents then
-      raise exception 'Ce remboursement dépasse ce que le client a payé en trop.' using errcode = 'P0001';
+      raise exception 'Ce remboursement dépasse ce que le client a payé en trop (ou le montant de l''avoir).'
+        using errcode = 'P0001';
     end if;
     return new;
   end if;
@@ -609,12 +627,10 @@ create trigger paiements_controle before insert or update or delete on public.pa
 -- Vue avec les états dérivés, lus dans la source unique.
 create view public.v_factures with (security_invoker = true) as
 select f.*,
-  case when f.type = 'avoir' then coalesce(pa.s, 0) else s.paye_cents end as paye_cents,
+  case when f.type = 'avoir' then sa.rembourse_cents else s.paye_cents end as paye_cents,
   coalesce(s.avoirs_cents, 0) as avoirs_cents,
   coalesce(s.reste_a_payer_cents, 0) as reste_a_payer_cents,
-  case when f.type = 'avoir'
-       then greatest(0, least(f.total_ttc_cents - coalesce(pa.s, 0), coalesce(so.reste_a_rembourser_cents, 0)))::bigint
-       else 0::bigint end as reste_a_rembourser_cents,
+  case when f.type = 'avoir' then sa.reste_a_rembourser_cents else 0::bigint end as reste_a_rembourser_cents,
   case
     when f.statut <> 'emise' then f.statut::text
     when f.type = 'avoir' then 'emise'
@@ -626,6 +642,4 @@ select f.*,
   end as statut_affiche
 from public.factures f
 left join lateral public.solde_facture(f.id) s on f.type <> 'avoir'
-left join lateral public.solde_facture(f.facture_origine_id) so on f.type = 'avoir'
-left join lateral (select coalesce(sum(montant_cents), 0)::bigint as s
-                   from public.paiements where facture_id = f.id) pa on f.type = 'avoir';
+left join lateral public.solde_avoir(f.id) sa on f.type = 'avoir';

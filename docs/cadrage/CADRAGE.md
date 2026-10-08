@@ -124,11 +124,13 @@ Les fichiers sont dans `supabase/migrations/` (9 migrations) et ont été **exé
 $ bash tests/db/run.sh
  tests_passes
 --------------
-          178
+          179
 NOTICE:  OK numérotation concurrente : 60 sessions simultanées, 10 annulées
          -> 50 numéros FAC-2026-0001 à FAC-2026-0050, sans trou ni doublon
 NOTICE:  OK course à l'émission : 2 acomptes de 60,00 simultanés sur un devis
          de 100,00 -> 1 seul émis
+NOTICE:  OK course avoir / finale : dans les deux ordres, une seule émission ;
+         invariants I1 à I9 respectés
 ```
 Ce qui est couvert :
 - **Structure :**
@@ -202,7 +204,7 @@ Ces tests tournent sur un Postgres nu avec un « shim » qui reproduit `auth.uid
 | R6 | TVA = **par taux**, arrondi(base HT du taux × taux). Jamais une somme de TVA arrondies ligne par ligne. Cas 3 × 33,33 € à 20 % : **20,00 €**. |
 | R7 | TTC = HT + TVA, exact au centime (contrainte en base). |
 | R8 | Franchise en base : TVA = 0 pour toutes les lignes, mention de franchise, pas d'attestation de TVA réduite, pas d'autoliquidation (contraintes en base). |
-| R9 | **Source unique des cumuls** : deux fonctions, `solde_facture` et `solde_devis`, calculent tous les montants cumulés (dû, payé, remboursé, reste à payer, trop-perçu, engagé, reste à facturer). L'émission des factures, le contrôle des paiements, la vue des factures et la vue des chantiers les lisent ; aucun autre calcul n'existe. Base commune : le **net à payer** (une finale ne recompte jamais les acomptes qu'elle déduit). Acompte : base HT de chaque taux × %, puis TVA selon R6. Finale : totaux du devis accepté, **moins** chaque acompte ventilé par taux (HT, TVA, TTC). Un avoir est plafonné au net à payer de sa facture d'origine. Quand il l'annule, les acomptes qu'elle déduisait sont **libérés** et se re-déduisent sur la facture suivante. Un acompte déduit par une facture valable ne se corrige pas directement. Engagé d'un devis = nets des factures émises − avoirs de **correction** (un avoir de **réduction** ne libère rien). Il ne dépasse jamais le total accepté, et cet invariant est testé sur toutes les données. Rattachements contraints : avoir rattaché par sa seule facture d'origine, facture avec le client et le chantier de son devis, client du chantier figé dès qu'un document est émis. |
+| R9 | **Source unique des cumuls** : trois fonctions, `solde_facture`, `solde_avoir` et `solde_devis`, calculent tous les montants cumulés (dû, payé, remboursé, reste à payer, trop-perçu, engagé, reste à facturer). L'émission des factures, le contrôle des paiements, la vue des factures et la vue des chantiers les lisent ; aucun autre calcul n'existe. Base commune : le **net à payer** (une finale ne recompte jamais les acomptes qu'elle déduit). Acompte : base HT de chaque taux × %, puis TVA selon R6. Finale : totaux du devis accepté, **moins** chaque acompte ventilé par taux (HT, TVA, TTC). Un avoir est plafonné au net à payer de sa facture d'origine. Quand il l'annule, les acomptes qu'elle déduisait sont **libérés** et se re-déduisent sur la facture suivante. Un acompte déduit par une facture valable ne se corrige pas directement. Engagé d'un devis = nets des factures émises − avoirs de **correction** (un avoir de **réduction** ne libère rien). Il ne dépasse jamais le total accepté, et cet invariant est testé sur toutes les données. Rattachements contraints : avoir rattaché par sa seule facture d'origine, facture avec le client et le chantier de son devis, client du chantier figé dès qu'un document est émis. |
 | R10 | L'arrondi « demi supérieur » (arrondi commercial) est **À FAIRE VALIDER PAR LE COMPTABLE**. |
 
 ---
@@ -287,7 +289,7 @@ Charte : doré en dégradé (#B8860B → #E6C068), anthracite (#1F1F1F), blanc c
 | Niveau | Outil | Contenu | Quand |
 |---|---|---|---|
 | Domaine | Vitest | Tous les cas de la §6 du cahier des charges, **attendus calculés à la main** et écrits en dur : 31,9268 m², 12,00 m², 7,0239 L, pots 5 + 2,5 L comparés à 10 L, TVA 100,00 / 130,00 / 20,00 €, finale 3 850,00 €. Cas limites : zéro, valeurs négatives, ouvertures plus grandes que le mur, mur par mur, pièces dupliquées, rendement nul, franchise. Tests de propriétés : HT + TVA = TTC sur 10 000 devis aléatoires. | Phases 2, 4, 5 |
-| Base | `tests/db/` (Postgres réel) | RLS, isolation A / B, immuabilité, numérotation concurrente (50 en parallèle), contrôles d'émission. **178 tests, la numérotation concurrente et la course à l'émission passent déjà.** | Dès maintenant, puis à chaque migration |
+| Base | `tests/db/` (Postgres réel) | RLS, isolation A / B, immuabilité, numérotation concurrente (50 en parallèle), contrôles d'émission. **179 tests (dont les 9 invariants globaux I1 à I9) et 3 tests de concurrence passent déjà.** | Dès maintenant, puis à chaque migration |
 | Supabase local | `supabase start` (Docker) | Mêmes tests sur la vraie pile : Auth, Storage, PostgREST | Phase 1, intégration continue |
 | Serveur | Vitest | Server Actions : zod refuse les entrées invalides, session exigée, aucun montant venant du client sans recalcul | Toutes les phases |
 | PDF | Vitest + extraction de texte | Chaque mention obligatoire présente dans le PDF réel : grille de l'auditeur-légal, franchise et assujetti, particulier et professionnel, hors établissement | Phases 4, 5, 7 |
@@ -370,20 +372,18 @@ Charte : doré en dégradé (#B8860B → #E6C068), anthracite (#1F1F1F), blanc c
 - Annulation d'une finale qui déduisait des acomptes : avoir sur le **net**, acomptes **re-déductibles** (à confirmer par le comptable, point 17).
 - Attestation de TVA **signée** d'un devis non accepté : **conservée** comme preuve, même après anonymisation (durée à confirmer par le comptable, point 18).
 
-### Toi (directeur)
-1. **Créer le dépôt GitHub `hdecor`** (vide, privé). Je l'ajoute ensuite à la session et j'y pousse ce cadrage.
+### Toi (directeur) : encore ouvert
+1. ~~Créer le dépôt GitHub `hdecor`~~ : **fait** (fratellicut-cmd/hdecor).
 2. **Comptes Supabase et Vercel.** Attention :
    - l'offre gratuite de Vercel (« Hobby ») serait réservée à un **usage non commercial** selon leurs conditions (**À VÉRIFIER** sur leurs conditions actuelles). H'DECOR est un usage commercial, il faudrait donc l'offre Pro ;
    - l'offre gratuite de Supabase **met le projet en pause** après une période d'inactivité et n'inclut pas les sauvegardes quotidiennes.
 
    **Je recommande les deux offres payantes avant la première vraie facture.** Les tarifs exacts sont À VÉRIFIER sur leurs sites.
 3. **Nom de domaine** (par exemple `hdecor.fr`, si disponible) : il en faut un pour envoyer les emails depuis Resend sans finir en spam (configuration DNS).
-4. **Versions de devis :** même numéro avec « v2 » (mon choix par défaut) ou nouveau numéro ?
-5. **Canal des rappels et notifications :** dans l'application seulement (choix par défaut), email, ou notification push (sur iPhone, seulement si l'application est installée sur l'écran d'accueil) ?
-6. **Saisie du temps réel :** par jour et par chantier (choix par défaut, le plus rapide), ou par tâche ?
-7. **Échéancier :** en pourcentages avec déclencheurs (choix par défaut) ou en montants ?
-8. **Agent testeur-chantier :** son parcours 10 exige encore le hors-ligne. Je propose de le remplacer par « coupure réseau pendant la saisie : aucune perte ». C'est ton fichier : j'attends ton accord pour le modifier.
-9. **Stripe :** le garder pour la Phase 5, ou se contenter du QR code de virement ? Ça a un coût par transaction, et en franchise, chaque euro de frais compte.
+4. **Versions de devis :** même numéro avec « v2 » (choix par défaut, appliqué) ou nouveau numéro ?
+5. **Stripe :** le garder pour la Phase 5, ou se contenter du QR code de virement ? Ça a un coût par transaction, et en franchise, chaque euro de frais compte.
+
+(Rappels, temps passé, échéancier et agent testeur : tranchés, voir « Décisions prises » ci-dessus.)
 
 ### Yorick (à saisir dans l'application en Phase 1, rien en dur)
 SIRET, immatriculation, assurances décennale et RC Pro (assureur, contrat, période, zone), médiateur de la consommation, IBAN / BIC, logo en haute qualité, taux horaire, marge, taux des pénalités de retard, fournisseurs et tarifs, anciens devis et factures servant de modèles.
@@ -433,3 +433,7 @@ Rien de ce qui suit n'est affirmé comme vrai : ce sont des points à confirmer 
 | Coupure réseau sur chantier | Enregistrement à chaque champ, garde locale de la saisie en cours (hors-ligne complet retiré par décision) |
 | Valeur probante de la signature faite maison | Dossier de preuve complet (empreinte, horodatage, IP, PDF archivé). Moins fort qu'un prestataire qualifié : c'est ton choix, documenté |
 | Agents qui partagent les angles morts du codeur | Attendus calculés à la main ; comptable et fiches techniques en dernier recours |
+| Émissions simultanées (deux onglets, double envoi) | Verrous : devis, facture d'origine et acomptes déduits, dans un ordre stable. Trois tests de concurrence réels, plus les invariants globaux contrôlés après chacun |
+| Finale qui déduit un acompte partiellement corrigé par avoir | Pas de sur-facturation (le reste à facturer apparaît), mais le document peut dérouter. À cadrer en Phase 5 avec le comptable (point 17) : interdire, ou expliquer à l'écran |
+| Avoir de réduction égal au net d'une facture | Il annule la facture et libère ses acomptes, tout en restant acquis. Les chiffres sont cohérents ; l'écran devra l'expliquer (Phase 5) |
+| Finale entièrement couverte par les acomptes (net = 0) | Elle ne peut pas être annulée par avoir (plafond = net). Cas rare, à traiter en Phase 5 |

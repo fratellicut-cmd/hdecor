@@ -420,7 +420,7 @@ values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000
 select tests.echoue(
   $$insert into public.paiements (organisation_id, facture_id, date_paiement, montant_cents, mode)
     values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f0022', public.aujourd_hui_paris(), 1, 'virement')$$,
-  'dépasse le montant de l''avoir', 'remboursement plafonné au montant de l''avoir');
+  'ou le montant de l''avoir', 'remboursement plafonné au montant de l''avoir');
 select tests.egal(
   (select sum(montant_cents) from public.v_livre_recettes where facture_id in
      ('aaaaaaaa-0000-0000-0000-0000000f0021', 'aaaaaaaa-0000-0000-0000-0000000f0022')),
@@ -730,7 +730,7 @@ select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prokind = 'f' and p.prorettype <> 'trigger'::regtype
      and has_function_privilege('authenticated', p.oid, 'execute')),
-  'anonymiser_client,aujourd_hui_paris,chemin_de_l_organisation,deductions_bien_formees,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,organisation_du_chemin,refuser_devis,signer_devis_sur_place,solde_devis,solde_facture,ventilation_attendue,ventilation_bien_formee',
+  'anonymiser_client,aujourd_hui_paris,chemin_de_l_organisation,deductions_bien_formees,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,organisation_du_chemin,refuser_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,ventilation_attendue,ventilation_bien_formee',
   'sécurité : liste COMPLÈTE des fonctions appelables par une session');
 select tests.echoue($$select public.purger_journal_audit(now() - interval '20 years')$$, 'permission denied',
   'sécurité : purge du journal réservée au serveur');
@@ -1232,6 +1232,14 @@ select tests.egal((select count(*) from public.v_chantiers c
                    where exists (select 1 from public.devis d where d.chantier_id = c.id and d.statut <> 'brouillon'
                                  and d.client_id <> c.client_id)), 0::bigint,
   'invariant : chaque devis émis a le client de son chantier');
+
+-- Invariants globaux complets (tests/db/verif.sql) sur toutes les données de test
+reset role;
+\ir verif.sql
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select tests.egal((select string_agg(invariant || ' : ' || violations, ' | ') from verif.invariants() where violations > 0),
+  null::text, 'invariants globaux I1 à I9 : aucune violation');
 
 -- -----------------------------------------------------------------------------
 -- 4. Utilisateur B : ne voit ni ne touche rien de A
