@@ -33,7 +33,7 @@ test('redirection externe refusée après connexion', async ({ page }) => {
   await page.getByLabel('Adresse email').fill(COMPTE.email);
   await page.getByLabel('Mot de passe').fill(COMPTE.motDePasse);
   await page.getByRole('button', { name: 'Se connecter' }).click();
-  await expect(page).toHaveURL(/localhost:3000\/$/);
+  await expect(page).toHaveURL(/^http:\/\/localhost:\d+\/$/);
 });
 
 test('connexion puis déconnexion, sans erreur console ni violation CSP', async ({ page }) => {

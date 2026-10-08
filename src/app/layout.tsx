@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { connection } from 'next/server';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -17,7 +18,13 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({ children }: LayoutProps<'/'>) {
+/**
+ * CSP par nonce (proxy.ts) : le nonce est ajouté au rendu de CHAQUE requête.
+ * Une page prérendue au build n'aurait aucun nonce et ses scripts seraient
+ * bloqués en production. connection() impose le rendu dynamique partout.
+ */
+export default async function RootLayout({ children }: LayoutProps<'/'>) {
+  await connection();
   return (
     <html lang="fr">
       <body className="min-h-dvh overflow-x-hidden antialiased">{children}</body>
