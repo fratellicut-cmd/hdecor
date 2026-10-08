@@ -685,9 +685,17 @@ insert into public.rappels (organisation_id, type, echeance, titre, chantier_id)
 values ('aaaaaaaa-0000-0000-0000-00000000000a', 'libre', now(), 'Rappeler Mme Lefèvre 0600000000', 'aaaaaaaa-0000-0000-0000-0000000ca002');
 insert into public.temps_passes (organisation_id, chantier_id, jour, minutes, note)
 values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca002', public.aujourd_hui_paris(), 60, 'Mme Lefèvre absente');
-select tests.egal((select array_agg(c order by c) from public.anonymiser_client('aaaaaaaa-0000-0000-0000-0000000c0002') c),
+select tests.echoue($$select public.anonymiser_client('aaaaaaaa-0000-0000-0000-0000000c0002')$$, 'permission denied',
+  'RGPD : une session passe obligatoirement par effacer_client (file des fichiers)');
+select tests.echoue($$select * from public.fichiers_a_supprimer$$, 'permission denied',
+  'RGPD : la file des fichiers à supprimer est invisible pour une session');
+select tests.egal(public.effacer_client('aaaaaaaa-0000-0000-0000-0000000c0002'), 2,
+  'RGPD : effacement du client, 2 fichiers mis en file');
+reset role;
+select tests.egal((select array_agg(chemin order by chemin) from public.fichiers_a_supprimer),
   array['aaaaaaaa-0000-0000-0000-00000000000a/d7.pdf', 'aaaaaaaa-0000-0000-0000-00000000000a/photos/p1.jpg'],
-  'RGPD : PDF du devis non accepté et photos renvoyés pour suppression');
+  'RGPD : PDF du devis non accepté et photos inscrits dans la file, dans la même transaction');
+set role authenticated;
 select tests.egal(
   (select count(*) from public.evenements where chantier_id = 'aaaaaaaa-0000-0000-0000-0000000ca002' and (titre ilike '%lef%' or notes is not null))
   + (select count(*) from public.rappels where chantier_id = 'aaaaaaaa-0000-0000-0000-0000000ca002' and titre ilike '%lef%')
@@ -724,13 +732,13 @@ select tests.egal((select copie_client ->> 'nom_affiche' from public.factures wh
 select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prosecdef and has_function_privilege('authenticated', p.oid, 'execute')),
-  'anonymiser_client,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,refuser_devis,signer_devis_sur_place',
+  'effacer_client,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,refuser_devis,signer_devis_sur_place',
   'sécurité : liste exacte des fonctions SECURITY DEFINER appelables par une session');
 select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prokind = 'f' and p.prorettype <> 'trigger'::regtype
      and has_function_privilege('authenticated', p.oid, 'execute')),
-  'anonymiser_client,aujourd_hui_paris,chemin_de_l_organisation,deductions_bien_formees,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,organisation_du_chemin,rechercher_clients,refuser_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,texte_recherche,ventilation_attendue,ventilation_bien_formee',
+  'aujourd_hui_paris,chemin_de_l_organisation,deductions_bien_formees,effacer_client,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,organisation_du_chemin,rechercher_clients,refuser_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,texte_recherche,ventilation_attendue,ventilation_bien_formee',
   'sécurité : liste COMPLÈTE des fonctions appelables par une session');
 select tests.echoue($$select public.purger_journal_audit(now() - interval '20 years')$$, 'permission denied',
   'sécurité : purge du journal réservée au serveur');
@@ -1283,10 +1291,13 @@ set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
 -- Phase 1 : recherche de clients (RLS, accents, téléphone, caractères spéciaux)
 insert into public.clients (organisation_id, nom, prenom, email, telephone, fact_ville)
 values ('aaaaaaaa-0000-0000-0000-00000000000a', 'Hélène', 'Müller', 'h.muller@exemple.test', '06 12 34 56 78', 'Thionville'),
-       ('aaaaaaaa-0000-0000-0000-00000000000a', 'Pourcent%', 'Test_', null, null, null);
+       ('aaaaaaaa-0000-0000-0000-00000000000a', 'Pourcent%', 'Test_', null, '+33 7 99 88 77 66', null);
 select tests.egal((select count(*) from public.rechercher_clients('helene')), 1::bigint, 'recherche sans accent trouve « Hélène »');
 select tests.egal((select count(*) from public.rechercher_clients('MULLER')), 1::bigint, 'recherche insensible à la casse et aux trémas');
 select tests.egal((select count(*) from public.rechercher_clients('0612345678')), 1::bigint, 'recherche par téléphone sans espaces');
+select tests.egal((select count(*) from public.rechercher_clients('+33 6.12')), 1::bigint, 'recherche par numéro avec indicatif et points');
+select tests.egal((select count(*) from public.rechercher_clients('07 99 88')), 1::bigint, 'recherche nationale trouve aussi un numéro saisi en +33');
+select tests.egal((select count(*) from public.rechercher_clients('Dupont-6')), 0::bigint, 'un chiffre dans un nom ne déclenche pas la recherche par téléphone');
 select tests.egal((select count(*) from public.rechercher_clients('12 34')), 1::bigint, 'recherche par morceau de téléphone avec espace');
 select tests.egal((select count(*) from public.rechercher_clients('%')), 1::bigint, '« % » cherché comme caractère, pas comme joker');
 select tests.egal((select count(*) from public.rechercher_clients('t_')), 1::bigint, '« _ » cherché comme caractère, pas comme joker');
@@ -1300,6 +1311,7 @@ select tests.echoue($$select public.purger_prospects_inactifs()$$, 'permission d
 set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000001';
 select tests.egal((select count(*) from public.clients), 0::bigint, 'B ne voit pas les clients de A');
 select tests.egal((select count(*) from public.rechercher_clients('helene')), 0::bigint, 'B ne trouve pas les clients de A par la recherche');
+select tests.echoue($$select public.effacer_client('aaaaaaaa-0000-0000-0000-0000000c0001')$$, 'introuvable', 'B ne peut pas effacer un client de A (identifiant deviné)');
 select tests.egal((select count(*) from public.devis), 0::bigint, 'B ne voit pas les devis de A');
 select tests.egal((select count(*) from public.factures), 0::bigint, 'B ne voit pas les factures de A');
 select tests.egal((select count(*) from public.v_factures), 0::bigint, 'B ne voit rien via la vue v_factures');

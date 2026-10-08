@@ -46,6 +46,7 @@ export const schemaFiscal = z.object({
 export const VALEURS_VERIFIABLES = [
   'delai_paiement_jours', 'delai_paiement_max_jours', 'indemnite_recouvrement_cents',
   'escompte_texte', 'validite_devis_jours', 'acompte_pct_defaut_bp', 'taux_penalites_bp',
+  'duree_conservation_prospects_mois',
 ] as const;
 
 export const schemaConditions = z.object({
@@ -61,6 +62,7 @@ export const schemaConditions = z.object({
   taux_horaire_cents: montantFacultatif(1_000_000),
   relance_devis_active: caseACocher,
   relance_devis_jours: entier(1, 90, 'Délai de relance'),
+  duree_conservation_prospects_mois: entier(1, 120, 'Conservation des prospects'),
   confirmes: z.array(z.enum(VALEURS_VERIFIABLES)),
 }).refine((v) => v.delai_paiement_jours <= v.delai_paiement_max_jours, {
   error: 'Le délai de paiement dépasse le délai maximal saisi.',

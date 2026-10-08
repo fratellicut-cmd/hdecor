@@ -38,8 +38,13 @@ as $$
       or public.texte_recherche(concat_ws(' ', c.nom, c.prenom, c.raison_sociale, c.email,
            regexp_replace(coalesce(c.telephone, ''), '\D', '', 'g'), c.fact_ville))
          like '%' || replace(replace(replace(public.texte_recherche(trim(p_texte)), '\', '\\'), '%', '\%'), '_', '\_') || '%'
-      or (regexp_replace(p_texte, '\D', '', 'g') <> ''
-          and regexp_replace(coalesce(c.telephone, ''), '\D', '', 'g') like '%' || regexp_replace(p_texte, '\D', '', 'g') || '%')
+      -- Recherche par numéro (« 06 12 », « 06.12 », « +33 6 ») : seulement si
+      -- la saisie EST un numéro (au moins 2 chiffres, aucune lettre), sinon
+      -- « Dupont 2 » trouverait tous les téléphones contenant un 2.
+      -- L'indicatif +33 / 0033 vaut 0 des deux côtés (« +33 6 12 » trouve « 06 12 »).
+      or (p_texte ~ '^[\s\d.+()-]+$' and length(regexp_replace(p_texte, '\D', '', 'g')) >= 2
+          and regexp_replace(regexp_replace(trim(coalesce(c.telephone, '')), '^(\+|00)33', '0'), '\D', '', 'g')
+              like '%' || regexp_replace(regexp_replace(trim(p_texte), '^(\+|00)33', '0'), '\D', '', 'g') || '%')
     )
   order by c.anonymise_le nulls first, lower(coalesce(c.raison_sociale, c.nom)), lower(coalesce(c.prenom, ''))
   limit least(greatest(p_limite, 1), 200)

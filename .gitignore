@@ -1,5 +1,4 @@
 
-!.env.example
 !.yarn/patches
 !.yarn/plugins
 !.yarn/releases
@@ -22,6 +21,7 @@
 .env*
 .env.*
 .env.local
+!.env.example
 .next/
 .pnp.*
 .pnpm-debug.log*

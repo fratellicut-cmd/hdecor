@@ -49,6 +49,12 @@ export function FormulaireConditions({ p }: { p: P }) {
       <Champ libelle="Marge de perte sur la peinture (%)" nom="marge_perte_bp" inputMode="decimal" defaultValue={val('marge_perte_bp', pourcentageVersSaisie(p.marge_perte_bp))} erreur={e.marge_perte_bp} />
       <Champ libelle="Coefficient de marge (%)" nom="coef_marge_bp" inputMode="decimal" defaultValue={val('coef_marge_bp', pourcentageVersSaisie(p.coef_marge_bp))} erreur={e.coef_marge_bp}
         aide="100 = prix coûtant ; 130 = coût + 30 %." />
+      <h3 className="mt-2 text-lg font-bold">Données personnelles</h3>
+      <Champ libelle="Conservation des prospects sans devis ni facture (mois)" nom="duree_conservation_prospects_mois" inputMode="numeric"
+        defaultValue={val('duree_conservation_prospects_mois', String(p.duree_conservation_prospects_mois))} erreur={e.duree_conservation_prospects_mois}
+        aVerifier={aVerifier('duree_conservation_prospects_mois')}
+        aide="Passé ce délai sans activité, la fiche est anonymisée automatiquement (chaque nuit). Durée à faire valider." />
+      {confirmer('duree_conservation_prospects_mois')}
       <Bouton type="submit" disabled={enCours}>{enCours ? 'Enregistrement…' : 'Enregistrer'}</Bouton>
     </form>
   );

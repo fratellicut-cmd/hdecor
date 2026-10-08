@@ -40,7 +40,7 @@ describe('schemaConditions', () => {
   const base = {
     delai_paiement_jours: '30', delai_paiement_max_jours: '60', indemnite_recouvrement_cents: '40',
     escompte_texte: 'Pas d’escompte.', validite_devis_jours: '30', acompte_pct_defaut_bp: '30',
-    marge_perte_bp: '10', coef_marge_bp: '100', relance_devis_jours: '7', confirmes: [],
+    marge_perte_bp: '10', coef_marge_bp: '100', relance_devis_jours: '7', duree_conservation_prospects_mois: '36', confirmes: [],
   };
   it('convertit et accepte une saisie complète', () => {
     const r = schemaConditions.parse({ ...base, taux_penalites_bp: '12,5', taux_horaire_cents: '45', confirmes: ['taux_penalites_bp'] });
@@ -59,5 +59,23 @@ describe('schemaConditions', () => {
 describe('schemaAssurance', () => {
   it('fin avant début refusée', () => {
     expect(schemaAssurance.safeParse({ type: 'decennale', assureur: 'X', numero_contrat: '1', debut: '2026-01-01', fin: '2025-12-31', zone_couverte: 'France' }).success).toBe(false);
+  });
+});
+
+describe('conservation des prospects', () => {
+  const base = {
+    delai_paiement_jours: '30', delai_paiement_max_jours: '60', taux_penalites_bp: '', indemnite_recouvrement_cents: '40',
+    escompte_texte: 'Aucun escompte.', validite_devis_jours: '30', acompte_pct_defaut_bp: '30',
+    marge_perte_bp: '10', coef_marge_bp: '100', relance_devis_jours: '7', confirmes: [],
+  };
+  it.each(['0', '121', '', '3,5'])('durée %s refusée (1 à 120 mois)', (d) => {
+    const r = schemaConditions.safeParse({ ...base, duree_conservation_prospects_mois: d });
+    expect(r.success).toBe(false);
+    expect(r.error?.issues[0]?.path).toEqual(['duree_conservation_prospects_mois']);
+  });
+  it('la durée peut être confirmée', () => {
+    const r = schemaConditions.parse({ ...base, duree_conservation_prospects_mois: '24', confirmes: ['duree_conservation_prospects_mois'] });
+    expect(r.duree_conservation_prospects_mois).toBe(24);
+    expect(r.confirmes).toEqual(['duree_conservation_prospects_mois']);
   });
 });

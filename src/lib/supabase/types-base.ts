@@ -615,6 +615,26 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"fichiers_a_supprimer": {
+                  Row: {
+                    "chemin": string,"cree_le": string,"derniere_erreur": string | null,"id": number,"organisation_id": string,"tentatives": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "chemin": string,"cree_le"?: string,"derniere_erreur"?: string | null,"id"?: never,"organisation_id": string,"tentatives"?: number
+                  }
+                  Update: {
+                    "chemin"?: string,"cree_le"?: string,"derniere_erreur"?: string | null,"id"?: never,"organisation_id"?: string,"tentatives"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "fichiers_a_supprimer_organisation_id_fkey"
+      columns: ["organisation_id"]
+isOneToOne: false
+      referencedRelation: "organisations"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"historique_prix": {
                   Row: {
                     "conditionnement_id": string,"created_at": string,"date_effet": string,"id": string,"organisation_id": string,"prix_achat_ht_cents": number
@@ -1417,6 +1437,9 @@ isOneToOne: false
                            },
 "devis_par_jeton":
 { Args: { "p_jeton": string }; Returns: Json
+                           },
+"effacer_client":
+{ Args: { "p_client_id": string }; Returns: number
                            },
 "emettre_devis":
 { Args: { "p_copie_chantier": Json,"p_copie_client": Json,"p_copie_emetteur": Json,"p_devis_id": string,"p_pdf_chemin": string,"p_pdf_sha256": string }; Returns: string
