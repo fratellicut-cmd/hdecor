@@ -6,3 +6,7 @@ node_modules/
 *.log
 .DS_Store
 supabase/.temp/
+.supabase-local/
+.env.local
+test-results/
+playwright-report/

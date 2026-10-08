@@ -82,7 +82,7 @@ select tests.egal(
 -- -----------------------------------------------------------------------------
 -- 2. Jeu de données : deux organisations, deux utilisateurs
 -- -----------------------------------------------------------------------------
-insert into auth.users values
+insert into auth.users (id, email) values
   ('aaaaaaaa-0000-0000-0000-000000000001', 'a@test'),
   ('bbbbbbbb-0000-0000-0000-000000000001', 'b@test');
 insert into public.organisations (id, nom) values
