@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+/*
+ * Charte H'DECOR : doré (#B8860B -> #E6C068), anthracite (#1F1F1F),
+ * blanc cassé (#FAF8F4). Le doré n'est JAMAIS une couleur de texte sur fond
+ * clair (contraste insuffisant au soleil) : il sert aux filets, aplats et
+ * accents. Les couleurs de texte sont vérifiées par un test de contraste.
+ */
+@theme {
+  --color-or-fonce: #b8860b;
+  --color-or-clair: #e6c068;
+  --color-anthracite: #1f1f1f;
+  --color-creme: #faf8f4;
+  --color-encre: #1f1f1f;
+  --color-encre-douce: #4a4a4a;
+  --color-trait: #d9d4c7;
+  --color-danger: #a4161a;
+  --color-danger-fond: #fdecec;
+  --color-succes: #1b5e20;
+  --color-succes-fond: #e8f5e9;
+  --color-alerte: #7a4a00;
+  --color-alerte-fond: #fff4d6;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    background: var(--color-creme);
+    color: var(--color-encre);
+    font-family: var(--font-sans);
+    font-size: 17px;
+    line-height: 1.45;
+  }
+  :focus-visible { outline: 3px solid var(--color-anthracite); outline-offset: 2px; }
+}
+
+.filet-or { background-image: linear-gradient(90deg, var(--color-or-fonce), var(--color-or-clair)); }
