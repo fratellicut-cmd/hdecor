@@ -291,7 +291,7 @@ Charte : doré en dégradé (#B8860B → #E6C068), anthracite (#1F1F1F), blanc c
 | Niveau | Outil | Contenu | Quand |
 |---|---|---|---|
 | Domaine | Vitest | Tous les cas de la §6 du cahier des charges, **attendus calculés à la main** et écrits en dur : 31,9268 m², 12,00 m², 7,0239 L, pots 5 + 2,5 L comparés à 10 L, TVA 100,00 / 130,00 / 20,00 €, finale 3 850,00 €. Cas limites : zéro, valeurs négatives, ouvertures plus grandes que le mur, mur par mur, pièces dupliquées, rendement nul, franchise. Tests de propriétés : HT + TVA = TTC sur 10 000 devis aléatoires. | Phases 2, 4, 5 |
-| Base | `tests/db/` (Postgres réel) | RLS, isolation A / B, immuabilité, numérotation concurrente (50 en parallèle), contrôles d'émission. **180 tests (dont les 9 invariants globaux I1 à I9) et 4 tests de concurrence passent déjà.** | Dès maintenant, puis à chaque migration |
+| Base | `tests/db/` (Postgres réel) | RLS, isolation A / B, immuabilité, numérotation concurrente (50 en parallèle), contrôles d'émission. **204 tests (dont les 9 invariants globaux I1 à I9) et 4 tests de concurrence passent (Phase 1, 08/10/2026), dans les deux modes : schéma auth simulé et vrai schéma GoTrue.** | Dès maintenant, puis à chaque migration |
 | Supabase local | `supabase start` (Docker) | Mêmes tests sur la vraie pile : Auth, Storage, PostgREST | Phase 1, intégration continue |
 | Serveur | Vitest | Server Actions : zod refuse les entrées invalides, session exigée, aucun montant venant du client sans recalcul | Toutes les phases |
 | PDF | Vitest + extraction de texte | Chaque mention obligatoire présente dans le PDF réel : grille de l'auditeur-légal, franchise et assujetti, particulier et professionnel, hors établissement | Phases 4, 5, 7 |
@@ -435,7 +435,7 @@ Rien de ce qui suit n'est affirmé comme vrai : ce sont des points à confirmer 
 | Coupure réseau sur chantier | Enregistrement à chaque champ, garde locale de la saisie en cours (hors-ligne complet retiré par décision) |
 | Valeur probante de la signature faite maison | Dossier de preuve complet (empreinte, horodatage, IP, PDF archivé). Moins fort qu'un prestataire qualifié : c'est ton choix, documenté |
 | Agents qui partagent les angles morts du codeur | Attendus calculés à la main ; comptable et fiches techniques en dernier recours |
-| Émissions simultanées (deux onglets, double envoi) | Verrous : devis, facture d'origine, acomptes déduits et chantier (lecture partagée), dans un ordre stable. Une attestation ne se signe que pour un devis envoyé ou accepté. Trois tests de concurrence réels, plus les invariants globaux contrôlés après chacun |
+| Émissions simultanées (deux onglets, double envoi) | Verrous : devis, facture d'origine, acomptes déduits et chantier (lecture partagée), dans un ordre stable. Une attestation ne se signe que pour un devis envoyé ou accepté. Quatre tests de concurrence réels (numérotation, puis trois courses à l'émission), plus les invariants globaux contrôlés après chacun |
 | Finale qui déduit un acompte partiellement corrigé par avoir | Pas de sur-facturation (le reste à facturer apparaît), mais le document peut dérouter. À cadrer en Phase 5 avec le comptable (point 17) : interdire, ou expliquer à l'écran |
 | Avoir de réduction égal au net d'une facture | Il annule la facture et libère ses acomptes, tout en restant acquis. Les chiffres sont cohérents ; l'écran devra l'expliquer (Phase 5) |
 | Finale entièrement couverte par les acomptes (net = 0) | Elle ne peut pas être annulée par avoir (plafond = net). Cas rare, à traiter en Phase 5 |

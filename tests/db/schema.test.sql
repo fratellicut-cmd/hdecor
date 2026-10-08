@@ -725,6 +725,10 @@ select tests.egal((select count(*) from public.journal_audit
                    where avant::text ilike any (array['%lilas%', '%lefèvre%', '%durand%'])
                       or apres::text ilike any (array['%lilas%', '%lefèvre%', '%durand%'])),
   0::bigint, 'RGPD : le journal d''audit ne contient aucune donnée personnelle');
+select tests.egal((select count(*) from public.journal_audit
+                   where table_nom = 'clients' and action = 'UPDATE' and ligne_id = 'aaaaaaaa-0000-0000-0000-0000000c0002'
+                     and apres ? 'anonymise_le' and not (apres ? 'nom') and not (avant ? 'nom')),
+  1::bigint, 'RGPD : l''effacement est tracé au journal (date, fiche), sans le nom');
 select tests.egal((select copie_client ->> 'nom_affiche' from public.factures where id = 'aaaaaaaa-0000-0000-0000-0000000f0002'),
   'Paul Durand', 'conservation : les factures émises gardent leur copie figée');
 

@@ -54,7 +54,7 @@ export GOTRUE_API_HOST=127.0.0.1
 export PORT=$PORT_AUTH
 export API_EXTERNAL_URL="http://127.0.0.1:$PORT_API/auth/v1"
 export GOTRUE_SITE_URL="$SITE_URL"
-export GOTRUE_URI_ALLOW_LIST="$SITE_URL/**"
+export GOTRUE_URI_ALLOW_LIST="$SITE_URL/auth/confirmer**"
 export GOTRUE_JWT_SECRET="$JWT_SECRET"
 export GOTRUE_JWT_EXP=3600
 export GOTRUE_JWT_AUD=authenticated
@@ -68,6 +68,9 @@ export GOTRUE_PASSWORD_MIN_LENGTH=12
 export GOTRUE_MFA_TOTP_ENROLL_ENABLED=true
 export GOTRUE_MFA_TOTP_VERIFY_ENABLED=true
 export GOTRUE_SECURITY_REFRESH_TOKEN_ROTATION_ENABLED=true
+# Mêmes règles que supabase/config.toml (production) :
+export GOTRUE_SECURITY_UPDATE_PASSWORD_REQUIRE_REAUTHENTICATION=true
+export GOTRUE_MAILER_OTP_EXP=900
 # Courriels : pas de serveur SMTP local ; les liens sont générés par l'API
 # d'administration dans les tests (generate_link).
 export GOTRUE_SMTP_HOST=127.0.0.1

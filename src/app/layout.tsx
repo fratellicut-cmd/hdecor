@@ -6,6 +6,9 @@ export const metadata: Metadata = {
   description: 'Métré, devis et factures de H’DECOR, peinture & décoration.',
   applicationName: "H'DECOR",
   robots: { index: false, follow: false },
+  icons: { icon: '/icones/icone-192.png', apple: '/icones/apple-touch-icon.png' },
+  appleWebApp: { capable: true, title: "H'DECOR", statusBarStyle: 'default' },
+  formatDetection: { telephone: false },
 };
 
 export const viewport: Viewport = {
