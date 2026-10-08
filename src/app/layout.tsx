@@ -17,7 +17,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
     <html lang="fr">
-      <body className="min-h-dvh antialiased">{children}</body>
+      <body className="min-h-dvh overflow-x-hidden antialiased">{children}</body>
     </html>
   );
 }

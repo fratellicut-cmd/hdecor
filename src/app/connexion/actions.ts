@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { clientServeur } from '@/lib/supabase/serveur';
+import { niveauAuth } from '@/lib/niveau-auth';
 import { envPublique } from '@/lib/env';
 import { cheminInterneSur } from '@/lib/redirection';
 import { schemaCodeTotp, schemaConnexion, schemaEmail } from '@/lib/validation/auth';
@@ -32,8 +33,9 @@ export async function seConnecter(_: EtatFormulaire, formData: FormData): Promis
     };
   }
   const suite = cheminInterneSur(lu.data.suite);
-  const { data: niveau } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  if (niveau?.nextLevel === 'aal2' && niveau.currentLevel !== 'aal2') {
+  const { data: claims } = await supabase.auth.getClaims();
+  const niveau = await niveauAuth(supabase, claims?.claims?.aal);
+  if (niveau.requis === 'aal2' && niveau.actuel !== 'aal2') {
     redirect(`/connexion/double-authentification?suite=${encodeURIComponent(suite)}`);
   }
   redirect(suite);

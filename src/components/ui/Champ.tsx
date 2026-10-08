@@ -17,7 +17,7 @@ export function Champ({ libelle, nom, erreur, aide, aVerifier, className = '', .
   const idAide = aide ? `${nom}-aide` : undefined;
   const idErreur = erreur ? `${nom}-erreur` : undefined;
   return (
-    <div className={`flex flex-col gap-1 ${className}`}>
+    <div className={`flex min-w-0 flex-col gap-1 ${className}`}>
       <label htmlFor={nom} className="flex flex-wrap items-center gap-2 font-semibold">
         {libelle}
         {aVerifier ? <BadgeAVerifier /> : null}
@@ -27,7 +27,7 @@ export function Champ({ libelle, nom, erreur, aide, aVerifier, className = '', .
         name={nom}
         aria-invalid={erreur ? true : undefined}
         aria-describedby={[idAide, idErreur].filter(Boolean).join(' ') || undefined}
-        className={`min-h-12 rounded-xl border-2 bg-white px-3 text-base ${erreur ? 'border-danger' : 'border-trait'} focus:border-anthracite`}
+        className={`min-h-12 w-full min-w-0 rounded-xl border-2 bg-white px-3 text-base ${erreur ? 'border-danger' : 'border-trait'} focus:border-anthracite`}
         {...props}
       />
       {aide ? <p id={idAide} className="text-sm text-encre-douce">{aide}</p> : null}

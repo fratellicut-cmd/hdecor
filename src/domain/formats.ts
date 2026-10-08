@@ -95,3 +95,15 @@ function verifierEntier(n: number, nom: string): number {
   }
   return n;
 }
+
+/** Centimes -> texte de saisie (« 40,00 », vide si null). */
+export function montantVersSaisie(centimes: number | null | undefined): string {
+  if (centimes === null || centimes === undefined) return '';
+  return formaterEuros(centimes).replace(/ €$/, '').replace(/ /g, ' ');
+}
+
+/** Points de base -> texte de saisie (« 12,5 », vide si null). */
+export function pourcentageVersSaisie(pb: number | null | undefined): string {
+  if (pb === null || pb === undefined) return '';
+  return formaterTaux(pb).replace(/ %$/, '');
+}

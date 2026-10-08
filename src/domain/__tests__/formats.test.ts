@@ -64,3 +64,22 @@ describe('lirePourcentageEnPointsDeBase', () => {
   it.each(['', '-5', '5,555', 'dix'])('« %s » refusé', (s) =>
     expect(lirePourcentageEnPointsDeBase(s)).toBeNull());
 });
+
+import { aujourdHuiParis } from '../dates';
+describe('aujourdHuiParis', () => {
+  it('23 h 30 UTC le 31/12 = 1er janvier à Paris', () => expect(aujourdHuiParis(new Date('2026-12-31T23:30:00Z'))).toBe('2027-01-01'));
+  it('21 h 59 UTC en été = même jour à Paris (23 h 59)', () => expect(aujourdHuiParis(new Date('2026-07-14T21:59:00Z'))).toBe('2026-07-14'));
+});
+
+import { montantVersSaisie, pourcentageVersSaisie } from '../formats';
+describe('valeurs vers saisie (aller-retour)', () => {
+  it.each([[4000, '40,00'], [123456, '1 234,56'], [5, '0,05']])('%i -> « %s » -> %i', (c, s) => {
+    expect(montantVersSaisie(c)).toBe(s);
+    expect(lireMontantEnCentimes(montantVersSaisie(c))).toBe(c);
+  });
+  it.each([[1250, '12,5'], [10000, '100'], [550, '5,5']])('%i pb -> « %s »', (pb, s) => {
+    expect(pourcentageVersSaisie(pb)).toBe(s);
+    expect(lirePourcentageEnPointsDeBase(s)).toBe(pb);
+  });
+  it('null -> vide', () => { expect(montantVersSaisie(null)).toBe(''); expect(pourcentageVersSaisie(null)).toBe(''); });
+});

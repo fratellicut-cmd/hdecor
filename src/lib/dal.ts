@@ -2,6 +2,7 @@ import 'server-only';
 import { cache } from 'react';
 import { redirect } from 'next/navigation';
 import { clientServeur } from '@/lib/supabase/serveur';
+import { niveauAuth } from '@/lib/niveau-auth';
 
 /**
  * Couche d'accès aux données (DAL) : point de passage OBLIGATOIRE de toute
@@ -23,8 +24,8 @@ export const verifierSession = cache(async (): Promise<Session> => {
 
   // Double authentification : si l'utilisateur l'a activée, la session
   // doit être au niveau aal2 avant d'accéder aux données.
-  const { data: niveau } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  if (niveau && niveau.nextLevel === 'aal2' && niveau.currentLevel !== 'aal2') {
+  const niveau = await niveauAuth(supabase, claims.aal);
+  if (niveau.requis === 'aal2' && niveau.actuel !== 'aal2') {
     redirect('/connexion/double-authentification');
   }
 
@@ -40,6 +41,6 @@ export const verifierSession = cache(async (): Promise<Session> => {
     utilisateurId: claims.sub,
     email: typeof claims.email === 'string' ? claims.email : null,
     organisationId: membre.organisation_id,
-    niveauAuth: niveau?.currentLevel === 'aal2' ? 'aal2' : 'aal1',
+    niveauAuth: niveau.actuel,
   };
 });
