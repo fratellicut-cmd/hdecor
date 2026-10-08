@@ -1,4 +1,4 @@
-import type { ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
+import { useId, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { BadgeAVerifier } from './Champ';
 
 export function Selection({ libelle, nom, erreur, children, ...props }: SelectHTMLAttributes<HTMLSelectElement> & {
@@ -34,7 +34,8 @@ export function TexteLong({ libelle, nom, erreur, aVerifier, ...props }: Textare
 export function CaseACocher({ libelle, nom, valeur, erreur, ...props }: React.InputHTMLAttributes<HTMLInputElement> & {
   libelle: ReactNode; nom: string; valeur?: string; erreur?: string;
 }) {
-  const id = `${nom}-${valeur ?? 'on'}`;
+  // Identifiant unique : plusieurs cases du même nom peuvent cohabiter (une par carte).
+  const id = `${nom}-${valeur ?? 'on'}-${useId()}`;
   return (
     <div className="flex flex-col gap-1">
       <label htmlFor={id} className="flex min-h-12 cursor-pointer items-center gap-3">

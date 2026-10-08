@@ -20,6 +20,7 @@ export const metadata: Metadata = { title: 'Fiche client' };
 const MESSAGES_EFFACEMENT = {
   ok: { type: 'succes', texte: 'Client anonymisé. Ses fichiers sont supprimés en arrière-plan. Les factures émises sont conservées (obligation légale).' },
   echec: { type: 'erreur', texte: 'L’effacement a échoué. Rien n’a été modifié. Vérifiez la connexion et réessayez.' },
+  deja: { type: 'info', texte: 'Ce client était déjà anonymisé.' },
   'non-confirme': { type: 'erreur', texte: 'Cochez la case de confirmation pour effacer ce client.' },
 } as const;
 

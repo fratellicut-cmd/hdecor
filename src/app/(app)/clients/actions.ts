@@ -43,7 +43,7 @@ async function chercherDoublon(saisie: SaisieClient): Promise<{ id: string; nom:
       && texteRecherche(c.prenom ?? '') === texteRecherche(saisie.prenom ?? ''));
   const recherches = [nomCherche, ...(tel.length >= 9 ? [saisie.telephone!] : [])];
   for (const texte of recherches) {
-    const { data } = await supabase.rpc('rechercher_clients', { p_texte: texte, p_limite: 20 });
+    const { data } = await supabase.rpc('rechercher_clients', { p_texte: texte, p_limite: 200 });
     const trouve = (data ?? []).find((c) => (tel.length >= 9 && chiffres(c.telephone) === tel) || memeNom(c));
     if (trouve) return { id: trouve.id, nom: nomAffiche(trouve) };
   }
@@ -108,7 +108,8 @@ export async function effacerClient(formData: FormData) {
     if (erreur?.code !== INTERBLOCAGE) break;
     await new Promise((resolve) => setTimeout(resolve, 100 * essai));
   }
-  if (erreur) redirect(`/clients/${id.data}?effacement=echec`);
+  // P0001 : client déjà anonymisé (double envoi, deux onglets) : ce n'est pas un échec.
+  if (erreur) redirect(`/clients/${id.data}?effacement=${erreur.code === 'P0001' ? 'deja' : 'echec'}`);
 
   if (fichiers > 0) {
     after(async () => {

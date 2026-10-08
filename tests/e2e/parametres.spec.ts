@@ -107,3 +107,29 @@ test('statut fiscal : une mention confirmée puis modifiée repasse À VÉRIFIER
   await page.getByRole('button', { name: 'Enregistrer' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Enregistré.' })).toBeVisible();
 });
+
+test('assurances : avec deux cartes, chaque libellé coche SA case de confirmation', async ({ page }) => {
+  await page.goto('/parametres/assurances');
+  for (const [type, assureur] of [['decennale', 'Assureur Un'], ['rc_pro', 'Assureur Deux']] as const) {
+    await page.getByLabel('Type').selectOption(type);
+    await page.getByLabel('Assureur').fill(assureur);
+    await page.getByLabel('Numéro de contrat').fill(`N-${assureur}`);
+    await page.getByLabel('Début').fill('2026-01-01');
+    await page.getByLabel('Zone géographique couverte').fill('France');
+    await page.getByRole('button', { name: 'Ajouter l’assurance' }).click();
+    await expect(page.getByRole('heading', { name: new RegExp(assureur) })).toBeVisible();
+  }
+  const carte = (nom: string) => page.locator('section').filter({ has: page.getByRole('heading', { name: new RegExp(nom) }) });
+  for (const nom of ['Assureur Un', 'Assureur Deux']) await carte(nom).getByText('Supprimer…').click();
+  await carte('Assureur Deux').getByText('Je confirme la suppression de cette assurance.').click();
+  await expect(carte('Assureur Deux').getByRole('checkbox')).toBeChecked();
+  await expect(carte('Assureur Un').getByRole('checkbox')).not.toBeChecked();
+  // Nettoyage.
+  for (const nom of ['Assureur Deux', 'Assureur Un']) {
+    const c = carte(nom);
+    if (!(await c.getByRole('checkbox').isVisible())) await c.getByText('Supprimer…').click();
+    await c.getByRole('checkbox').check();
+    await c.getByRole('button', { name: 'Supprimer l’assurance' }).click();
+    await expect(page.getByRole('heading', { name: new RegExp(nom) })).toHaveCount(0);
+  }
+});

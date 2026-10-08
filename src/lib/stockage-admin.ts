@@ -10,7 +10,7 @@ import { clientAdmin } from '@/lib/supabase/admin';
  * cas d'échec elle reste (tentatives + 1, dernière erreur) et la tâche
  * planifiée la reprend. Les lignes les moins tentées passent d'abord ; au-delà
  * de TENTATIVES_MAX, la ligne n'est plus retentée et une alerte est journalisée
- * (intervention manuelle : voir LISEZ-MOI).
+ * (intervention manuelle : voir docs/MISE_EN_PRODUCTION.md).
  */
 export const TENTATIVES_MAX = 10;
 

@@ -659,7 +659,7 @@ insert into public.envois (organisation_id, document_type, document_id, nature, 
 values ('aaaaaaaa-0000-0000-0000-00000000000a', 'devis', 'aaaaaaaa-0000-0000-0000-0000000d0007', 'envoi', 'email', 'anne@exemple.test');
 insert into public.photos (organisation_id, chantier_id, chemin)
 values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca002',
-  'aaaaaaaa-0000-0000-0000-00000000000a/photos/p1.jpg');
+  'aaaaaaaa-0000-0000-0000-00000000000a/chantiers/aaaaaaaa-0000-0000-0000-0000000ca002/photos/p1.jpg');
 insert into public.liens_publics (organisation_id, devis_id, finalite, jeton_sha256, expire_le)
 values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000d0007', 'signature', repeat('7', 64), now() + interval '7 days');
 insert into public.factures (id, organisation_id, type, client_id, delai_paiement_jours, regime_tva,
@@ -692,9 +692,38 @@ select tests.echoue($$select * from public.fichiers_a_supprimer$$, 'permission d
 select tests.egal(public.effacer_client('aaaaaaaa-0000-0000-0000-0000000c0002'), 2,
   'RGPD : effacement du client, 2 fichiers mis en file');
 reset role;
-select tests.egal((select array_agg(espace || ':' || chemin order by chemin) from public.fichiers_a_supprimer),
-  array['documents:aaaaaaaa-0000-0000-0000-00000000000a/d7.pdf', 'photos:aaaaaaaa-0000-0000-0000-00000000000a/photos/p1.jpg'],
+select tests.egal((select array_agg(espace || ':' || chemin order by espace || ':' || chemin) from public.fichiers_a_supprimer),
+  array['documents:aaaaaaaa-0000-0000-0000-00000000000a/d7.pdf', 'photos:aaaaaaaa-0000-0000-0000-00000000000a/chantiers/aaaaaaaa-0000-0000-0000-0000000ca002/photos/p1.jpg'],
   'RGPD : PDF du devis non accepté et photos inscrits dans la file, avec leur espace de stockage');
+set role authenticated;
+-- Faille H1 (audit sécurité, boucle 2) : un fichier de chantier ne peut pas
+-- désigner un document émis, et la file n'accepte jamais un fichier protégé.
+insert into public.chantiers (id, organisation_id, client_id, nom)
+values ('aaaaaaaa-0000-0000-0000-0000000ca0f1', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000c0001', 'Leurre');
+select tests.echoue($$insert into public.documents_chantier (organisation_id, chantier_id, type, nom, chemin, espace)
+  values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca0f1', 'autre', 'x',
+          'aaaaaaaa-0000-0000-0000-00000000000a/f7.pdf', 'justificatifs')$$,
+  'chemin_du_chantier', 'H1 : un document de chantier ne peut pas désigner le PDF d''une facture');
+select tests.echoue($$insert into public.documents_chantier (organisation_id, chantier_id, type, nom, chemin, espace)
+  values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca0f1', 'autre', 'x',
+          'aaaaaaaa-0000-0000-0000-00000000000a/chantiers/aaaaaaaa-0000-0000-0000-0000000ca0f1/d.pdf', 'documents')$$,
+  'espace_check', 'H1 : un document de chantier ne vit que dans l''espace justificatifs');
+select tests.echoue($$insert into public.photos (organisation_id, chantier_id, chemin)
+  values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca0f1',
+          'aaaaaaaa-0000-0000-0000-00000000000a/chantiers/aaaaaaaa-0000-0000-0000-0000000ca0f1/../../f7.pdf')$$,
+  'chemin_du_chantier', 'H1 : pas de remontée « .. » dans un chemin de photo');
+insert into public.photos (id, organisation_id, chantier_id, chemin)
+values ('aaaaaaaa-0000-0000-0000-0000000f0f01', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca0f1',
+        'aaaaaaaa-0000-0000-0000-00000000000a/chantiers/aaaaaaaa-0000-0000-0000-0000000ca0f1/p.jpg');
+select tests.echoue($$update public.photos set chemin = 'aaaaaaaa-0000-0000-0000-00000000000a/f7.pdf' where id = 'aaaaaaaa-0000-0000-0000-0000000f0f01'$$,
+  'permission denied', 'H1 : le chemin d''une photo n''est plus modifiable par une session');
+delete from public.photos where id = 'aaaaaaaa-0000-0000-0000-0000000f0f01';
+delete from public.chantiers where id = 'aaaaaaaa-0000-0000-0000-0000000ca0f1';
+reset role;
+insert into public.fichiers_a_supprimer (organisation_id, espace, chemin)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'documents', 'aaaaaaaa-0000-0000-0000-00000000000a/f7.pdf');
+select tests.egal((select count(*) from public.fichiers_a_supprimer where chemin = 'aaaaaaaa-0000-0000-0000-00000000000a/f7.pdf'),
+  0::bigint, 'H1 : le PDF d''une facture émise est écarté de la file de suppression (dernière défense)');
 set role authenticated;
 select tests.echoue($$update public.clients set nom = 'Durand', anonymise_le = null where id = 'aaaaaaaa-0000-0000-0000-0000000c0002'$$,
   'Fiche anonymisée', 'RGPD : une fiche anonymisée ne peut pas être « dé-anonymisée » par l''API');
@@ -746,7 +775,7 @@ select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prokind = 'f' and p.prorettype <> 'trigger'::regtype
      and has_function_privilege('authenticated', p.oid, 'execute')),
-  'aujourd_hui_paris,chemin_de_l_organisation,confirmer_valeurs,deductions_bien_formees,effacer_client,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,organisation_du_chemin,rechercher_clients,refuser_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,texte_recherche,ventilation_attendue,ventilation_bien_formee',
+  'aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,deductions_bien_formees,effacer_client,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,organisation_du_chemin,rechercher_clients,refuser_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,texte_recherche,ventilation_attendue,ventilation_bien_formee',
   'sécurité : liste COMPLÈTE des fonctions appelables par une session');
 select tests.echoue($$select public.purger_journal_audit(now() - interval '20 years')$$, 'permission denied',
   'sécurité : purge du journal réservée au serveur');

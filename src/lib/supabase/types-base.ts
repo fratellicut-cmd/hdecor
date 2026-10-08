@@ -1428,6 +1428,9 @@ isOneToOne: false
 "chemin_de_l_organisation":
 { Args: { "p_chemin": string,"p_organisation_id": string }; Returns: boolean
                            },
+"chemin_du_chantier":
+{ Args: { "p_chantier_id": string,"p_chemin": string,"p_organisation_id": string }; Returns: boolean
+                           },
 "confirmer_valeurs":
 { Args: { "p_confirmees": (string)[],"p_organisation_id": string }; Returns: boolean
                            },
@@ -1457,6 +1460,9 @@ isOneToOne: false
                            },
 "facture_par_jeton":
 { Args: { "p_jeton": string }; Returns: Json
+                           },
+"fichier_protege":
+{ Args: { "p_chemin": string }; Returns: boolean
                            },
 "initialiser_organisation":
 { Args: { "p_email": string,"p_nom_dirigeant": string,"p_raison_sociale": string,"p_user_id": string }; Returns: string

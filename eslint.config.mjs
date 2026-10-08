@@ -35,6 +35,11 @@ const eslintConfig = defineConfig([
             message: `${nom} : secret serveur réservé aux fichiers listés dans eslint.config.mjs.`,
           },
         ]),
+        {
+          // const { SUPABASE_SERVICE_ROLE_KEY } = process.env
+          selector: "VariableDeclarator[init.type='MemberExpression'][init.object.name='process'][init.property.name='env'] > ObjectPattern Property[key.name=/^(SUPABASE_SERVICE_ROLE_KEY|CRON_SECRET)$/]",
+          message: 'Secret serveur réservé aux fichiers listés dans eslint.config.mjs.',
+        },
       ],
     },
   },

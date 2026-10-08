@@ -4,7 +4,7 @@
 //   node --env-file=.env.local scripts/verifier-auth.mjs
 // Les réglages non exposés publiquement (12 caractères, TOTP, reconnexion
 // pour changer de mot de passe, durée des liens) se vérifient dans le
-// tableau de bord : voir LISEZ-MOI.md, « Mise en production ».
+// tableau de bord : voir docs/MISE_EN_PRODUCTION.md.
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 if (!url || !anon) {

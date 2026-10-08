@@ -6,6 +6,7 @@ import { ETAT_INITIAL, valeursTexte, type EtatFormulaire } from '@/lib/etat-form
 import { effacerBrouillon, useGardeSaisie } from './useGardeSaisie';
 
 export const MESSAGE_RESEAU = 'Le réseau ne répond pas : rien n’a été enregistré. Votre saisie est gardée sur ce téléphone. Réessayez dans un instant.';
+export const MESSAGE_INCIDENT = 'Un problème est survenu : rien n’a été enregistré. Votre saisie est gardée sur ce téléphone. Réessayez ; si cela se répète, notez l’heure.';
 
 type Action = (etat: EtatFormulaire, formData: FormData) => Promise<EtatFormulaire>;
 
@@ -21,7 +22,9 @@ export function useFormulaire(cle: string, action: Action, options: { version?: 
       return await action(etat, formData);
     } catch (e) {
       unstable_rethrow(e);
-      return { message: MESSAGE_RESEAU, valeurs: valeursTexte(formData) };
+      // Échec d'envoi (fetch) : réseau ; toute autre exception : incident serveur.
+      const reseau = !navigator.onLine || e instanceof TypeError;
+      return { message: reseau ? MESSAGE_RESEAU : MESSAGE_INCIDENT, valeurs: valeursTexte(formData) };
     }
   }, [action]);
   const [etat, actionFormulaire, enCours] = useActionState(actionSure, ETAT_INITIAL);
