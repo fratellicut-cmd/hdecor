@@ -8,7 +8,9 @@ const ADMIN_AUTORISE = [
   'src/lib/stockage-admin.ts',
   'src/lib/stockage.ts',
   'src/lib/devis-public.ts',
+  'src/lib/facture-publique.ts',
   'src/app/api/cron/**',
+  'src/app/api/stripe/**',
   'scripts/**',
   'tests/**',
 ];

@@ -18,6 +18,7 @@ import { deposer, retirer } from '@/lib/stockage';
 import { archiverPdfSigne, deposerTrace, messageSignature } from '@/lib/devis-public';
 import { MESSAGES_TRACE } from '@/lib/validation/devis';
 import { emailConfigure, envoyerEmail } from '@/lib/email';
+import { conclureEnvoi, reserverEnvoi } from '@/lib/envois';
 import { expirationLien, nouveauJeton, urlPublique } from '@/lib/liens';
 import { ipEtNavigateur } from '@/lib/requete';
 import { controlerEcheancier, ErreurDevis, remplirModele, repriseDePoste, TOTAL_MAX_CENTS, totalLigne } from '@/domain/devis';
@@ -464,6 +465,7 @@ export async function envoyerDevis(_: EtatFormulaire, fd: FormData): Promise<Eta
   const { data: deja } = await sb.from('envois').select('canal, destinataire, statut').eq('id', envoiId.data).maybeSingle();
   if (deja) {
     if (deja.statut === 'echec') return { message: 'L’email précédent n’est pas parti : rechargez la page pour réessayer (aucun email en double).' };
+    if (deja.statut === 'en_cours') return { message: 'Cet email est en cours d’envoi ou n’a pas été confirmé : rechargez la page dans un instant (aucun email en double).' };
     return deja.canal === 'email'
       ? { succes: `Email déjà envoyé à ${deja.destinataire} : rien n’a été renvoyé.` }
       : { message: 'Ce lien a déjà été créé : rechargez la page pour en créer un nouveau.' };
@@ -483,7 +485,7 @@ export async function envoyerDevis(_: EtatFormulaire, fd: FormData): Promise<Eta
   });
   if (error) return { message: ECHEC };
   const lien = urlPublique(jeton);
-  const tracer = async (champs: { canal: 'email' | 'manuel'; destinataire?: string | null; fournisseur_id?: string | null; statut?: 'envoye' | 'echec'; erreur?: string | null }) => {
+  const tracer = async (champs: { canal: 'email' | 'manuel'; destinataire?: string | null; fournisseur_id?: string | null }) => {
     const { error: e } = await sb.from('envois').insert({
       id: envoiId.data, organisation_id: session.organisationId, document_type: 'devis', document_id: id.data, nature: 'envoi', ...champs,
     });
@@ -506,8 +508,14 @@ export async function envoyerDevis(_: EtatFormulaire, fd: FormData): Promise<Eta
     numero: `${c.devis.numero}${c.devis.version! > 1 ? ` (version ${c.devis.version})` : ''}`, lien,
     valide_jusqu_au: formaterDate(c.devis.valide_jusqu_au!),
   };
+  // Réservé en base AVANT l'email : un envoi simultané du même formulaire est refusé (jamais deux emails).
+  const reservation = await reserverEnvoi(sb, {
+    id: envoiId.data, organisation_id: session.organisationId, document_type: 'devis', document_id: id.data, nature: 'envoi', destinataire: email,
+  });
+  if (reservation === 'deja') return { message: 'Cet email est déjà en cours d’envoi : rechargez la page dans un instant.', lien };
+  if (reservation === 'echec') return { message: `${ECHEC} Aucun email n’est parti : partagez le lien.`, lien };
   const r = await envoyerEmail({ a: email!, sujet: remplirModele(modele.sujet, valeurs), texte: remplirModele(modele.corps, valeurs), repondreA: p?.email });
-  await tracer({ canal: 'email', destinataire: email, fournisseur_id: r.ok ? r.id : null, statut: r.ok ? 'envoye' : 'echec', erreur: r.ok ? null : r.erreur });
+  await conclureEnvoi(sb, envoiId.data, r);
   revalider(id.data);
   return r.ok ? { succes: `Email envoyé à ${email}.`, lien } : { message: `${r.erreur} Partagez le lien à la main.`, lien };
 }

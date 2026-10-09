@@ -789,13 +789,13 @@ select tests.egal((select copie_client ->> 'nom_affiche' from public.factures wh
 select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prosecdef and has_function_privilege('authenticated', p.oid, 'execute')),
-  'effacer_client,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,refuser_devis,signer_devis_sur_place,supprimer_chantier',
+  'effacer_client,emettre_devis,emettre_facture,enregistrer_facturx,est_membre,marquer_facture_envoyee,nouvelle_version_devis,refuser_devis,signer_devis_sur_place,supprimer_chantier',
   'sécurité : liste exacte des fonctions SECURITY DEFINER appelables par une session');
 select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prokind = 'f' and p.prorettype <> 'trigger'::regtype
      and has_function_privilege('authenticated', p.oid, 'execute')),
-  'aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,copier_poste,deductions_bien_formees,definir_preparations,deplacer_ligne_devis,deplacer_ligne_facture,dupliquer_devis,dupliquer_piece,effacer_client,emettre_devis,emettre_facture,emettre_facture_attendue,est_membre,importer_produits,marquer_facture_envoyee,nouvelle_version_devis,numero_devis_previsionnel,numero_facture_previsionnel,organisation_du_chemin,rechercher_clients,refuser_devis,remplacer_achats_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,ventilation_attendue,ventilation_bien_formee',
+  'aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,copier_poste,deductions_bien_formees,definir_preparations,deplacer_ligne_devis,deplacer_ligne_facture,dupliquer_devis,dupliquer_piece,effacer_client,emettre_devis,emettre_facture,emettre_facture_attendue,enregistrer_facturx,est_membre,importer_produits,marquer_facture_envoyee,nouvelle_version_devis,numero_devis_previsionnel,numero_facture_previsionnel,organisation_du_chemin,rechercher_clients,refuser_devis,remplacer_achats_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,ventilation_attendue,ventilation_bien_formee',
   'sécurité : liste COMPLÈTE des fonctions appelables par une session');
 select tests.echoue($$select public.purger_journal_audit(now() - interval '20 years')$$, 'permission denied',
   'sécurité : purge du journal réservée au serveur');
@@ -1694,6 +1694,19 @@ select tests.egal(public.emettre_facture_attendue('aaaaaaaa-0000-0000-0000-00000
   current_setting('tests.fprev')::jsonb ->> 'numero', 'facture : le numéro prévisionnel du PDF est celui attribué');
 select tests.echoue($$select public.deplacer_ligne_facture('aaaaaaaa-0000-0000-0000-0000000f5012', 1)$$, 'figées',
   'facture émise : lignes non déplaçables');
+select public.enregistrer_facturx('aaaaaaaa-0000-0000-0000-0000000f5001', 'aaaaaaaa-0000-0000-0000-00000000000a/factures/f5001.xml');
+select public.enregistrer_facturx('aaaaaaaa-0000-0000-0000-0000000f5001', 'aaaaaaaa-0000-0000-0000-00000000000a/factures/autre.xml');
+select tests.egal((select facturx_chemin from public.factures where id = 'aaaaaaaa-0000-0000-0000-0000000f5001'),
+  'aaaaaaaa-0000-0000-0000-00000000000a/factures/f5001.xml', 'Factur-X : chemin fixé une seule fois');
+select tests.echoue($$select public.enregistrer_facturx('aaaaaaaa-0000-0000-0000-0000000f0002', 'bbbbbbbb-0000-0000-0000-00000000000b/x.xml')$$,
+  'invalide', 'Factur-X : chemin hors de l''organisation refusé');
+insert into public.paiements (id, organisation_id, facture_id, date_paiement, montant_cents, mode)
+values ('aaaaaaaa-0000-0000-0000-0000000f5091', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f5001', public.aujourd_hui_paris(), 5000, 'cheque');
+select tests.echoue($$insert into public.paiements (id, organisation_id, facture_id, date_paiement, montant_cents, mode)
+  values ('aaaaaaaa-0000-0000-0000-0000000f5091', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f5001', public.aujourd_hui_paris(), 5000, 'cheque')$$,
+  'duplicate key', 'paiement : même identifiant renvoyé -> pas de second paiement');
+insert into public.paiements (organisation_id, facture_id, date_paiement, montant_cents, mode, annule_paiement_id)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f5001', public.aujourd_hui_paris(), -5000, 'cheque', 'aaaaaaaa-0000-0000-0000-0000000f5091');
 select tests.egal((select string_agg(code, ',' order by code) from public.modeles_messages where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'),
   'envoi_devis,envoi_facture,impaye_1,impaye_2,impaye_3,relance_devis', 'messages : envoi de facture et 3 niveaux d''impayés');
 select tests.egal((select string_agg(delai_jours::text, ',' order by code) from public.modeles_messages
@@ -1810,6 +1823,35 @@ insert into public.paiements (organisation_id, facture_id, date_paiement, montan
 values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f5001', public.aujourd_hui_paris(), 20000, 'virement');
 select tests.egal((select count(*) from public.factures_a_relancer() where facture_id = 'aaaaaaaa-0000-0000-0000-0000000f5001'), 0::bigint,
   'impayés : facture payée -> plus de relance');
+
+-- Envois réservés avant l'email : une relance par niveau, conclusion seulement d'un envoi en cours.
+select tests.echoue(
+  $$insert into public.envois (organisation_id, document_type, document_id, nature, canal, destinataire, statut)
+    values ('aaaaaaaa-0000-0000-0000-00000000000a', 'facture', 'aaaaaaaa-0000-0000-0000-0000000f5001', 'impaye_1', 'email', 'x@test', 'en_cours')$$,
+  'envois_relance_unique', 'envois : 2e relance du même niveau refusée (deux passages simultanés)');
+insert into public.envois (organisation_id, document_type, document_id, nature, canal, destinataire, statut, erreur)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'facture', 'aaaaaaaa-0000-0000-0000-0000000f5001', 'impaye_1', 'email', 'x@test', 'echec', 'test');
+select tests.egal((select count(*) from public.envois where document_id = 'aaaaaaaa-0000-0000-0000-0000000f5001' and nature = 'impaye_1'),
+  2::bigint, 'envois : une relance en échec s''ajoute (ne bloque pas un nouvel essai)');
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+insert into public.envois (id, organisation_id, document_type, document_id, nature, canal, destinataire, statut)
+values ('aaaaaaaa-0000-0000-0000-0000000e5001', 'aaaaaaaa-0000-0000-0000-00000000000a', 'facture', 'aaaaaaaa-0000-0000-0000-0000000f5001',
+        'envoi', 'email', 'x@test', 'en_cours');
+select tests.echoue(
+  $$insert into public.envois (id, organisation_id, document_type, document_id, nature, canal, destinataire, statut)
+    values ('aaaaaaaa-0000-0000-0000-0000000e5001', 'aaaaaaaa-0000-0000-0000-00000000000a', 'facture', 'aaaaaaaa-0000-0000-0000-0000000f5001',
+            'envoi', 'email', 'x@test', 'en_cours')$$,
+  'envois_pkey', 'envois : même identifiant de formulaire -> réservé une seule fois (pas de 2e email)');
+select tests.echoue($$update public.envois set destinataire = 'autre@test' where id = 'aaaaaaaa-0000-0000-0000-0000000e5001'$$,
+  'permission denied', 'envois : le destinataire ne se modifie pas');
+select tests.egal(tests.lignes($$update public.envois set statut = 'envoye', fournisseur_id = 'r1' where id = 'aaaaaaaa-0000-0000-0000-0000000e5001'$$),
+  1::bigint, 'envois : conclusion d''un envoi en cours');
+select tests.egal(tests.lignes($$update public.envois set statut = 'echec' where id = 'aaaaaaaa-0000-0000-0000-0000000e5001'$$),
+  0::bigint, 'envois : un envoi conclu ne se modifie plus');
+reset role;
+set role service_role;
 
 -- Relances : jamais sans envoi réel ; délai compté depuis le dernier envoi ; une seule relance.
 select tests.egal((select count(*) from public.devis_a_relancer() where devis_id = 'aaaaaaaa-0000-0000-0000-0000000d4003'), 0::bigint,

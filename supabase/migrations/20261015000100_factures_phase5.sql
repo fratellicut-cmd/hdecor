@@ -132,14 +132,14 @@ as $$
     where m.actif and m.delai_jours is not null
       and f.date_echeance + m.delai_jours <= public.aujourd_hui_paris()
       and not exists (select 1 from public.envois e
-                      where e.document_type = 'facture' and e.document_id = f.id and e.nature = m.code and e.statut = 'envoye')
+                      where e.document_type = 'facture' and e.document_id = f.id and e.nature = m.code and e.statut <> 'echec')
       and not exists (select 1 from public.modeles_messages prec
                       where prec.organisation_id = f.organisation_id and prec.actif
                         and prec.code in ('impaye_1', 'impaye_2', 'impaye_3')
                         and substring(prec.code from 8)::integer < m.niveau
                         and not exists (select 1 from public.envois e2
                                         where e2.document_type = 'facture' and e2.document_id = f.id
-                                          and e2.nature = prec.code and e2.statut = 'envoye'))
+                                          and e2.nature = prec.code and e2.statut <> 'echec'))
     order by m.niveau
     limit 1
   ) n
@@ -188,3 +188,54 @@ end;
 $$;
 revoke execute on function public.deplacer_ligne_facture(uuid, integer) from public, anon;
 grant execute on function public.deplacer_ligne_facture(uuid, integer) to authenticated;
+
+-- 6. Données Factur-X : chemin du XML fixé UNE fois après l'émission (le trigger
+--    de protection refuse tout changement ultérieur). Fichier de l'organisation.
+create or replace function public.enregistrer_facturx(p_facture_id uuid, p_chemin text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_f public.factures%rowtype;
+begin
+  select * into v_f from public.factures where id = p_facture_id for update;
+  if not found or not public.est_membre(v_f.organisation_id) then
+    raise exception 'Facture introuvable.' using errcode = 'P0002';
+  end if;
+  if v_f.statut = 'brouillon' then
+    raise exception 'Facture non émise.' using errcode = 'P0001';
+  end if;
+  if not public.chemin_de_l_organisation(p_chemin, v_f.organisation_id) or p_chemin is null then
+    raise exception 'Chemin de fichier invalide.' using errcode = 'P0001';
+  end if;
+  if v_f.facturx_chemin is not null then
+    return;   -- déjà fixé : rien à faire (idempotent)
+  end if;
+  update public.factures set facturx_chemin = p_chemin where id = p_facture_id;
+end;
+$$;
+revoke execute on function public.enregistrer_facturx(uuid, text) from public, anon;
+grant execute on function public.enregistrer_facturx(uuid, text) to authenticated;
+
+-- 7. Paiements : identifiant fixé par le formulaire (un nouvel essai après une
+--    réponse perdue ne crée pas un second paiement).
+grant insert (id) on public.paiements to authenticated;
+
+-- 8. Envois RÉSERVÉS avant l'email (statut « en_cours ») : deux requêtes
+--    simultanées (rejeu réseau, double passage de la tâche planifiée)
+--    n'envoient jamais deux fois le même email.
+--    * envoi manuel : identifiant fixé par le formulaire (clé primaire) ;
+--    * relances : au plus une relance non échouée par document et par niveau.
+--    Seule la conclusion d'un envoi en cours est modifiable (statut, identifiant
+--    du prestataire, erreur) ; l'historique reste en ajout seul.
+alter table public.envois drop constraint envois_statut_check;
+alter table public.envois add constraint envois_statut_check check (statut in ('en_cours', 'envoye', 'echec'));
+create unique index envois_relance_unique on public.envois (document_type, document_id, nature)
+  where nature in ('relance_devis', 'impaye_1', 'impaye_2', 'impaye_3') and statut <> 'echec';
+grant update (statut, fournisseur_id, erreur) on public.envois to authenticated;
+create policy envois_conclusion on public.envois
+  for update to authenticated
+  using (public.est_membre(organisation_id) and statut = 'en_cours')
+  with check (public.est_membre(organisation_id) and statut in ('envoye', 'echec'));

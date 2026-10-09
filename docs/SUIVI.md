@@ -75,3 +75,19 @@ Points relevés par les agents de contrôle, acceptés pour la phase en cours ma
 | Phase 4 (audit légal, boucle 3) | Mention « Bon pour accord » saisie au clavier (casse et ponctuation libres, conservée telle que tapée) acceptée comme équivalent de la mention manuscrite : force probante à confirmer. Le contrôle du texte est fait par le serveur (zod), pas par la base. | Comptable |
 | Phase 4 (calculs et relecture, boucle 3) | Migration 20261014000100_devis_corrections.sql modifiée sur place avant tout déploiement : toute base locale qui l'a appliquée doit être recréée (`npm run local:start`). Après le premier déploiement, une nouvelle migration par changement. | Avant mise en production |
 | Phase 4 (sécurité, boucle 3) | Signature dont l'issue est incertaine (réponse perdue) : le tracé est désormais toujours gardé ; un tracé réellement inutilisé reste en stockage (à purger par la file des fichiers orphelins). | 7 (documents) |
+
+## Phase 5 (factures et paiements) : points reportés et questions ouvertes
+
+| Origine | Point | Phase / décideur |
+|---|---|---|
+| Phase 5 (conception) | Avoir d'un MONTANT précis sur une facture à plusieurs taux avec acomptes déduits : la répartition par taux recherche une base exacte au centime ; si aucune n'existe, l'application le dit (aucun arrondi caché). Contournement : avoir « tout le reste dû » ou montant voisin. | Connu |
+| Phase 5 (conception) | Factur-X : XML CII (profil EN 16931) préparé et stocké à l'émission, **non intégré au PDF** (PDF/A-3) et non transmis à une plateforme de dématérialisation. Calendrier et plateforme de la facturation électronique obligatoire : À VÉRIFIER. | 7 (documents), comptable |
+| Phase 5 (conception) | Autoliquidation (sous-traitance BTP) : case par facture, mention imprimée, TVA nulle, client professionnel exigé ; textes et conditions À VÉRIFIER. | Comptable |
+| Phase 5 (conception) | Facture d'acompte : date de prestation exigée (début des travaux par défaut). Pour un acompte encaissé avant les travaux, la date à porter (encaissement ?) est À VÉRIFIER. | Comptable |
+| Phase 5 (conception) | Indemnité forfaitaire de recouvrement (40 €) imprimée seulement pour un client professionnel ; pénalités imprimées pour tous. À VÉRIFIER. | Comptable |
+| Phase 5 (conception) | Paiement par carte (Stripe) facultatif, inactif sans clés : frais, contrat, remboursements et registre RGPD À VÉRIFIER avant activation. Un paiement encaissé mais refusé par l'application (facture déjà soldée) se rembourse à la main dans Stripe. | Avant activation |
+| Phase 5 (sécurité) | Point Phase 4 « deux envois simultanés » corrigé : chaque email (envoi de devis, de facture, relances) est réservé en base (statut « en cours ») avant l'envoi ; un second envoi identique est refusé (clé du formulaire ou index unique des relances). Un envoi dont la conclusion n'a pas pu être écrite reste « envoi non confirmé » et n'est jamais renvoyé automatiquement. | Fait |
+| Phase 5 (conception) | Point Phase 4 « facture d'acompte depuis le montant ACCEPTÉ » : fait (ventilation acceptée, options retenues comprises). | Fait |
+| Phase 5 (conception) | Rétractation hors établissement : la facture d'acompte n'est pas bloquée pendant le délai de 14 jours (point 3 du comptable toujours ouvert). | Comptable |
+| Phase 5 (conception) | Changement de régime de TVA entre le devis et la facture : facturation depuis le devis refusée (facture libre conseillée). | Comptable |
+

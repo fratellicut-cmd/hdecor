@@ -1569,6 +1569,9 @@ isOneToOne: false
 "emettre_facture_attendue":
 { Args: { "p_copie_chantier": Json,"p_copie_client": Json,"p_copie_emetteur": Json,"p_date_attendue": string,"p_facture_id": string,"p_numero_attendu": string,"p_pdf_chemin": string,"p_pdf_sha256": string }; Returns: string
                            },
+"enregistrer_facturx":
+{ Args: { "p_chemin": string,"p_facture_id": string }; Returns: undefined
+                           },
 "est_membre":
 { Args: { "p_organisation_id": string }; Returns: boolean
                            },

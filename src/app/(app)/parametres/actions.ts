@@ -8,6 +8,7 @@ import { erreursParChamp, valeursTexte, type EtatFormulaire } from '@/lib/etat-f
 import {
   lireFormulaire, schemaAssurance, schemaConditions, schemaEntreprise, schemaFiscal, schemaMentions,
 } from '@/lib/validation/parametres';
+import { CODES_MESSAGES, schemaModeleMessage } from '@/lib/validation/messages';
 import { aujourdHuiParis } from '@/domain/dates';
 import type { MiseAJour } from '@/lib/supabase/types';
 
@@ -130,4 +131,17 @@ export async function majTauxTva(_: EtatFormulaire, formData: FormData): Promise
   if (error || !data?.length) return { message: 'La modification a échoué. Vérifiez la connexion et réessayez.' };
   revalidatePath('/parametres', 'layout');
   return { succes: lu.data.champ === 'confirmer' ? 'Taux confirmé.' : 'Enregistré.' };
+}
+
+export async function enregistrerModeleMessage(_: EtatFormulaire, formData: FormData): Promise<EtatFormulaire> {
+  await verifierSession();
+  const code = z.enum(CODES_MESSAGES).safeParse(formData.get('code'));
+  if (!code.success) return { message: 'Modèle inconnu : rechargez la page.' };
+  const lu = schemaModeleMessage(code.data).safeParse(lireFormulaire(formData));
+  if (!lu.success) return { erreurs: erreursParChamp(lu.error), valeurs: valeursTexte(formData) };
+  const supabase = await clientServeur();
+  const { data, error } = await supabase.from('modeles_messages').update(lu.data).eq('code', code.data).select('id');
+  if (error || !data?.length) return { message: ECHEC, valeurs: valeursTexte(formData) };
+  revalidatePath('/parametres/messages');
+  return { succes: OK };
 }

@@ -114,6 +114,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON
 SUPABASE_SERVICE_ROLE_KEY=$SERVICE
 NEXT_PUBLIC_SITE_URL=$SITE_URL
 CRON_SECRET=$(openssl rand -hex 32)
+# Webhook Stripe : secret local ALÉATOIRE pour les tests (aucun compte Stripe, aucun paiement réel).
+STRIPE_WEBHOOK_SECRET=whsec_local_$(openssl rand -hex 24)
 ENVF
 
 for i in $(seq 1 30); do
