@@ -111,3 +111,20 @@ Points relevés par les agents de contrôle, acceptés pour la phase en cours ma
 | Phase 5 (calculs, boucles 1 à 3) | Restent ouverts : écart d'un centime possible sur le cumul par taux d'avoirs partiels successifs ; cumul des acomptes calculé avec les brouillons (échéance suivante faussée d'un centime si un brouillon est supprimé). | 8 (recette) |
 | Phase 5 (validation finale) | Améliorations non bloquantes relevées sur 47fe76d : `catch` à resserrer sur ErreurFacture (PDF d'avoir, lignesAvoirMontant) et commentaire en double ; erreur de désactivation des anciens liens à journaliser (noterRelancePartagee) ; garder le lien du message réellement partagé (identifiant du lien préparé) plutôt que le plus récent ; vérifier que la facture est émise avant de noter un rappel ; relance automatique qui désactive l'ancien lien avant l'email ; complément d'avoir parfois à refaire une 2e fois sur trois taux (14 cas sur 846). | 6 (début de phase) |
 
+
+## Phase 6 (pilotage) : points reportés et questions ouvertes
+
+À VÉRIFIER avec le comptable :
+- **Base du chiffre d'affaires** : encaissements (livre des recettes, date du paiement), remboursements déduits. Pour une entreprise soumise à la TVA, la part HT d'un encaissement est calculée au prorata HT / TTC de sa facture (arrondi au centime, demi supérieur).
+- **Jauges des seuils** : comparées au CA HT encaissé de l'année civile en cours. Seuils et alertes (80 / 95 % par défaut) restent paramétrables et marqués À VÉRIFIER tant qu'ils ne sont pas confirmés dans Paramètres.
+- **Coût des achats dans la marge** : TTC en franchise (TVA non récupérable), HT sinon.
+- **Valeur du temps passé** : temps × taux horaire de vente. C'est un indicatif, pas une dépense.
+
+Limites connues (signalées dans l'interface) :
+- **Jours fériés** : la planification d'un chantier exclut les week-ends, pas les jours fériés. La date de fin est à vérifier.
+- **Export ICS** : c'est un fichier à importer, pas un abonnement (aucune adresse publique ne donne accès au planning).
+- **Photos de justificatif** : elles sont réduites dans le navigateur (2 000 px, JPEG) avant l'envoi, avec une limite de 5,5 Mo. Une photo HEIC que le navigateur ne sait pas lire (hors Safari) est refusée par le serveur, avec un message clair.
+- **Navigation** : Planning et Comptabilité sont accessibles depuis les tuiles du tableau de bord, et les 6 onglets restent inchangés. À revoir selon le retour du testeur.
+- **Rappels** : ils sont affichés dans « À faire » (tableau de bord) et dans le planning. Aucune notification push.
+
+Toujours ouverts depuis la Phase 5 : suspension des relances par facture, recherche dans la liste des factures, message « réseau revenu », taux de TVA par défaut, liste des chantiers limitée à 200.
