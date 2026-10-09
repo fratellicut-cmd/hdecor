@@ -711,6 +711,38 @@ isOneToOne: false
       referencedColumns: ["organisation_id","id"]
     }
                   ]
+                },"incidents_paiement": {
+                  Row: {
+                    "created_at": string,"facture_id": string,"id": string,"montant_cents": number,"motif": string,"organisation_id": string,"reference": string | null,"stripe_evenement_id": string,"traite_le": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"facture_id": string,"id"?: string,"montant_cents": number,"motif": string,"organisation_id": string,"reference"?: string | null,"stripe_evenement_id": string,"traite_le"?: string | null
+                  }
+                  Update: {
+                    "created_at"?: string,"facture_id"?: string,"id"?: string,"montant_cents"?: number,"motif"?: string,"organisation_id"?: string,"reference"?: string | null,"stripe_evenement_id"?: string,"traite_le"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "incidents_paiement_organisation_id_facture_id_fkey"
+      columns: ["organisation_id","facture_id"]
+isOneToOne: false
+      referencedRelation: "factures"
+      referencedColumns: ["organisation_id","id"]
+    },{
+      foreignKeyName: "incidents_paiement_organisation_id_facture_id_fkey"
+      columns: ["organisation_id","facture_id"]
+isOneToOne: false
+      referencedRelation: "v_factures"
+      referencedColumns: ["organisation_id","id"]
+    },{
+      foreignKeyName: "incidents_paiement_organisation_id_fkey"
+      columns: ["organisation_id"]
+isOneToOne: false
+      referencedRelation: "organisations"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"journal_audit": {
                   Row: {
                     "action": string,"apres": Json | null,"avant": Json | null,"cree_le": string,"id": number,"ligne_id": string | null,"organisation_id": string,"table_nom": string,"user_id": string | null

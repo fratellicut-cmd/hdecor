@@ -44,7 +44,8 @@
 |---|---|---|---|
 | Supabase | Base de données, authentification, stockage des fichiers | Région UE prévue (Paris ou Francfort) | **À VÉRIFIER** à la création du projet de production ; contrat de sous-traitance (DPA) à accepter |
 | Vercel | Hébergement de l'application | Région `cdg1` (Paris) prévue pour les fonctions | **À VÉRIFIER** ; DPA à accepter |
-| Resend | Envoi des emails (devis, relances ; factures en phase 5) : email, nom du client, lien du devis | **États-Unis : transfert hors UE, région d'envoi et clauses contractuelles types À VÉRIFIER** | Utilisé depuis la phase 4 si `RESEND_API_KEY` est configurée ; suivi des clics désactivé |
+| Resend | Envoi des emails (devis, factures, relance de devis, 3 rappels d'impayés) : email, nom du client, lien du document, montant dû d'une facture | **États-Unis : transfert hors UE, région d'envoi et clauses contractuelles types À VÉRIFIER** | Utilisé depuis la phase 4 si `RESEND_API_KEY` est configurée ; suivi des clics désactivé |
+| Stripe (facultatif, inactif sans clés) | Paiement par carte d'une facture (page de paiement Stripe) : numéro et montant de la facture, données de paiement saisies par le client (jamais vues par l'application) | **États-Unis : transfert hors UE, contrat et garanties À VÉRIFIER avant activation** | Webhook signé ; l'adresse de retour ne contient pas le jeton du lien |
 
 ## Mesures de sécurité
 

@@ -77,8 +77,10 @@ export async function ajouterLigne(page: Page, l: { designation: string; quantit
   await expect(page.locator('li').filter({ hasText: l.designation }).first()).toBeVisible();
 }
 
-export async function completerEtEmettre(page: Page): Promise<string> {
+/** `horsEtablissement` : coché ou décoché explicitement (sinon la valeur par défaut du devis, cochée). */
+export async function completerEtEmettre(page: Page, horsEtablissement?: boolean): Promise<string> {
   await page.getByLabel('Durée (jours)').fill('2');
+  if (horsEtablissement !== undefined) await page.getByLabel(/Signé chez le client \(hors établissement\)/).setChecked(horsEtablissement);
   await page.getByLabel('Ou délai de début (texte)').fill('Sous 3 semaines après signature');
   await page.getByRole('button', { name: 'Enregistrer l’en-tête' }).click();
   await expect(page.getByText('En-tête enregistré.')).toBeVisible();
@@ -103,3 +105,13 @@ export async function signerDansLeCadre(page: Page) {
   await expect(page.getByText('Signature tracée.')).toBeVisible();
 }
 
+
+/**
+ * SQL direct sur la base LOCALE de test (préparation impossible par l'interface,
+ * par exemple vieillir une facture émise). Triggers de protection contournés
+ * le temps de la commande : réservé aux tests.
+ */
+export function sqlLocal(sql: string) {
+  execFileSync('psql', ['-d', process.env.E2E_DB ?? 'hdecor_dev', '-v', 'ON_ERROR_STOP=1', '-q', '-c',
+    `set session_replication_role = replica; ${sql}; set session_replication_role = origin;`], { encoding: 'utf8' });
+}

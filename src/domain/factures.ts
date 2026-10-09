@@ -7,6 +7,7 @@
 
 import { arrondi } from './chiffrage';
 import { ventiler, ventilationEcheance, type LigneDevis, type Regime, type Ventilation } from './devis';
+import { formaterEuros, formaterTaux } from './formats';
 import { ajouterJours, type CopieChantier, type CopieClient, type CopieEmetteur, type Manque } from './devis-document';
 
 export type TypeFacture = 'acompte' | 'situation' | 'finale' | 'libre' | 'avoir';
@@ -155,8 +156,9 @@ export function lignesDepuisDevis(lignes: LigneDevis[], optionsRetenues: Set<str
 // --------------------------------------------------------------------------
 
 /**
- * Avoir TOTAL d'une facture sans acompte déduit : copie de ses lignes et de
- * sa remise (mêmes montants, donc net à payer identique).
+ * Avoir TOTAL : copie des lignes et de la remise de la facture d'origine (et,
+ * si elle déduisait des acomptes, de ses déductions : même net à payer, même
+ * TVA nette par taux, au centime ; contrôlé par la base).
  */
 export function lignesAvoirTotal(lignesOrigine: LigneFacture[]): LigneFacture[] {
   return lignesOrigine.map((l) => ({ ...l, id: undefined, devisLigneId: null }));
@@ -189,7 +191,7 @@ export function lignesAvoirMontant(netParTaux: Ventilation, montantTtcCents: big
     while (ttcDe(base, t) < cible) base += 1n;
     while (base > 0n && ttcDe(base, t) > cible) base -= 1n;
     if (ttcDe(base, t) !== cible) {
-      throw new ErreurFacture(`Avoir : ${(Number(cible) / 100).toFixed(2).replace('.', ',')} € TTC n’est pas atteignable au centime près au taux de ${t / 100} % (arrondi de la TVA). Ajustez le montant d’un centime.`);
+      throw new ErreurFacture(`Avoir : ${formaterEuros(cible)} TTC n’est pas atteignable au centime près au taux de ${formaterTaux(t)} (arrondi de la TVA). Ajustez le montant d’un centime, ou établissez un avoir de tout le reste dû.`);
     }
     if (base > v.base_ht_cents) throw new ErreurFacture('Avoir : supérieur au net de la facture pour ce taux.');
     lignes.push({
@@ -201,16 +203,27 @@ export function lignesAvoirMontant(netParTaux: Ventilation, montantTtcCents: big
   return lignes;
 }
 
-/** Net à payer par taux d'une facture : sa ventilation moins celle des acomptes qu'elle déduit. */
-export function netParTaux(ventilation: Ventilation, ventilationsDeduites: Ventilation[]): Ventilation {
-  return ventilation.map((v) => {
-    const d = ventilationsDeduites.flat().filter((x) => x.taux_bp === v.taux_bp);
-    return {
-      taux_bp: v.taux_bp,
-      base_ht_cents: v.base_ht_cents - d.reduce((a, x) => a + x.base_ht_cents, 0n),
-      tva_cents: v.tva_cents - d.reduce((a, x) => a + x.tva_cents, 0n),
-    };
-  });
+/**
+ * Reste corrigeable par taux d'une facture : sa ventilation, moins celle des
+ * acomptes qu'elle déduit, moins celle des avoirs déjà émis sur elle. Tous les
+ * taux sont couverts (y compris un taux présent seulement dans un acompte
+ * déduit). Un taux négatif (la facture déduit plus qu'elle ne facture à ce
+ * taux, par exemple un avancement en recul) rend un avoir partiel impossible
+ * à ventiler exactement : erreur explicite.
+ */
+export function netParTaux(ventilation: Ventilation, ventilationsDeduites: Ventilation[], avoirsEmis: Ventilation[] = []): Ventilation {
+  const taux = [...new Set([...ventilation, ...ventilationsDeduites.flat(), ...avoirsEmis.flat()].map((v) => v.taux_bp))].sort((a, b) => a - b);
+  const somme = (vs: Ventilation, t: number, cle: 'base_ht_cents' | 'tva_cents') => vs.filter((x) => x.taux_bp === t).reduce((a, x) => a + x[cle], 0n);
+  const net = taux.map((t) => ({
+    taux_bp: t,
+    base_ht_cents: somme(ventilation, t, 'base_ht_cents') - somme(ventilationsDeduites.flat(), t, 'base_ht_cents') - somme(avoirsEmis.flat(), t, 'base_ht_cents'),
+    tva_cents: somme(ventilation, t, 'tva_cents') - somme(ventilationsDeduites.flat(), t, 'tva_cents') - somme(avoirsEmis.flat(), t, 'tva_cents'),
+  }));
+  const negatif = net.find((v) => v.base_ht_cents < 0n || v.tva_cents < 0n);
+  if (negatif) {
+    throw new ErreurFacture(`Avoir d’un montant impossible : au taux de ${formaterTaux(negatif.taux_bp)}, cette facture déduit plus qu’elle ne facture. Établissez un avoir de tout le reste dû.`);
+  }
+  return net.filter((v) => v.base_ht_cents > 0n || v.tva_cents > 0n);
 }
 
 // --------------------------------------------------------------------------
@@ -248,7 +261,30 @@ export type FactureAControler = {
   date_prestation_fin: string | null;
   autoliquidation: boolean;
   regime_tva: Regime;
+  date_emission: string;
+  date_echeance: string;
+  /** Dernier jour du délai de rétractation (devis signé hors établissement par un particulier), sinon null. */
+  fin_retractation: string | null;
 };
+
+/** Délai de rétractation d'un contrat hors établissement (jours après la signature), comme sur le devis. */
+export const DELAI_RETRACTATION_JOURS = 14;
+
+/** Dernier jour du délai de rétractation, ou null si le devis n'y est pas soumis (signé à l'établissement, client professionnel). */
+export function finRetractation(horsEtablissement: boolean, typeClient: string, dateSignature: string | null): string | null {
+  if (!horsEtablissement || typeClient !== 'particulier' || !dateSignature) return null;
+  return ajouterJours(dateSignature, DELAI_RETRACTATION_JOURS);
+}
+
+/** Libellé de la date de prestation selon le type (acompte : début prévu ; situation : période ; sinon : prestation). */
+export function libelleDatesPrestation(type: TypeFacture, debut: string | null, fin: string | null, formater: (d: string) => string): string | null {
+  if (type === 'avoir') return null;
+  if (type === 'acompte') return debut ? `Début des travaux prévu le ${formater(debut)}` : null;
+  if (!debut && !fin) return null;
+  const periode = debut && fin && debut !== fin ? `du ${formater(debut)} au ${formater(fin)}` : `le ${formater((fin ?? debut)!)}`;
+  return type === 'situation' ? `Travaux réalisés : ${debut && fin && debut !== fin ? `période ${periode}` : `jusqu’au ${formater((fin ?? debut)!)}`}`
+    : `Date de la prestation : ${periode}`;
+}
 
 /**
  * Mentions de la facture : un manque BLOQUANT empêche l'émission (rien n'est
@@ -276,18 +312,27 @@ export function controlerMentionsFacture(e: CopieEmetteurFacture, c: CopieClient
   }
   if (vide(c.nom_affiche)) bloque('client_nom', 'Nom du client manquant.', 'client');
   if (vide(c.adresse.ligne1) || vide(c.adresse.code_postal) || vide(c.adresse.ville)) bloque('client_adresse', 'Adresse du client incomplète.', 'client');
-  if (f.type !== 'avoir' && f.date_prestation_debut === null && f.date_prestation_fin === null) {
-    bloque('date_prestation', 'Date de la prestation manquante (début ou fin des travaux).', 'devis');
+  // Acompte : versé avant les travaux, pas de date de prestation exigée ; les autres factures : date d'achèvement (ou d'arrêt de la situation).
+  if (f.type !== 'avoir' && f.type !== 'acompte' && f.date_prestation_fin === null) {
+    bloque('date_prestation', f.type === 'situation' ? 'Date de fin de la période facturée manquante.' : 'Date de fin des travaux (ou de la prestation) manquante.', 'devis');
   }
   if (f.date_prestation_debut && f.date_prestation_fin && f.date_prestation_fin < f.date_prestation_debut) {
     bloque('dates_prestation', 'La fin de la prestation précède son début.', 'devis');
   }
-  if (f.regime_tva !== e.regime_tva) bloque('regime', 'Le régime de TVA de la facture ne correspond plus aux Paramètres : recréez la facture.', 'devis');
+  // Un avoir garde le régime de la facture qu'il corrige (changement de régime depuis : À VÉRIFIER pour la mention).
+  if (f.type !== 'avoir' && f.regime_tva !== e.regime_tva) bloque('regime', 'Le régime de TVA de la facture ne correspond plus aux Paramètres : recréez la facture.', 'devis');
   if (f.autoliquidation) {
     if (c.type !== 'professionnel') bloque('autoliquidation_client', 'Autoliquidation : seulement pour un client professionnel (donneur d’ordre).', 'devis');
     if (!c.tva_intra) signale('autoliquidation_tva', 'Autoliquidation : numéro de TVA du client non renseigné (À VÉRIFIER avec le comptable).', 'client');
   }
   if (ch && (vide(ch.adresse.ligne1) || vide(ch.adresse.ville))) signale('chantier_adresse', 'Adresse du chantier incomplète.', 'chantier');
+  if (f.fin_retractation && f.type !== 'avoir') {
+    if (f.date_echeance <= f.fin_retractation) {
+      bloque('echeance_retractation', `Devis signé chez le client : délai de rétractation jusqu’au ${formaterDateIso(f.fin_retractation)}. L’échéance doit tomber après : allongez le délai de paiement.`, 'devis');
+    } else if (f.date_emission <= f.fin_retractation) {
+      signale('retractation', `Devis signé chez le client : délai de rétractation jusqu’au ${formaterDateIso(f.fin_retractation)}. La facture ne demande aucun paiement avant le ${formaterDateIso(ajouterJours(f.fin_retractation, 1))} (ni QR code ni paiement en ligne d’ici là). Durée de l’interdiction d’encaisser : À VÉRIFIER avec le comptable.`, 'devis');
+    }
+  }
   return m;
 }
 
@@ -299,7 +344,7 @@ export function textesAVerifierFacture(e: CopieEmetteurFacture, c: CopieClient, 
     if (c.type === 'professionnel') t.push('Mention de l’indemnité forfaitaire pour frais de recouvrement');
   }
   if (f.autoliquidation) t.push('Mention d’autoliquidation (sous-traitance du bâtiment)');
-  if (e.regime_tva === 'franchise') t.push('Mention de franchise de TVA');
+  if (f.regime_tva === 'franchise') t.push('Mention de franchise de TVA');
   return t;
 }
 
@@ -312,8 +357,11 @@ export function mentionPenalites(p: ConditionsPaiement): string | null {
 
 export function mentionIndemnite(p: ConditionsPaiement, client: CopieClient): string | null {
   if (client.type !== 'professionnel') return null;
-  return `Indemnité forfaitaire pour frais de recouvrement en cas de retard de paiement : ${(p.indemnite_recouvrement_cents / 100).toFixed(2).replace('.', ',')} €.`;
+  return `Indemnité forfaitaire pour frais de recouvrement en cas de retard de paiement : ${formaterEuros(p.indemnite_recouvrement_cents)}.`;
 }
+
+/** AAAA-MM-JJ -> JJ/MM/AAAA (sans fuseau : date civile). */
+const formaterDateIso = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
 
 /** Date d'échéance = émission + délai (même calcul que la base). */
 export const dateEcheance = (dateEmission: string, delaiJours: number) => ajouterJours(dateEmission, delaiJours);

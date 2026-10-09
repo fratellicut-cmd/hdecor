@@ -103,7 +103,7 @@ export async function proxy(request: NextRequest) {
   reponse.headers.set('X-Frame-Options', 'DENY');
   reponse.headers.set('X-Content-Type-Options', 'nosniff');
   // Lien public : le jeton est dans l'adresse, il ne doit partir vers aucun site.
-  reponse.headers.set('Referrer-Policy', chemin.startsWith('/d/') ? 'no-referrer' : 'strict-origin-when-cross-origin');
+  reponse.headers.set('Referrer-Policy', chemin.startsWith('/d/') || chemin.startsWith('/f/') ? 'no-referrer' : 'strict-origin-when-cross-origin');
   reponse.headers.set('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(), payment=()');
   if (process.env.NODE_ENV === 'production') {
     reponse.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');

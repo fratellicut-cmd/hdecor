@@ -26,7 +26,15 @@ export function schemaModeleMessage(code: CodeMessage) {
   return z.object({
     sujet: verifier('Objet', 200),
     corps: verifier('Message', 5000).refine((t) => t.includes('{lien}'), { error: 'Le message doit contenir {lien} (le lien vers le document).' }),
-    delai_jours: estRelanceImpaye(code) ? entier(1, 365, 'Délai') : z.any().transform(() => undefined),
-    actif: estRelanceImpaye(code) ? caseACocher : z.any().transform(() => undefined),
+    delai_jours: estRelanceImpaye(code) ? entier(1, 365, 'Délai') : z.unknown().transform(() => undefined),
+    actif: estRelanceImpaye(code) ? caseACocher : z.unknown().transform(() => undefined),
   });
+}
+
+/** Délais des rappels strictement croissants (1er < 2e < dernier) : null si c'est le cas, sinon le message. */
+export function controlerDelaisRelances(delais: Partial<Record<'impaye_1' | 'impaye_2' | 'impaye_3', number>>): string | null {
+  const [a, b, c] = [delais.impaye_1, delais.impaye_2, delais.impaye_3];
+  if (a !== undefined && b !== undefined && b <= a) return `Le 2e rappel doit partir après le 1er (plus de ${a} jours).`;
+  if (b !== undefined && c !== undefined && c <= b) return `Le dernier rappel doit partir après le 2e (plus de ${b} jours).`;
+  return null;
 }

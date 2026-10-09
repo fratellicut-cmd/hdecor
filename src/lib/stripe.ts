@@ -14,7 +14,7 @@ export function stripeConfigure(): boolean {
 
 /** Session de paiement Stripe Checkout ; renvoie l'URL de paiement, ou null si Stripe refuse ou ne répond pas. */
 export async function creerSessionPaiement(p: {
-  factureId: string; organisationId: string; libelle: string; montantCents: bigint; retour: string; email?: string | null;
+  factureId: string; organisationId: string; libelle: string; montantCents: bigint; retour: string;
 }): Promise<string | null> {
   const cle = process.env.STRIPE_SECRET_KEY;
   if (!cle || p.montantCents <= 0n) return null;
@@ -28,12 +28,13 @@ export async function creerSessionPaiement(p: {
     'metadata[facture_id]': p.factureId,
     'metadata[organisation_id]': p.organisationId,
     success_url: `${p.retour}?paiement=en_cours`,
-    cancel_url: p.retour,
+    cancel_url: `${p.retour}?paiement=annule`,
   });
   try {
     const r = await fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST', body: corps, signal: AbortSignal.timeout(15_000),
-      headers: { authorization: `Bearer ${cle}`, 'content-type': 'application/x-www-form-urlencoded' },
+      // Même facture, même reste : Stripe renvoie la même session (deux onglets ne créent pas deux paiements).
+      headers: { authorization: `Bearer ${cle}`, 'content-type': 'application/x-www-form-urlencoded', 'idempotency-key': `hdecor-${p.factureId}-${p.montantCents}` },
     });
     if (!r.ok) { console.error('Stripe : session refusée', r.status); return null; }
     const s = await r.json() as { url?: unknown };

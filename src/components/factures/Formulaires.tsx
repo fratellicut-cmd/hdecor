@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import {
-  annulerPaiement, creerAvoir, creerFacture, deplacerLigneFacture, emettreFacture, enregistrerEnteteFacture, enregistrerLigneFacture,
+  annulerPaiement, creerAvoir, relancerFacture, creerFacture, deplacerLigneFacture, emettreFacture, enregistrerEnteteFacture, enregistrerLigneFacture,
   enregistrerPaiement, envoyerFacture,
 } from '@/app/(app)/factures/actions';
 import { useFormulaire } from '@/components/formulaire/useFormulaire';
@@ -113,9 +113,16 @@ export type EnteteFactureSaisie = {
   remise_globale_bp: string; autoliquidation: boolean;
 };
 
-export function FormulaireEnteteFacture({ factureId, entete, version, remiseModifiable, autoliquidationPossible }: {
-  factureId: string; entete: EnteteFactureSaisie; version: string; remiseModifiable: boolean; autoliquidationPossible: boolean;
+const LIBELLES_DATES: Record<string, [string, string, string | undefined]> = {
+  acompte: ['Début des travaux prévu', 'Fin prévue (facultatif)', 'Facture d’acompte : aucune date de prestation n’est exigée (À VÉRIFIER).'],
+  situation: ['Période facturée : du', 'au (date de cette situation)', undefined],
+  avoir: ['Début (facultatif)', 'Fin (facultatif)', undefined],
+};
+
+export function FormulaireEnteteFacture({ factureId, entete, version, remiseModifiable, autoliquidationPossible, type }: {
+  factureId: string; entete: EnteteFactureSaisie; version: string; remiseModifiable: boolean; autoliquidationPossible: boolean; type: string;
 }) {
+  const [libDebut, libFin, aideDates] = LIBELLES_DATES[type] ?? ['Début des travaux', 'Fin des travaux (achèvement)', 'Préremplie avec aujourd’hui : corrigez si les travaux ont fini un autre jour.'];
   const { etat, action, enCours, formRef, garde, surEnvoi } = useFormulaire(`facture:entete:${factureId}`, enregistrerEnteteFacture, { version });
   const e = etat.erreurs ?? {};
   const v = (k: keyof EnteteFactureSaisie) => etat.valeurs?.[k] ?? String(entete[k]);
@@ -125,9 +132,10 @@ export function FormulaireEnteteFacture({ factureId, entete, version, remiseModi
       <RetourFormulaire etat={etat} />
       <MessagesGarde garde={garde} />
       <div className="grid grid-cols-2 gap-3">
-        <Champ libelle="Prestation : début" nom="date_prestation_debut" type="date" defaultValue={v('date_prestation_debut')} erreur={e.date_prestation_debut} />
-        <Champ libelle="Prestation : fin" nom="date_prestation_fin" type="date" defaultValue={v('date_prestation_fin')} erreur={e.date_prestation_fin} />
+        <Champ libelle={libDebut} nom="date_prestation_debut" type="date" defaultValue={v('date_prestation_debut')} erreur={e.date_prestation_debut} />
+        <Champ libelle={libFin} nom="date_prestation_fin" type="date" defaultValue={v('date_prestation_fin')} erreur={e.date_prestation_fin} />
       </div>
+      {aideDates ? <p className="-mt-2 text-sm text-encre-douce">{aideDates}</p> : null}
       <Champ libelle="Délai de paiement (jours)" nom="delai_paiement_jours" inputMode="numeric" defaultValue={v('delai_paiement_jours')}
         erreur={e.delai_paiement_jours} aide="L’échéance est calculée à l’émission." />
       {remiseModifiable ? (
@@ -256,7 +264,8 @@ export function FormulairePaiement({ factureId, reste, aujourdhui, remboursement
           defaultValue={sv?.montant_cents ?? reste} erreur={e.montant_cents} />
         <Champ libelle="Date" nom="date_paiement" type="date" defaultValue={sv?.date_paiement ?? aujourdhui} erreur={e.date_paiement} />
       </div>
-      <Selection libelle="Mode" nom="mode" defaultValue={sv?.mode ?? 'virement'} erreur={e.mode}>
+      <Selection libelle="Mode" nom="mode" defaultValue={sv?.mode ?? ''} erreur={e.mode}>
+        <option value="">Choisir…</option>
         <option value="virement">Virement</option>
         <option value="cheque">Chèque</option>
         <option value="especes">Espèces</option>
@@ -290,31 +299,79 @@ export function AnnulerPaiement({ factureId, paiementId }: { factureId: string; 
 // Avoir
 // --------------------------------------------------------------------------
 
-export function FormulaireAvoir({ factureId, reste }: { factureId: string; reste: string }) {
+export function FormulaireAvoir({ factureId, reste, totalSeulement }: { factureId: string; reste: string; totalSeulement: boolean }) {
   const { etat, action, enCours, formRef, garde, surEnvoi } = useFormulaire(`facture:avoir:${factureId}`, creerAvoir);
   const e = etat.erreurs ?? {};
   const v = (k: string, d: string) => etat.valeurs?.[k] ?? d;
   const [mode, setMode] = useState(v('mode', 'total'));
+  const [nature, setNature] = useState(v('nature', 'correction'));
+  const correctionTotale = totalSeulement && nature === 'correction';
   return (
     <form ref={formRef} action={action} onSubmit={surEnvoi} className="flex flex-col gap-4" noValidate>
       <input type="hidden" name="facture_id" value={factureId} />
       <RetourFormulaire etat={etat} />
       <MessagesGarde garde={garde} />
-      <Selection libelle="Nature" nom="nature" defaultValue={v('nature', 'correction')} erreur={e.nature}>
+      <Selection libelle="Nature" nom="nature" value={nature} onChange={(ev) => setNature(ev.target.value)} erreur={e.nature}>
         <option value="correction">Correction ou annulation (erreur, travaux non réalisés)</option>
         <option value="reduction">Réduction de prix accordée après coup (geste commercial)</option>
       </Selection>
-      <Selection libelle="Montant" nom="mode" value={mode} onChange={(ev) => setMode(ev.target.value)} erreur={e.mode}>
-        <option value="total">Tout le reste dû ({reste})</option>
-        <option value="montant">Un montant précis</option>
-      </Selection>
-      {mode === 'montant' ? (
+      {correctionTotale ? (
+        <>
+          <input type="hidden" name="mode" value="total" />
+          <p className="text-sm">Une facture d’acompte ou de situation se corrige en totalité ({reste}) ; établissez ensuite une nouvelle facture si besoin.</p>
+        </>
+      ) : (
+        <Selection libelle="Montant" nom="mode" value={mode} onChange={(ev) => setMode(ev.target.value)} erreur={e.mode}>
+          <option value="total">Tout le reste dû ({reste})</option>
+          <option value="montant">Un montant précis</option>
+        </Selection>
+      )}
+      {mode === 'montant' && !correctionTotale ? (
         <Champ libelle="Montant de l’avoir, TTC (€)" nom="montant_ttc_cents" inputMode="decimal" defaultValue={v('montant_ttc_cents', '')}
           erreur={e.montant_ttc_cents} aide="Réparti sur les taux de TVA de la facture, au prorata." />
       ) : null}
       <TexteLong libelle="Motif (imprimé sur l’avoir)" nom="motif" defaultValue={v('motif', '')} erreur={e.motif} />
       <RappelEnvoi garde={garde} etat={etat} />
       <Bouton type="submit" disabled={enCours}>{enCours ? 'Création…' : 'Créer l’avoir (brouillon)'}</Bouton>
+    </form>
+  );
+}
+
+// --------------------------------------------------------------------------
+// Relance manuelle d'une facture échue
+// --------------------------------------------------------------------------
+
+export function RelanceFacture({ factureId, email, emailActif }: { factureId: string; email: string | null; emailActif: boolean }) {
+  const { etat, action, enCours, formRef, surEnvoi } = useFormulaire(null, relancerFacture);
+  const [copie, setCopie] = useState(false);
+  const texte = etat.texte;
+  const partager = async () => {
+    if (!texte) return;
+    if (navigator.share) { try { await navigator.share({ text: texte }); } catch { /* partage annulé */ } }
+    else { await navigator.clipboard.writeText(texte); setCopie(true); }
+  };
+  return (
+    <form ref={formRef} action={action} onSubmit={surEnvoi} className="flex flex-col gap-3">
+      <input type="hidden" name="id" value={factureId} />
+      <RetourFormulaire etat={etat} />
+      {texte ? (
+        <div className="flex flex-col gap-2 rounded-xl border-2 border-anthracite bg-white p-3">
+          <TexteLong libelle="Message de relance (avec le lien de la facture)" nom="texte_relance" readOnly rows={7} value={texte} />
+          <div className="grid grid-cols-2 gap-2">
+            <Bouton type="button" variante="secondaire" onClick={async () => { await navigator.clipboard.writeText(texte); setCopie(true); }}>
+              {copie ? 'Copié ✓' : 'Copier'}
+            </Bouton>
+            <Bouton type="button" variante="secondaire" onClick={partager}>Partager (SMS…)</Bouton>
+          </div>
+        </div>
+      ) : null}
+      <p className="text-sm">Le rappel suivant (1er, 2e puis dernier) est préparé avec le modèle de Réglages &gt; Messages et relances, et noté dans l’historique.</p>
+      {emailActif && email ? (
+        <Bouton type="submit" name="canal" value="email" disabled={enCours}>{enCours ? 'Envoi…' : `Relancer par email (${email})`}</Bouton>
+      ) : null}
+      <Bouton type="submit" name="canal" value="lien" variante={emailActif && email ? 'secondaire' : 'principal'} disabled={enCours}>
+        Préparer un message à partager (SMS, WhatsApp)
+      </Bouton>
     </form>
   );
 }

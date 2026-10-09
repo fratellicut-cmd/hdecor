@@ -106,8 +106,10 @@ select public.initialiser_messages(id) from public.organisations;
 -- Facture émise (pas un avoir), ENVOYÉE (relance seulement après un envoi
 -- réel), échue, avec un reste à payer, client avec email et non anonymisé.
 -- Niveau proposé : le premier niveau actif non encore envoyé, dont le délai
--- après l'échéance est atteint et dont le niveau précédent (s'il existe et
--- est actif) a déjà été envoyé. Un seul niveau par facture et par passage.
+-- après l'échéance est atteint et dont chaque niveau précédent actif a été
+-- ENVOYÉ (statut envoyé, pas seulement réservé) depuis au moins l'écart entre
+-- leurs délais (1 jour au moins) : une facture découverte très en retard ne
+-- reçoit pas les trois rappels en trois jours. Un seul niveau par passage.
 create or replace function public.factures_a_relancer()
 returns table (organisation_id uuid, facture_id uuid, numero text, email text, client text, entreprise text,
                reste_cents bigint, date_echeance date, niveau integer, code text)
@@ -139,7 +141,9 @@ as $$
                         and substring(prec.code from 8)::integer < m.niveau
                         and not exists (select 1 from public.envois e2
                                         where e2.document_type = 'facture' and e2.document_id = f.id
-                                          and e2.nature = prec.code and e2.statut <> 'echec'))
+                                          and e2.nature = prec.code and e2.statut = 'envoye'
+                                          and (e2.envoye_le at time zone 'Europe/Paris')::date
+                                              <= public.aujourd_hui_paris() - greatest(m.delai_jours - coalesce(prec.delai_jours, 0), 1)))
     order by m.niveau
     limit 1
   ) n
@@ -207,7 +211,8 @@ begin
   if v_f.statut = 'brouillon' then
     raise exception 'Facture non émise.' using errcode = 'P0001';
   end if;
-  if not public.chemin_de_l_organisation(p_chemin, v_f.organisation_id) or p_chemin is null then
+  -- Chemin imposé : dossier de CETTE facture, empreinte SHA-256 du XML dans le nom (vérifiée à la lecture).
+  if p_chemin is null or p_chemin !~ ('^' || v_f.organisation_id::text || '/factures/' || v_f.id::text || '/facturx-[0-9a-f]{64}\.xml$') then
     raise exception 'Chemin de fichier invalide.' using errcode = 'P0001';
   end if;
   if v_f.facturx_chemin is not null then
@@ -239,3 +244,36 @@ create policy envois_conclusion on public.envois
   for update to authenticated
   using (public.est_membre(organisation_id) and statut = 'en_cours')
   with check (public.est_membre(organisation_id) and statut in ('envoye', 'echec'));
+
+-- 9. Paiements par carte (Stripe, facultatif) : un même paiement (payment_intent)
+--    n'est enregistré qu'une fois ; un paiement ENCAISSÉ par Stripe mais refusé
+--    par la base (facture soldée, annulée…) est consigné pour être vu et
+--    remboursé, jamais seulement journalisé.
+create unique index paiements_stripe_reference_unique on public.paiements (organisation_id, reference)
+  where mode = 'stripe';
+
+create table public.incidents_paiement (
+  id                  uuid primary key default gen_random_uuid(),
+  organisation_id     uuid not null references public.organisations (id) on delete restrict,
+  facture_id          uuid not null,
+  stripe_evenement_id text not null unique,
+  reference           text,
+  montant_cents       bigint not null check (montant_cents > 0),
+  motif               text not null,
+  traite_le           timestamptz,
+  created_at          timestamptz not null default now(),
+  foreign key (organisation_id, facture_id) references public.factures (organisation_id, id) on delete restrict
+);
+create index incidents_paiement_facture_idx on public.incidents_paiement (organisation_id, facture_id);
+alter table public.incidents_paiement enable row level security;
+create policy incidents_paiement_lecture on public.incidents_paiement
+  for select to authenticated using (public.est_membre(organisation_id));
+-- Seul le traitement se marque (remboursé dans Stripe) ; l'écriture vient du webhook (rôle service).
+create policy incidents_paiement_traitement on public.incidents_paiement
+  for update to authenticated using (public.est_membre(organisation_id) and traite_le is null)
+  with check (public.est_membre(organisation_id));
+revoke all on public.incidents_paiement from anon, authenticated;
+grant select on public.incidents_paiement to authenticated;
+grant update (traite_le) on public.incidents_paiement to authenticated;
+grant select, insert on public.incidents_paiement to service_role;
+

@@ -5,8 +5,10 @@ import { clientServeur } from '@/lib/supabase/serveur';
 import type { Ligne, Vue } from '@/lib/supabase/types';
 import type { Regime, Ventilation } from '@/domain/devis';
 import { copieChantier, copieClient, copieEmetteur, type CopieChantier, type CopieClient, type Manque } from '@/domain/devis-document';
+import { aujourdHuiParis } from '@/domain/dates';
+import { ajouterJours } from '@/domain/devis-document';
 import {
-  controlerMentionsFacture, ErreurFacture, netAPayer, textesAVerifierFacture, totauxFacture,
+  controlerMentionsFacture, ErreurFacture, finRetractation, netAPayer, textesAVerifierFacture, totauxFacture,
   type CopieEmetteurFacture, type Deduction, type LigneFacture, type TypeFacture,
 } from '@/domain/factures';
 import type { DonneesPdfFacture } from '@/lib/pdf/facture';
@@ -111,7 +113,15 @@ export type PreparationFacture = {
   chantier: CopieChantier;
   manques: Manque[];
   textesAVerifier: string[];
+  /** Dernier jour du délai de rétractation si la facture est émise pendant ce délai (aucun paiement demandé avant le lendemain). */
+  retractationJusquau: string | null;
 };
+
+/** Fin du délai de rétractation du devis de la facture (signé hors établissement par un particulier), sinon null. */
+export function finRetractationFacture(c: Pick<FactureComplete, 'devis'>, typeClient: string): string | null {
+  const d = c.devis;
+  return d ? finRetractation(d.hors_etablissement, typeClient, d.accepte_le ? aujourdHuiParis(new Date(d.accepte_le)) : null) : null;
+}
 
 /** Copies figées (à la date d'émission) et contrôle des mentions : rien n'est inventé pour combler un manque. */
 export async function preparerEmissionFacture(sb: Client, c: FactureComplete, dateIso: string): Promise<PreparationFacture> {
@@ -131,15 +141,20 @@ export async function preparerEmissionFacture(sb: Client, c: FactureComplete, da
   const client = copieClient(c.client);
   const chantier = copieChantier(c.chantier);
   const f = c.facture;
+  const fin = f.type === 'avoir' ? null : finRetractationFacture(c, client.type);
   const aControler = {
     type: f.type, date_prestation_debut: f.date_prestation_debut, date_prestation_fin: f.date_prestation_fin,
     autoliquidation: f.autoliquidation!, regime_tva: f.regime_tva,
+    date_emission: dateIso, date_echeance: ajouterJours(dateIso, f.delai_paiement_jours!), fin_retractation: fin,
   };
-  return { emetteur, client, chantier, manques: controlerMentionsFacture(emetteur, client, chantier, aControler), textesAVerifier: textesAVerifierFacture(emetteur, client, aControler) };
+  return {
+    emetteur, client, chantier, manques: controlerMentionsFacture(emetteur, client, chantier, aControler),
+    textesAVerifier: textesAVerifierFacture(emetteur, client, aControler), retractationJusquau: fin && dateIso <= fin ? fin : null,
+  };
 }
 
 /** Données du PDF (aperçu ou émission) depuis la facture et les copies. */
-export function donneesPdfFacture(c: FactureComplete, prep: Pick<PreparationFacture, 'emetteur' | 'client' | 'chantier'>,
+export function donneesPdfFacture(c: FactureComplete, prep: Pick<PreparationFacture, 'emetteur' | 'client' | 'chantier' | 'retractationJusquau'>,
   o: { numero: string | null; dateEmission: string; dateEcheance: string; brouillon: boolean }): DonneesPdfFacture {
   const f = c.facture;
   return {
@@ -151,6 +166,7 @@ export function donneesPdfFacture(c: FactureComplete, prep: Pick<PreparationFact
     natureAvoir: (f.nature_avoir as 'correction' | 'reduction' | null) ?? null, avancementBp: f.avancement_bp,
     regime: f.regime_tva, autoliquidation: f.autoliquidation!, remiseGlobaleBp: f.remise_globale_bp!,
     lignes: c.lignes.map(ligneFactureDomaine), deductions: deductionsDomaine(f.deductions), notesClient: f.notes_client,
+    paiementApresLe: prep.retractationJusquau ? ajouterJours(prep.retractationJusquau, 1) : null,
     urlConfidentialite: `${envPublique.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '')}/confidentialite`,
   };
 }

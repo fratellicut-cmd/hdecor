@@ -10,6 +10,8 @@ export type EtatFormulaire = {
   doublon?: { id: string; nom: string };
   /** Lien public créé (affiché une seule fois : seule son empreinte est stockée). */
   lien?: string;
+  /** Message prêt à copier ou partager (relance par SMS, WhatsApp…). */
+  texte?: string;
 };
 
 export const ETAT_INITIAL: EtatFormulaire = {};

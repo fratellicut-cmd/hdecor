@@ -9,7 +9,7 @@
  */
 
 import type { Ventilation, Regime } from './devis';
-import type { CopieClient, CopieEmetteur } from './devis-document';
+import { nomAvecForme, type CopieClient, type CopieEmetteur } from './devis-document';
 import { totalLigneFacture, type Deduction, type LigneFacture, type TypeFacture } from './factures';
 
 export type DonneesFacturX = {
@@ -63,11 +63,13 @@ function adresse(a: { ligne1: string | null; ligne2: string | null; code_postal:
 
 export function xmlFacturX(d: DonneesFacturX): string {
   const cat = (t: number) => categorie(d.regime, d.autoliquidation, t);
+  // Ordre du schéma CII : ExemptionReason avant BasisAmount, ExemptionReasonCode après CategoryCode.
   const motifExoneration = (t: number) => {
-    if (d.autoliquidation) return '<ram:ExemptionReasonCode>VATEX-EU-AE</ram:ExemptionReasonCode>';
+    if (d.autoliquidation) return '<ram:ExemptionReason>Autoliquidation</ram:ExemptionReason>';
     if (cat(t) === 'E' && d.emetteur.mention_franchise) return `<ram:ExemptionReason>${echapper(d.emetteur.mention_franchise)}</ram:ExemptionReason>`;
     return '';
   };
+  const codeExoneration = () => (d.autoliquidation ? '<ram:ExemptionReasonCode>VATEX-EU-AE</ram:ExemptionReasonCode>' : '');
   const lignes = d.lignes.filter((l) => l.type === 'ligne').map((l, i) => {
     const total = totalLigneFacture(l.quantiteE4!, l.prixUnitaireCents!, l.remiseBp, l.avancementBp);
     return `<ram:IncludedSupplyChainTradeLineItem>`
@@ -84,7 +86,7 @@ export function xmlFacturX(d: DonneesFacturX): string {
     .reduce((a, l) => a + totalLigneFacture(l.quantiteE4!, l.prixUnitaireCents!, l.remiseBp, l.avancementBp), 0n);
   const taxes = d.ventilation.map((v) => `<ram:ApplicableTradeTax><ram:CalculatedAmount>${montant(v.tva_cents)}</ram:CalculatedAmount>`
     + `<ram:TypeCode>VAT</ram:TypeCode>${motifExoneration(v.taux_bp)}<ram:BasisAmount>${montant(v.base_ht_cents)}</ram:BasisAmount>`
-    + `<ram:CategoryCode>${cat(v.taux_bp)}</ram:CategoryCode><ram:RateApplicablePercent>${taux(d.autoliquidation || d.regime === 'franchise' ? 0 : v.taux_bp)}</ram:RateApplicablePercent></ram:ApplicableTradeTax>`).join('');
+    + `<ram:CategoryCode>${cat(v.taux_bp)}</ram:CategoryCode>${codeExoneration()}<ram:RateApplicablePercent>${taux(d.autoliquidation || d.regime === 'franchise' ? 0 : v.taux_bp)}</ram:RateApplicablePercent></ram:ApplicableTradeTax>`).join('');
   const prepaye = d.deductions.reduce((a, x) => a + x.ttc, 0n);
   const e = d.emetteur;
   return `<?xml version="1.0" encoding="UTF-8"?>`
@@ -93,7 +95,7 @@ export function xmlFacturX(d: DonneesFacturX): string {
     + `<rsm:ExchangedDocument><ram:ID>${echapper(d.numero)}</ram:ID><ram:TypeCode>${typeDocument(d.type)}</ram:TypeCode><ram:IssueDateTime>${date102(d.dateEmission)}</ram:IssueDateTime></rsm:ExchangedDocument>`
     + `<rsm:SupplyChainTradeTransaction>${lignes}`
     + `<ram:ApplicableHeaderTradeAgreement>`
-    + `<ram:SellerTradeParty><ram:Name>${echapper(e.raison_sociale ?? '')}</ram:Name>`
+    + `<ram:SellerTradeParty><ram:Name>${echapper(nomAvecForme(e))}</ram:Name>`
     + `${e.siret ? `<ram:SpecifiedLegalOrganization><ram:ID schemeID="0002">${echapper(e.siret.slice(0, 9))}</ram:ID></ram:SpecifiedLegalOrganization>` : ''}`
     + adresse(e.adresse)
     + `${e.numero_tva_intra ? `<ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">${echapper(e.numero_tva_intra)}</ram:ID></ram:SpecifiedTaxRegistration>` : ''}`

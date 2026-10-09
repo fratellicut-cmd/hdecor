@@ -25,7 +25,7 @@ export default async function PageAvoir({ params }: PageProps<'/factures/[id]/av
       <h1 className="text-2xl font-bold">Avoir sur la facture {f.numero}</h1>
       <p>Une facture émise ne se modifie pas : l’avoir la corrige (en totalité ou en partie). Il reçoit son propre numéro (AVO-…) à l’émission.</p>
       {(f.paye_cents ?? 0) > 0 ? <Message type="info">Le client a déjà payé {formaterEuros(f.paye_cents!)} : si l’avoir crée un trop-perçu, enregistrez ensuite le remboursement sur l’avoir.</Message> : null}
-      {du <= 0 ? <Message type="info">Cette facture est déjà entièrement couverte par des avoirs.</Message> : <FormulaireAvoir factureId={f.id!} reste={formaterEuros(du)} />}
+      {du <= 0 ? <Message type="info">Cette facture est déjà entièrement couverte par des avoirs.</Message> : <FormulaireAvoir factureId={f.id!} reste={formaterEuros(du)} totalSeulement={f.type === 'acompte' || f.type === 'situation'} />}
     </div>
   );
 }

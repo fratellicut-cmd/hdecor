@@ -56,6 +56,9 @@ describe('lireMontantEnCentimes', () => {
   it('pas d’erreur d’arrondi flottant (0,1 + 0,2)', () => {
     expect(lireMontantEnCentimes('0,1')! + lireMontantEnCentimes('0,2')!).toBe(30);
   });
+  it.each(['1 0,5', '12 34', '1 2345', '1234 567'])('« %s » : espace hors séparateur de milliers -> refusé (faute de frappe)', (x) =>
+    expect(lireMontantEnCentimes(x)).toBeNull());
+  it.each([['1 234 567,89', 123456789], ['12 345', 1234500], ['40 €', 4000]])('« %s » -> %i', (x, attendu) => expect(lireMontantEnCentimes(x)).toBe(attendu));
 });
 
 describe('lirePourcentageEnPointsDeBase', () => {

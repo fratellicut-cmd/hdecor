@@ -29,6 +29,9 @@ export default function PageConfidentialite() {
           <li>Vous recontacter au sujet d’une demande sans suite, pendant une durée limitée (intérêt légitime).</li>
           <li>Prouver votre accord quand vous signez un devis (signature électronique).</li>
           <li>Vous envoyer vos devis par email et, si vous n’avez pas répondu, une relance (une seule par devis).</li>
+          <li>Vous envoyer vos factures et, en cas de retard de paiement, jusqu’à trois rappels (par email ou par message), le dernier
+            annonçant une procédure de recouvrement (intérêt légitime : être payé).</li>
+          <li>Si l’entreprise l’a activé : vous permettre de payer par carte en ligne (Stripe).</li>
         </ul>
         <p className="mt-2 text-sm">Bases légales <BadgeAVerifier /></p>
       </Section>
@@ -49,6 +52,8 @@ export default function PageConfidentialite() {
           <li>Demande sans devis ni facture : anonymisée automatiquement après une durée sans activité fixée par l’entreprise. <BadgeAVerifier /></li>
           <li>Factures et devis acceptés, avec la preuve de signature : conservés pendant la durée légale de conservation des pièces comptables (10 ans). <BadgeAVerifier /></li>
           <li>Lien de consultation ou de signature d’un devis : valable au plus jusqu’à la fin de validité du devis (90 jours au maximum).</li>
+          <li>Lien de consultation d’une facture : valable jusqu’à son échéance (30 jours au moins, 89 au plus) ; un nouvel envoi ou un rappel
+            désactive le lien précédent, et l’entreprise peut le désactiver à tout moment.</li>
         </ul>
       </Section>
 
@@ -58,8 +63,13 @@ export default function PageConfidentialite() {
           dans l’Union européenne. <BadgeAVerifier />
         </p>
         <p className="mt-2">
-          Les emails (envoi des devis, relance) passent par Resend, prestataire établi aux États-Unis : votre adresse email, votre nom et le
-          lien du devis lui sont transmis. Région d’envoi et garanties du transfert (clauses contractuelles types) <BadgeAVerifier />
+          Les emails (envoi des devis et des factures, relances) passent par Resend, prestataire établi aux États-Unis : votre adresse email,
+          votre nom, le lien du document et, pour une facture, son montant lui sont transmis. Région d’envoi et garanties du transfert (clauses contractuelles types) <BadgeAVerifier />
+        </p>
+        <p className="mt-2">
+          Paiement par carte (seulement si l’entreprise l’a activé) : il se fait sur la page de Stripe, prestataire établi aux États-Unis, qui
+          reçoit le numéro et le montant de la facture et vos données de paiement ; l’entreprise ne voit jamais votre numéro de carte.
+          Garanties du transfert <BadgeAVerifier />
         </p>
         <p className="mt-2">Vos données ne sont ni vendues ni utilisées pour de la publicité. Ce site n’utilise aucun cookie de suivi.</p>
       </Section>

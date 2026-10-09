@@ -61,12 +61,13 @@ export default async function PageFactures({ searchParams }: PageProps<'/facture
               <Link href={`/factures/${f.id}`} className={`flex min-h-16 flex-col justify-center rounded-xl border bg-white px-4 py-2 ${retard ? 'border-danger' : 'border-trait'}`}>
                 <span className="flex flex-wrap items-baseline justify-between gap-2">
                   <span className="font-semibold">{f.numero ?? 'Brouillon'} · {nomClient(f)}</span>
-                  <span className="font-semibold">{avoir ? '−' : ''}{formaterEuros(f.net_a_payer_cents!)}</span>
+                  {/* Montant mis en avant : ce qui reste à encaisser (le net de la facture sinon). */}
+                  <span className="text-lg font-bold">{avoir ? '−' : ''}{formaterEuros(!avoir && f.statut === 'emise' ? f.reste_a_payer_cents! : f.net_a_payer_cents!)}</span>
                 </span>
                 <span className={`text-sm ${retard ? 'font-semibold text-danger' : 'text-encre-douce'}`}>
                   {[LIBELLES_TYPE_FACTURE[f.type as TypeFacture], LIBELLES_STATUT_FACTURE[f.statut_affiche!] ?? f.statut_affiche,
                     f.date_emission ? `émise le ${formaterDate(f.date_emission)}` : null,
-                    !avoir && f.statut === 'emise' && f.reste_a_payer_cents ? `reste ${formaterEuros(f.reste_a_payer_cents)} au ${formaterDate(f.date_echeance!)}` : null,
+                    !avoir && f.statut === 'emise' && f.reste_a_payer_cents ? `reste dû sur ${formaterEuros(f.net_a_payer_cents!)}, échéance ${formaterDate(f.date_echeance!)}` : null,
                     avoir && f.reste_a_rembourser_cents ? `à rembourser ${formaterEuros(f.reste_a_rembourser_cents)}` : null,
                   ].filter(Boolean).join(' · ')}
                 </span>

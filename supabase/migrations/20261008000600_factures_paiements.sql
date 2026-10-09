@@ -334,7 +334,8 @@ begin
 
   -- Acomptes déduits : chacun doit être une facture d'acompte ou de situation
   -- ÉMISE, du même devis, déduite pour son montant exact, une seule fois.
-  if jsonb_array_length(v_f.deductions) > 0 then
+  -- (Un avoir qui annule une facture reprend ses déductions : contrôlé plus bas.)
+  if jsonb_array_length(v_f.deductions) > 0 and v_f.type <> 'avoir' then
     if v_f.type not in ('finale', 'situation') then
       raise exception 'Seules une facture finale ou de situation déduisent des acomptes.' using errcode = 'P0001';
     end if;
@@ -362,6 +363,7 @@ begin
     if exists (
       select 1 from public.factures autre, jsonb_array_elements(autre.deductions) d
       where autre.organisation_id = v_f.organisation_id and autre.statut = 'emise'   -- une facture annulée libère ses acomptes
+        and autre.type <> 'avoir'                                                    -- l'avoir d'annulation les reprend sans les déduire
         and autre.id <> v_f.id
         and (d ->> 'facture_id')::uuid in (select (e ->> 'facture_id')::uuid from jsonb_array_elements(v_f.deductions) e)
     ) then
@@ -394,16 +396,30 @@ begin
       raise exception 'Un avoir ne peut corriger qu''une facture émise et non annulée.' using errcode = 'P0001';
     end if;
     -- Un avoir porte sur ce qui est DÛ : le net à payer de la facture
-    -- d'origine (acomptes déjà déduits), moins les avoirs déjà émis.
+    -- d'origine (acomptes déjà déduits), moins les avoirs déjà émis. Le
+    -- montant d'un avoir est son NET (égal à son TTC, sauf avoir d'annulation
+    -- qui reprend les lignes ET les déductions de l'origine : TVA nette exacte par taux).
     select avoirs_cents into v_avoirs from public.solde_facture(v_origine.id);
-    if v_avoirs + v_f.total_ttc_cents > v_origine.net_a_payer_cents then
+    if v_avoirs + v_f.net_a_payer_cents > v_origine.net_a_payer_cents then
       raise exception 'Le total des avoirs dépasserait le net à payer de la facture d''origine.' using errcode = 'P0001';
+    end if;
+    if jsonb_array_length(v_f.deductions) > 0 and (
+         v_avoirs <> 0 or v_f.net_a_payer_cents <> v_origine.net_a_payer_cents
+         or v_f.deductions <> v_origine.deductions
+         or v_f.total_ttc_cents <> v_origine.total_ttc_cents) then
+      raise exception 'Un avoir qui reprend les acomptes déduits annule toute la facture d''origine.' using errcode = 'P0001';
+    end if;
+    -- Acompte ou situation : un avoir de CORRECTION l'annule en totalité (une
+    -- correction partielle ne pourrait plus être déduite exactement ensuite).
+    if v_origine.type in ('acompte', 'situation') and v_f.nature_avoir = 'correction'
+       and v_avoirs + v_f.net_a_payer_cents <> v_origine.net_a_payer_cents then
+      raise exception 'Une facture d''acompte ou de situation se corrige par un avoir total (puis une nouvelle facture).' using errcode = 'P0001';
     end if;
     -- Un acompte déduit par une facture encore valable ne se corrige pas
     -- directement : il faut d'abord annuler la facture qui le déduit.
     if exists (
       select 1 from public.factures autre, jsonb_array_elements(autre.deductions) d
-      where autre.organisation_id = v_f.organisation_id and autre.statut = 'emise'
+      where autre.organisation_id = v_f.organisation_id and autre.statut = 'emise' and autre.type <> 'avoir'
         and (d ->> 'facture_id')::uuid = v_origine.id) then
       raise exception 'Cet acompte est déduit sur une facture en cours : annulez d''abord cette facture.'
         using errcode = 'P0001';
@@ -427,7 +443,7 @@ begin
 
   -- Avoirs = net à payer : la facture d'origine est annulée (ses acomptes
   -- déduits sont alors libérés pour la facture qui la remplacera).
-  if v_f.type = 'avoir' and v_avoirs + v_f.total_ttc_cents = v_origine.net_a_payer_cents then
+  if v_f.type = 'avoir' and v_avoirs + v_f.net_a_payer_cents = v_origine.net_a_payer_cents then
     update public.factures set statut = 'annulee', annulee_le = now() where id = v_origine.id;
   end if;
 
@@ -514,7 +530,7 @@ stable
 set search_path = ''
 as $$
   with f as (select net_a_payer_cents as net from public.factures where id = p_facture_id and type <> 'avoir'),
-  a as (select coalesce(sum(total_ttc_cents), 0)::bigint as s from public.factures
+  a as (select coalesce(sum(net_a_payer_cents), 0)::bigint as s from public.factures
         where facture_origine_id = p_facture_id and statut <> 'brouillon'),
   p as (select coalesce(sum(montant_cents), 0)::bigint as s from public.paiements where facture_id = p_facture_id),
   r as (select coalesce(sum(pp.montant_cents), 0)::bigint as s
@@ -543,7 +559,7 @@ as $$
   fac as (select id, net_a_payer_cents from public.factures
           where devis_id = p_devis_id and statut <> 'brouillon' and type <> 'avoir'),
   e as (select coalesce((select sum(net_a_payer_cents) from fac), 0)
-             - coalesce((select sum(av.total_ttc_cents) from public.factures av
+             - coalesce((select sum(av.net_a_payer_cents) from public.factures av
                          where av.facture_origine_id in (select id from fac)
                            and av.statut <> 'brouillon' and av.nature_avoir = 'correction'), 0) as engage)
   select d.accepte, e.engage::bigint, greatest(0, d.accepte - e.engage)::bigint
@@ -558,10 +574,10 @@ language sql
 stable
 set search_path = ''
 as $$
-  with a as (select total_ttc_cents, facture_origine_id from public.factures where id = p_avoir_id and type = 'avoir'),
+  with a as (select net_a_payer_cents, facture_origine_id from public.factures where id = p_avoir_id and type = 'avoir'),
   p as (select coalesce(sum(montant_cents), 0)::bigint as s from public.paiements where facture_id = p_avoir_id)
   select p.s,
-         greatest(0, least(a.total_ttc_cents - p.s, so.reste_a_rembourser_cents))::bigint
+         greatest(0, least(a.net_a_payer_cents - p.s, so.reste_a_rembourser_cents))::bigint
   from a, p, lateral public.solde_facture(a.facture_origine_id) so;
 $$;
 

@@ -3,7 +3,7 @@ import { totauxDevis, type LigneDevis } from '../devis';
 import { copieClient, copieEmetteur, type ParametresEmetteur } from '../devis-document';
 import {
   controlerMentionsFacture, deductionsDisponibles, ErreurFacture, formaterIban, ibanValide, lignesAcompte, lignesAvoirMontant,
-  lignesAvoirTotal, lignesDepuisDevis, mentionIndemnite, mentionPenalites, netAPayer, netParTaux, totalLigneFacture, totauxFacture,
+  finRetractation, libelleDatesPrestation, lignesAvoirTotal, lignesDepuisDevis, mentionIndemnite, mentionPenalites, netAPayer, netParTaux, totalLigneFacture, totauxFacture,
   textesAVerifierFacture, type CopieEmetteurFacture, type FactureDuDevis, type LigneFacture,
 } from '../factures';
 import { payloadVirementSepa, ErreurVirement } from '../virement';
@@ -130,6 +130,27 @@ describe('avoirs', () => {
   it('au-delà du net : refusé', () => {
     expect(() => lignesAvoirMontant([{ taux_bp: 0, base_ht_cents: 100n, tva_cents: 0n }], 101n, 'franchise', false, 'A')).toThrow(ErreurFacture);
   });
+  it('avoir total d’une finale qui déduit un acompte : lignes ET déductions reprises -> net et TVA nette exacts (cas 1 000,03 € à 20 %)', () => {
+    // Devis 1 000,03 HT à 20 % ; acompte 30 % : 300,01 + 60,00 = 360,01 ; finale 1 200,04 ; net 840,03.
+    const lignes = [lf(ld('Murs', 10_000n, 100_003n, 2_000))];
+    const t = totauxFacture(lignes, 0, 'assujetti');
+    const deductions = [{ facture_id: 'a', numero: 'FAC-1', ht: 30_001n, tva: 6_000n, ttc: 36_001n }];
+    expect(netAPayer(t.totalTtcCents, deductions)).toBe(84_003n);
+    const avoir = totauxFacture(lignesAvoirTotal(lignes), 0, 'assujetti');
+    expect(netAPayer(avoir.totalTtcCents, deductions)).toBe(84_003n);
+    expect(avoir.ventilation).toEqual(t.ventilation);
+  });
+  it('net par taux : tous les taux (y compris celui d’un acompte seul) ; taux négatif refusé', () => {
+    // Situation à 10 % seulement (1 000 + 100) qui déduit un acompte sur 10 % (300 + 30) et 5,5 % (300 + 16,50).
+    expect(() => netParTaux([{ taux_bp: 1_000, base_ht_cents: 100_000n, tva_cents: 10_000n }],
+      [[{ taux_bp: 1_000, base_ht_cents: 30_000n, tva_cents: 3_000n }, { taux_bp: 550, base_ht_cents: 30_000n, tva_cents: 1_650n }]]))
+      .toThrow(/5,5\s%/);
+  });
+  it('net par taux : les avoirs déjà émis sont retirés (avoirs successifs exacts)', () => {
+    expect(netParTaux([{ taux_bp: 1_000, base_ht_cents: 367_176n, tva_cents: 36_718n }, { taux_bp: 2_000, base_ht_cents: 98_568n, tva_cents: 19_714n }], [],
+      [[{ taux_bp: 2_000, base_ht_cents: 70_000n, tva_cents: 14_000n }]]))
+      .toEqual([{ taux_bp: 1_000, base_ht_cents: 367_176n, tva_cents: 36_718n }, { taux_bp: 2_000, base_ht_cents: 28_568n, tva_cents: 5_714n }]);
+  });
   it('propriété : tout montant atteignable reste exact sur deux taux (2 000 cas)', () => {
     let a = 3;
     const r = (n: number) => { a = (a * 1103515245 + 12345) % 2147483648; return a % n; };
@@ -193,13 +214,15 @@ describe('mentions obligatoires de la facture', () => {
   const part = copieClient({ type: 'particulier', civilite: null, nom: 'Martin', prenom: 'Alice', raison_sociale: null, siret: null, tva_intra: null,
     email: null, telephone: null, fact_ligne1: '3 av. B', fact_ligne2: null, fact_code_postal: '57100', fact_ville: 'Thionville', fact_pays: null });
   const pro = { ...part, type: 'professionnel' as const, nom_affiche: 'Société X' };
-  const f = { type: 'finale' as const, date_prestation_debut: '2026-10-01', date_prestation_fin: '2026-10-05', autoliquidation: false, regime_tva: 'franchise' as const };
+  const f = { type: 'finale' as const, date_prestation_debut: '2026-10-01', date_prestation_fin: '2026-10-05', autoliquidation: false, regime_tva: 'franchise' as const,
+    date_emission: '2026-10-09', date_echeance: '2026-11-08', fin_retractation: null };
   const cles = (m: { cle: string; bloquant: boolean }[], b = true) => m.filter((x) => x.bloquant === b).map((x) => x.cle);
   it('complète : aucun bloquant ; particulier : indemnité non imprimée, signalée', () => {
     expect(cles(controlerMentionsFacture(e, part, null, f))).toEqual([]);
     expect(cles(controlerMentionsFacture(e, part, null, f), false)).toEqual(['indemnite_particulier']);
     expect(mentionIndemnite(e.paiement, part)).toBeNull();
-    expect(mentionIndemnite(e.paiement, pro)).toBe('Indemnité forfaitaire pour frais de recouvrement en cas de retard de paiement : 40,00 €.');
+    // Montant formaté par formaterEuros (espace insécable avant « € »).
+    expect(mentionIndemnite(e.paiement, pro)).toMatch(/^Indemnité forfaitaire pour frais de recouvrement en cas de retard de paiement : 40,00\s€\.$/);
   });
   it('IBAN faux, pénalités absentes, date de prestation absente : bloquants', () => {
     const m = controlerMentionsFacture({ ...e, paiement: { ...e.paiement, iban: 'FR00 1234', taux_penalites_bp: null } }, part, null,
@@ -214,6 +237,37 @@ describe('mentions obligatoires de la facture', () => {
     const a = { ...e, regime_tva: 'assujetti' as const, numero_tva_intra: 'FR00123456789' };
     expect(cles(controlerMentionsFacture(a, part, null, { ...f, regime_tva: 'assujetti', autoliquidation: true }))).toEqual(['autoliquidation_client']);
     expect(cles(controlerMentionsFacture(a, pro, null, { ...f, regime_tva: 'assujetti', autoliquidation: true }), false)).toContain('autoliquidation_tva');
+  });
+  it('dates : acompte sans date exigée ; finale et situation : date de fin exigée', () => {
+    expect(cles(controlerMentionsFacture(e, part, null, { ...f, type: 'acompte', date_prestation_debut: null, date_prestation_fin: null }))).toEqual([]);
+    expect(cles(controlerMentionsFacture(e, part, null, { ...f, date_prestation_fin: null }))).toEqual(['date_prestation']);
+    expect(cles(controlerMentionsFacture(e, part, null, { ...f, type: 'situation', date_prestation_fin: null }))).toEqual(['date_prestation']);
+  });
+  it('libellés des dates : acompte = début prévu, situation = période, finale = prestation', () => {
+    const fmt = (d: string) => d.split('-').reverse().join('/');
+    expect(libelleDatesPrestation('acompte', '2026-11-02', null, fmt)).toBe('Début des travaux prévu le 02/11/2026');
+    expect(libelleDatesPrestation('acompte', null, null, fmt)).toBeNull();
+    expect(libelleDatesPrestation('situation', '2026-10-01', '2026-10-31', fmt)).toBe('Travaux réalisés : période du 01/10/2026 au 31/10/2026');
+    expect(libelleDatesPrestation('finale', '2026-10-01', '2026-10-05', fmt)).toBe('Date de la prestation : du 01/10/2026 au 05/10/2026');
+    expect(libelleDatesPrestation('finale', null, '2026-10-05', fmt)).toBe('Date de la prestation : le 05/10/2026');
+    expect(libelleDatesPrestation('avoir', '2026-10-01', '2026-10-05', fmt)).toBeNull();
+  });
+  it('rétractation : signalée pendant le délai, échéance dans le délai bloquante, rien pour un professionnel ou après le délai', () => {
+    expect(finRetractation(true, 'particulier', '2026-10-01')).toBe('2026-10-15');
+    expect(finRetractation(true, 'professionnel', '2026-10-01')).toBeNull();
+    expect(finRetractation(false, 'particulier', '2026-10-01')).toBeNull();
+    const pendant = { ...f, type: 'acompte' as const, date_emission: '2026-10-02', fin_retractation: '2026-10-15' };
+    expect(cles(controlerMentionsFacture(e, part, null, { ...pendant, date_echeance: '2026-11-01' }), false)).toContain('retractation');
+    expect(cles(controlerMentionsFacture(e, part, null, { ...pendant, date_echeance: '2026-10-15' }))).toEqual(['echeance_retractation']);
+    expect(cles(controlerMentionsFacture(e, part, null, { ...pendant, date_emission: '2026-10-16', date_echeance: '2026-11-15' }), false))
+      .not.toContain('retractation');
+  });
+  it('avoir d’une facture d’un ancien régime de TVA : pas de blocage « régime » ; mention selon le régime de la facture', () => {
+    const assujetti = { ...e, regime_tva: 'assujetti' as const, numero_tva_intra: 'FR00123456789' };
+    const avoir = { ...f, type: 'avoir' as const, date_prestation_debut: null, date_prestation_fin: null };
+    expect(cles(controlerMentionsFacture(assujetti, part, null, avoir))).toEqual([]);
+    expect(textesAVerifierFacture(assujetti, part, avoir)).toEqual(['Mention de franchise de TVA']);
+    expect(cles(controlerMentionsFacture(assujetti, part, null, f))).toEqual(['regime']);
   });
   it('mention des pénalités et textes à vérifier', () => {
     expect(mentionPenalites(e.paiement)).toBe('En cas de retard de paiement, des pénalités au taux annuel de 10 % sont exigibles à compter du lendemain de la date d’échéance.');
@@ -258,4 +312,16 @@ describe('Factur-X (XML CII, préparé)', () => {
     ['acompte déjà payé', '<ram:TotalPrepaidAmount>100.00</ram:TotalPrepaidAmount>'], ['net à payer', '<ram:DuePayableAmount>299.13</ram:DuePayableAmount>'],
     ['échéance', '<ram:DueDateDateTime><udt:DateTimeString format="102">20261108</udt:DateTimeString></ram:DueDateDateTime>'],
   ])('%s', (_, attendu) => expect(xml).toContain(attendu));
+  it('vendeur avec sa forme juridique (EI)', () => expect(xml).toContain("<ram:Name>H&apos;DECOR &amp; Fils &lt;test&gt; EI</ram:Name>"));
+  it('autoliquidation : motif avant la base, code d’exonération après la catégorie (ordre du schéma CII)', () => {
+    const l10 = [lf(ld('Murs', 10_000n, 100_000n, 1_000))];
+    const ta = totauxFacture(l10, 0, 'assujetti', true);
+    const x = xmlFacturX({
+      numero: 'FAC-2026-0003', type: 'libre', dateEmission: '2026-10-09', dateEcheance: '2026-11-08', datePrestation: '2026-10-05',
+      emetteur: { ...e, regime_tva: 'assujetti', numero_tva_intra: 'FR00123456789' }, client, lignes: l10, ventilation: ta.ventilation,
+      regime: 'assujetti', autoliquidation: true, remiseGlobaleCents: 0n, totalHtCents: ta.totalHtCents, totalTvaCents: ta.totalTvaCents,
+      totalTtcCents: ta.totalTtcCents, deductions: [], netAPayerCents: ta.totalTtcCents, factureOrigine: null,
+    });
+    expect(x).toMatch(/<ram:TypeCode>VAT<\/ram:TypeCode><ram:ExemptionReason>Autoliquidation<\/ram:ExemptionReason><ram:BasisAmount>1000.00<\/ram:BasisAmount><ram:CategoryCode>AE<\/ram:CategoryCode><ram:ExemptionReasonCode>VATEX-EU-AE<\/ram:ExemptionReasonCode><ram:RateApplicablePercent>/);
+  });
 });

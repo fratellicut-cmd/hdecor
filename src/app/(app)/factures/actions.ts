@@ -9,7 +9,7 @@ import { clientServeur } from '@/lib/supabase/serveur';
 import type { Insertion } from '@/lib/supabase/types';
 import { erreursParChamp, valeursTexte, type EtatFormulaire } from '@/lib/etat-formulaire';
 import {
-  chargerFacture, deductionsJson, donneesPdfFacture, ErreurPreparationFacture, ligneFactureDomaine, preparerEmissionFacture,
+  chargerFacture, copiesFigeesFacture, deductionsDomaine, deductionsJson, donneesPdfFacture, ErreurPreparationFacture, ligneFactureDomaine, preparerEmissionFacture,
   recalculerTotauxFacture, ventilationDomaine, type ResultatRecalcul,
 } from '@/lib/factures';
 import { ligneDomaine } from '@/lib/devis';
@@ -22,10 +22,11 @@ import { expirationLienFacture, nouveauJeton, urlPublique } from '@/lib/liens';
 import { remplirModele, TOTAL_MAX_CENTS, type Regime } from '@/domain/devis';
 import {
   deductionsDisponibles, ErreurFacture, lignesAcompte, lignesAvoirMontant, lignesAvoirTotal, lignesDepuisDevis, netAPayer, netParTaux,
-  totalLigneFacture, totauxFacture, type LigneFacture, type TypeFacture,
+  totalLigneFacture, totauxFacture, type Deduction, type LigneFacture, type TypeFacture,
 } from '@/domain/factures';
 import { xmlFacturX } from '@/domain/facturx';
 import { formaterDate, formaterEuros, formaterTaux } from '@/domain/formats';
+import { aujourdHuiParis } from '@/domain/dates';
 import { schemaAvancement, schemaAvoir, schemaEnteteFacture, schemaLigneFacture, schemaNouvelleFacture, schemaPaiement } from '@/lib/validation/factures';
 
 const ECHEC = 'L’enregistrement a échoué. Vérifiez la connexion et réessayez.';
@@ -107,7 +108,7 @@ export async function creerFacture(_: EtatFormulaire, fd: FormData): Promise<Eta
         chantierId = ch.id;
       }
       entete = { id: nouveau.data, organisation_id: session.organisationId, type: 'libre', client_id: client.id, chantier_id: chantierId,
-        delai_paiement_jours: p.delai_paiement_jours, regime_tva: p.regime_tva };
+        delai_paiement_jours: p.delai_paiement_jours, regime_tva: p.regime_tva, date_prestation_fin: aujourdHuiParis() };
     } else {
       const { data: d } = await sb.from('devis').select('*').eq('id', n.devis_id!).maybeSingle();
       if (!d) return { erreurs: { devis_id: 'Devis introuvable.' }, valeurs: valeursTexte(fd) };
@@ -118,8 +119,10 @@ export async function creerFacture(_: EtatFormulaire, fd: FormData): Promise<Eta
         d.signature_id ? sb.from('signatures').select('options_acceptees').eq('id', d.signature_id).maybeSingle() : Promise.resolve({ data: null }),
         facturesDuDevis(sb, d.id),
       ]);
+      // Dates préremplies (modifiables) : début prévu du devis ; fin = aujourd'hui pour une situation ou une finale (achèvement à confirmer).
       const base = { id: nouveau.data, organisation_id: session.organisationId, client_id: d.client_id, chantier_id: d.chantier_id, devis_id: d.id,
-        delai_paiement_jours: p.delai_paiement_jours, regime_tva: d.regime_tva, date_prestation_debut: d.date_debut_travaux };
+        delai_paiement_jours: p.delai_paiement_jours, regime_tva: d.regime_tva, date_prestation_debut: d.date_debut_travaux,
+        date_prestation_fin: n.type === 'acompte' ? null : aujourdHuiParis() };
       const libelleDevis = `${d.numero}${d.version > 1 ? ` v${d.version}` : ''}`;
       if (n.type === 'acompte') {
         // Cumul des acomptes déjà facturés (émis ou en brouillon) : l'échéance suivante en découle, comme sur le devis imprimé.
@@ -173,19 +176,32 @@ export async function creerAvoir(_: EtatFormulaire, fd: FormData): Promise<EtatF
   const o = c.facture;
   if (o.type === 'avoir' || o.statut !== 'emise') return { message: 'Un avoir corrige une facture émise et non annulée.' };
   const du = BigInt(o.net_a_payer_cents!) - BigInt(o.avoirs_cents ?? 0);
+  const avoirsEmis = BigInt(o.avoirs_cents ?? 0);
+  // Acompte ou situation : une correction se fait en totalité (la base le contrôle aussi).
+  if ((o.type === 'acompte' || o.type === 'situation') && lu.data.nature === 'correction' && lu.data.mode !== 'total') {
+    return { erreurs: { mode: 'Une facture d’acompte ou de situation se corrige en totalité (puis une nouvelle facture si besoin).' }, valeurs: valeursTexte(fd) };
+  }
   let lignes: LigneFacture[];
   let remise = 0;
+  let deductions: Deduction[] = [];
   try {
-    if (lu.data.mode === 'total' && BigInt(o.avoirs_cents ?? 0) === 0n && !(Array.isArray(o.deductions) && o.deductions.length)) {
+    if (lu.data.mode === 'total' && avoirsEmis === 0n) {
+      // Annulation : mêmes lignes, même remise et mêmes déductions -> même net, même TVA nette par taux, au centime.
       lignes = lignesAvoirTotal(c.lignes.map(ligneFactureDomaine));
       remise = o.remise_globale_bp!;
+      deductions = deductionsDomaine(o.deductions);
     } else {
       const montant = lu.data.mode === 'total' ? du : BigInt(lu.data.montant_ttc_cents!);
       if (montant > du) return { erreurs: { montant_ttc_cents: `Au plus ${formaterEuros(du)} (reste dû de la facture après les avoirs déjà émis).` }, valeurs: valeursTexte(fd) };
-      // Net par taux = ventilation − acomptes déduits (ventilés) ; les avoirs déjà émis réduisent au prorata via le plafond.
-      const ids = (Array.isArray(o.deductions) ? o.deductions : []).map((d) => (d as { facture_id: string }).facture_id);
-      const { data: deduits } = ids.length ? await sb.from('factures').select('ventilation_tva').in('id', ids) : { data: [] };
-      const net = netParTaux(ventilationDomaine(o.ventilation_tva), (deduits ?? []).map((x) => ventilationDomaine(x.ventilation_tva)));
+      // Reste par taux = ventilation − acomptes déduits − avoirs déjà émis.
+      const ids = deductionsDomaine(o.deductions).map((d) => d.facture_id);
+      const [{ data: deduits, error: e1 }, { data: avoirs, error: e2 }] = await Promise.all([
+        ids.length ? sb.from('factures').select('ventilation_tva').in('id', ids) : Promise.resolve({ data: [], error: null }),
+        sb.from('factures').select('ventilation_tva').eq('facture_origine_id', o.id).neq('statut', 'brouillon'),
+      ]);
+      if (e1 || e2 || (deduits ?? []).length !== ids.length) return { message: ECHEC, valeurs: valeursTexte(fd) };
+      const net = netParTaux(ventilationDomaine(o.ventilation_tva), (deduits ?? []).map((x) => ventilationDomaine(x.ventilation_tva)),
+        (avoirs ?? []).map((x) => ventilationDomaine(x.ventilation_tva)));
       lignes = lignesAvoirMontant(net, montant, o.regime_tva, o.autoliquidation!,
         lu.data.nature === 'reduction' ? `Réduction de prix sur la facture ${o.numero}` : `Avoir sur la facture ${o.numero}`);
     }
@@ -196,7 +212,7 @@ export async function creerAvoir(_: EtatFormulaire, fd: FormData): Promise<EtatF
   const { error } = await sb.from('factures').insert({
     id: nouveau.data, organisation_id: session.organisationId, type: 'avoir', client_id: o.client_id, facture_origine_id: o.id,
     nature_avoir: lu.data.nature, delai_paiement_jours: 0, regime_tva: o.regime_tva, autoliquidation: o.autoliquidation!,
-    remise_globale_bp: remise, notes_client: lu.data.motif,
+    remise_globale_bp: remise, notes_client: lu.data.motif, deductions: deductionsJson(deductions),
   });
   if (error) {
     if (error.code === '23505') redirect(`/factures/${nouveau.data}`);
@@ -420,22 +436,21 @@ async function enregistrerFacturX(sb: Sb, organisationId: string, factureId: str
   const c = await chargerFacture(factureId, sb);
   if (!c || c.facture.statut === 'brouillon' || c.facture.facturx_chemin) return !!c?.facture.facturx_chemin;
   const f = c.facture;
-  const emetteur = f.copie_emetteur as never;
+  const { emetteur, client } = copiesFigeesFacture(f);
   const lignes = c.lignes.map(ligneFactureDomaine);
   const t = totauxFacture(lignes, f.remise_globale_bp!, f.regime_tva, f.autoliquidation!);
   const xml = xmlFacturX({
     numero: f.numero!, type: f.type, dateEmission: f.date_emission!, dateEcheance: f.date_echeance!,
-    datePrestation: f.date_prestation_fin ?? f.date_prestation_debut, emetteur, client: f.copie_client as never, lignes,
+    datePrestation: f.date_prestation_fin ?? f.date_prestation_debut, emetteur, client, lignes,
     ventilation: t.ventilation, regime: f.regime_tva, autoliquidation: f.autoliquidation!, remiseGlobaleCents: t.remiseGlobaleCents,
     totalHtCents: t.totalHtCents, totalTvaCents: t.totalTvaCents, totalTtcCents: t.totalTtcCents,
-    deductions: (Array.isArray(f.deductions) ? f.deductions : []).map((d) => {
-      const x = d as { facture_id: string; numero: string; ht: number; tva: number; ttc: number };
-      return { facture_id: x.facture_id, numero: x.numero, ht: BigInt(x.ht), tva: BigInt(x.tva), ttc: BigInt(x.ttc) };
-    }),
+    deductions: deductionsDomaine(f.deductions),
     netAPayerCents: BigInt(f.net_a_payer_cents!), factureOrigine: c.origine?.numero ?? null,
   });
-  const chemin = `${organisationId}/factures/${factureId}/facturx-${randomUUID()}.xml`;
-  await deposer('documents', organisationId, chemin, new TextEncoder().encode(xml), 'application/xml');
+  const octets = new TextEncoder().encode(xml);
+  // Empreinte dans le nom (imposé par la base) : vérifiée à chaque téléchargement.
+  const chemin = `${organisationId}/factures/${factureId}/facturx-${createHash('sha256').update(octets).digest('hex')}.xml`;
+  await deposer('documents', organisationId, chemin, octets, 'application/xml');
   const { error } = await sb.rpc('enregistrer_facturx', { p_facture_id: factureId, p_chemin: chemin });
   if (error) { await retirer('documents', organisationId, chemin).catch(() => undefined); return false; }
   return true;
@@ -475,13 +490,8 @@ export async function envoyerFacture(_: EtatFormulaire, fd: FormData): Promise<E
   const email = c.client?.email ?? null;
   if (canal === 'email' && !email) return { message: 'Le client n’a pas d’adresse email : créez un lien à partager.' };
   if (canal === 'email' && !emailConfigure()) return { message: 'Envoi d’emails non configuré sur ce serveur : créez un lien à partager.' };
-  const { jeton, sha256 } = nouveauJeton();
-  const { error } = await sb.from('liens_publics').insert({
-    organisation_id: session.organisationId, facture_id: id.data, finalite: 'consultation', jeton_sha256: sha256,
-    expire_le: expirationLienFacture(c.facture.date_echeance!).toISOString(),
-  });
-  if (error) return { message: ECHEC };
-  const lien = urlPublique(jeton, 'f');
+  const lien = await nouveauLienFacture(sb, session.organisationId, id.data, c.facture.date_echeance!);
+  if (!lien) return { message: ECHEC };
   const tracer = async (champs: { canal: 'email' | 'manuel'; destinataire?: string | null; fournisseur_id?: string | null }) => {
     const { error: e } = await sb.from('envois').insert({
       id: envoiId.data, organisation_id: session.organisationId, document_type: 'facture', document_id: id.data, nature: 'envoi', ...champs,
@@ -519,6 +529,97 @@ export async function envoyerFacture(_: EtatFormulaire, fd: FormData): Promise<E
   if (r.ok) await marquer();
   revalider(id.data);
   return r.ok ? { succes: `Email envoyé à ${email}.`, lien } : { message: `${r.erreur} Partagez le lien à la main.`, lien };
+}
+
+/**
+ * Nouveau lien de consultation : les liens précédents de la facture sont
+ * désactivés (un seul lien valable à la fois : un lien parti au mauvais
+ * destinataire ne reste pas ouvert). Null si l'écriture échoue.
+ */
+async function nouveauLienFacture(sb: Sb, organisationId: string, factureId: string, dateEcheance: string): Promise<string | null> {
+  const { error: e1 } = await sb.from('liens_publics').update({ revoque_le: new Date().toISOString() })
+    .eq('facture_id', factureId).is('revoque_le', null);
+  if (e1) return null;
+  const { jeton, sha256 } = nouveauJeton();
+  const { error } = await sb.from('liens_publics').insert({
+    organisation_id: organisationId, facture_id: factureId, finalite: 'consultation', jeton_sha256: sha256,
+    expire_le: expirationLienFacture(dateEcheance).toISOString(),
+  });
+  return error ? null : urlPublique(jeton, 'f');
+}
+
+/** Désactive tous les liens de consultation de la facture (lien transmis par erreur, fuite). */
+export async function revoquerLiensFacture(_: EtatFormulaire, fd: FormData): Promise<EtatFormulaire> {
+  await verifierSession();
+  const id = idDe(fd, 'id');
+  if (!id.success) return { message: INCOMPLET };
+  const sb = await clientServeur();
+  const { data, error } = await sb.from('liens_publics').update({ revoque_le: new Date().toISOString() })
+    .eq('facture_id', id.data).is('revoque_le', null).gt('expire_le', new Date().toISOString()).select('id');
+  if (error) return { message: ECHEC };
+  revalider(id.data);
+  // Redirection : le bouton disparaît (plus aucun lien actif), le message doit rester visible.
+  redirect(`/factures/${id.data}?liens=${data?.length ?? 0}`);
+}
+
+const NIVEAUX_RELANCE = ['impaye_1', 'impaye_2', 'impaye_3'] as const;
+
+/**
+ * Relance MANUELLE d'une facture échue (client sans email, ou relance
+ * immédiate) : niveau suivant non encore fait, message du modèle rempli,
+ * nouveau lien. Par email si possible, sinon message prêt à partager (SMS,
+ * WhatsApp) ; la relance est tracée dans « Envois et relances » (une seule
+ * fois par niveau, comme la relance automatique).
+ */
+export async function relancerFacture(_: EtatFormulaire, fd: FormData): Promise<EtatFormulaire> {
+  const session = await verifierSession();
+  const id = idDe(fd, 'id');
+  const envoiId = idDe(fd, 'id_nouveau');
+  const canal = fd.get('canal') === 'email' ? 'email' : 'lien';
+  if (!id.success || !envoiId.success) return { message: INCOMPLET };
+  const sb = await clientServeur();
+  const [{ data: f }, { data: faits, error: eFaits }] = await Promise.all([
+    sb.from('v_factures').select('id, numero, type, statut, date_echeance, reste_a_payer_cents, copie_client, client_id').eq('id', id.data).maybeSingle(),
+    sb.from('envois').select('nature').eq('document_type', 'facture').eq('document_id', id.data).neq('statut', 'echec'),
+  ]);
+  if (!f || eFaits) return { message: f ? ECHEC : 'Facture introuvable.' };
+  if (f.type === 'avoir' || f.statut !== 'emise' || !(f.reste_a_payer_cents! > 0)) return { message: 'Cette facture n’a rien à relancer.' };
+  if (f.date_echeance! >= aujourdHuiParis()) return { message: `Pas encore échue (échéance le ${formaterDate(f.date_echeance!)}).` };
+  const niveau = NIVEAUX_RELANCE.find((n) => !(faits ?? []).some((e) => e.nature === n));
+  if (!niveau) return { message: 'Les trois rappels ont déjà été faits : contactez le client directement.' };
+  const [{ data: modele }, { data: p }, { data: client }] = await Promise.all([
+    sb.from('modeles_messages').select('sujet, corps').eq('code', niveau).maybeSingle(),
+    sb.from('parametres_entreprise').select('raison_sociale, email').eq('organisation_id', session.organisationId).single(),
+    sb.from('clients').select('email, anonymise_le').eq('id', f.client_id!).maybeSingle(),
+  ]);
+  if (!modele) return { message: 'Modèle de relance introuvable (Réglages > Messages et relances).' };
+  const email = client && !client.anonymise_le ? client.email : null;
+  if (canal === 'email' && (!email || !emailConfigure())) return { message: 'Envoi par email impossible : partagez le message.' };
+  const lien = await nouveauLienFacture(sb, session.organisationId, id.data, f.date_echeance!);
+  if (!lien) return { message: ECHEC };
+  const valeurs = {
+    client: (f.copie_client as { nom_affiche?: string } | null)?.nom_affiche ?? '', entreprise: p?.raison_sociale ?? '', numero: f.numero!,
+    lien, montant: formaterEuros(f.reste_a_payer_cents!), echeance: formaterDate(f.date_echeance!),
+  };
+  const texte = remplirModele(modele.corps, valeurs);
+  const rang = niveau.slice(-1);
+  if (canal === 'lien') {
+    const { error } = await sb.from('envois').insert({
+      id: envoiId.data, organisation_id: session.organisationId, document_type: 'facture', document_id: id.data, nature: niveau, canal: 'manuel',
+    });
+    if (error) return { message: error.code === '23505' ? 'Ce rappel vient d’être fait : rechargez la page.' : ECHEC };
+    revalider(id.data);
+    return { succes: `Rappel ${rang} prêt : copiez ou partagez le message.`, lien, texte };
+  }
+  const reservation = await reserverEnvoi(sb, {
+    id: envoiId.data, organisation_id: session.organisationId, document_type: 'facture', document_id: id.data, nature: niveau, destinataire: email,
+  });
+  if (reservation === 'deja') return { message: 'Ce rappel est déjà en cours d’envoi ou fait : rechargez la page.' };
+  if (reservation === 'echec') return { message: `${ECHEC} Aucun email n’est parti.` };
+  const r = await envoyerEmail({ a: email!, sujet: remplirModele(modele.sujet, valeurs), texte, repondreA: p?.email });
+  await conclureEnvoi(sb, envoiId.data, r);
+  revalider(id.data);
+  return r.ok ? { succes: `Rappel ${rang} envoyé par email à ${email}.` } : { message: `${r.erreur} Partagez le message à la main.`, lien, texte };
 }
 
 /** Facture remise en main propre ou envoyée autrement : date d'envoi enregistrée (relances possibles ensuite). */
@@ -587,3 +688,17 @@ export async function annulerPaiement(_: EtatFormulaire, fd: FormData): Promise<
 }
 
 export type { Regime };
+
+/** Paiement par carte encaissé mais refusé par la base : marqué traité une fois remboursé dans Stripe. */
+export async function marquerIncidentTraite(_: EtatFormulaire, fd: FormData): Promise<EtatFormulaire> {
+  await verifierSession();
+  const id = idDe(fd, 'id');
+  const factureId = idDe(fd, 'facture_id');
+  if (!id.success || !factureId.success) return { message: INCOMPLET };
+  if (fd.get('confirmation') !== 'on') return { message: 'Cochez la case pour confirmer.' };
+  const sb = await clientServeur();
+  const { error } = await sb.from('incidents_paiement').update({ traite_le: new Date().toISOString() }).eq('id', id.data).is('traite_le', null);
+  if (error) return { message: ECHEC };
+  revalider(factureId.data);
+  return { succes: 'Noté.' };
+}

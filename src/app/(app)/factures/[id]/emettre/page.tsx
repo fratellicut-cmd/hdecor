@@ -8,6 +8,7 @@ import { FormulaireEmissionFacture } from '@/components/factures/Formulaires';
 import { Carte } from '@/components/ui/Carte';
 import { Message } from '@/components/ui/Message';
 import { formaterDate, formaterEuros } from '@/domain/formats';
+import { libelleDatesPrestation } from '@/domain/factures';
 
 export const metadata: Metadata = { title: 'Émettre la facture' };
 
@@ -39,6 +40,7 @@ export default async function PageEmettreFacture({ params }: PageProps<'/facture
       </div>
     );
   }
+  const dates = libelleDatesPrestation(c.facture.type, c.facture.date_prestation_debut, c.facture.date_prestation_fin, formaterDate);
   const bloquants = prep.manques.filter((m) => m.bloquant);
   const signales = prep.manques.filter((m) => !m.bloquant);
   const sansLigne = !c.lignes.some((l) => l.type === 'ligne');
@@ -54,6 +56,7 @@ export default async function PageEmettreFacture({ params }: PageProps<'/facture
         {avoir ? '' : <>, à régler au plus tard le <strong>{formaterDate(echeance)}</strong></>}.
         {' '}Montant : <strong>{formaterEuros(c.facture.net_a_payer_cents!)}</strong>.
       </p>
+      {dates ? <p>{dates} · <Link href={`/factures/${id.data}`} className="inline-flex min-h-11 items-center underline underline-offset-4">modifier</Link></p> : null}
       {bloque ? (
         <Carte titre="À corriger avant d’émettre">
           <ul className="flex flex-col gap-2">
@@ -69,7 +72,7 @@ export default async function PageEmettreFacture({ params }: PageProps<'/facture
             {aZero && !sansLigne ? <li className="font-semibold text-danger">Le montant est nul : rien à facturer.</li> : null}
           </ul>
         </Carte>
-      ) : <Message type="succes">Toutes les mentions obligatoires sont renseignées.</Message>}
+      ) : <Message type="succes">Les mentions contrôlées par l’application sont renseignées.</Message>}
       {signales.length ? (
         <Carte titre="Points signalés (non bloquants)">
           <ul className="list-disc pl-5 text-sm">{signales.map((m) => <li key={m.cle}>{m.message}</li>)}</ul>

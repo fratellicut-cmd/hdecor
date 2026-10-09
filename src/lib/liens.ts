@@ -19,7 +19,6 @@ export function expirationLien(valideJusquAu: string, maintenant = new Date()): 
   return new Date(Math.min(fin.getTime(), maintenant.getTime() + DUREE_MAX_MS));
 }
 
-/** Lien public : /d/ pour un devis, /f/ pour une facture. */
 /**
  * Lien de consultation d'une facture : jusqu'à la fin du jour d'échéance (Paris),
  * 30 jours au moins (facture déjà échue, relance), 89 au plus.
@@ -29,6 +28,7 @@ export function expirationLienFacture(dateEcheance: string, maintenant = new Dat
   return new Date(Math.min(Math.max(finDeJourParis(dateEcheance).getTime(), t + 30 * 24 * 3600 * 1000), t + DUREE_MAX_MS));
 }
 
+/** Lien public : /d/ pour un devis, /f/ pour une facture. */
 export const urlPublique = (jeton: string, espace: 'd' | 'f' = 'd') => `${envPublique.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '')}/${espace}/${jeton}`;
 
 /** Forme d'un jeton reçu dans l'URL (avant tout appel à la base). */

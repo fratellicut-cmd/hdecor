@@ -30,8 +30,10 @@ export default async function PageMessages() {
       <div className="flex flex-col gap-4">
         {!emailConfigure() ? <Message type="info">L’envoi d’emails n’est pas configuré sur ce serveur : aucun message ne part pour l’instant.</Message> : null}
         <p>
-          Les relances d’impayés partent une fois par jour, seulement pour une facture envoyée, échue et non réglée, une à la fois (le 2e rappel
-          après le 1er…). Le délai de relance des devis se règle dans <Link href="/parametres/conditions" className="inline-flex min-h-11 items-center underline underline-offset-4">Conditions et tarifs</Link>.
+          Les relances d’impayés partent automatiquement, par email, seulement pour une facture envoyée, échue et non réglée. Les délais se
+          comptent après l’échéance, et chaque rappel attend au moins l’écart entre les délais depuis le précédent (avec 7, 15 et 30 jours :
+          8 jours entre le 1er et le 2e, 15 entre le 2e et le dernier). Sur une facture en retard, « Relancer le client » prépare aussi le
+          rappel suivant à la main (SMS, WhatsApp). Le délai de relance des devis se règle dans <Link href="/parametres/conditions" className="inline-flex min-h-11 items-center underline underline-offset-4">Conditions et tarifs</Link>.
         </p>
         {error ? <Message type="erreur">Les messages n’ont pas pu être chargés. Rechargez la page.</Message> : null}
         {modeles.map((m) => (

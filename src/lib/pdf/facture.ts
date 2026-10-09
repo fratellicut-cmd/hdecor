@@ -3,7 +3,7 @@ import QRCode from 'qrcode';
 import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import type { Regime } from '@/domain/devis';
 import {
-  formaterIban, LIBELLES_TYPE_FACTURE, MENTION_AUTOLIQUIDATION, mentionIndemnite, mentionPenalites, totalLigneFacture, totauxFacture,
+  formaterIban, libelleDatesPrestation, LIBELLES_TYPE_FACTURE, MENTION_AUTOLIQUIDATION, mentionIndemnite, mentionPenalites, totalLigneFacture, totauxFacture,
   type CopieEmetteurFacture, type Deduction, type LigneFacture, type TypeFacture,
 } from '@/domain/factures';
 import { formaterQuantiteE4, identiteEmetteur, lignesAdresse, nomAvecForme, texteAssurance, UNITES, type CopieChantier, type CopieClient } from '@/domain/devis-document';
@@ -35,6 +35,8 @@ export type DonneesPdfFacture = {
   deductions: Deduction[];
   notesClient: string | null;
   urlConfidentialite?: string | null;
+  /** Contrat hors établissement émis pendant le délai de rétractation : premier jour où un paiement peut être demandé (pas de QR). */
+  paiementApresLe?: string | null;
 };
 
 export function titreFacture(type: TypeFacture, numero: string | null): string {
@@ -100,12 +102,8 @@ export async function pdfFacture(d: DonneesPdfFacture): Promise<Uint8Array> {
   ecrire(c, titre, { x: MARGE + 10, taille: 15, gras: true });
   c.y -= 2;
   ecrire(c, `Date d’émission : ${formaterDate(d.dateEmission)}${avoir ? '' : `    Échéance : ${formaterDate(d.dateEcheance)}`}`, { taille: 10 });
-  if (d.datePrestationDebut || d.datePrestationFin) {
-    const p = d.datePrestationDebut && d.datePrestationFin && d.datePrestationDebut !== d.datePrestationFin
-      ? `du ${formaterDate(d.datePrestationDebut)} au ${formaterDate(d.datePrestationFin)}`
-      : `le ${formaterDate((d.datePrestationFin ?? d.datePrestationDebut)!)}`;
-    ecrire(c, `Date de la prestation : ${p}`, { taille: 10 });
-  }
+  const dates = libelleDatesPrestation(d.type, d.datePrestationDebut, d.datePrestationFin, formaterDate);
+  if (dates) ecrire(c, dates, { taille: 10 });
   if (d.origine) {
     ecrire(c, `Avoir sur la facture n° ${d.origine.numero} du ${formaterDate(d.origine.dateEmission)}`
       + `${d.natureAvoir === 'reduction' ? ' (réduction de prix)' : ' (correction ou annulation)'}`, { taille: 10, gras: true });
@@ -210,12 +208,17 @@ export async function pdfFacture(d: DonneesPdfFacture): Promise<Uint8Array> {
     ecrire(c, 'Règlement', { gras: true, taille: 11 });
     const hautBloc = c.y;
     const reference = d.numero ? `Facture ${d.numero}` : 'Facture';
-    ecrire(c, `À régler au plus tard le ${formaterDate(d.dateEcheance)} : ${formaterEuros(net)}.`, { taille: 10, largeur: 330 });
+    if (d.paiementApresLe) {
+      // Délai de rétractation (contrat signé hors établissement) : aucun paiement demandé avant son terme, pas de QR.
+      ecrire(c, `Aucun paiement n’est demandé avant le ${formaterDate(d.paiementApresLe)} (délai de rétractation). À régler du ${formaterDate(d.paiementApresLe)} au ${formaterDate(d.dateEcheance)} : ${formaterEuros(net)}.`, { taille: 10, largeur: 330 });
+    } else {
+      ecrire(c, `À régler au plus tard le ${formaterDate(d.dateEcheance)} : ${formaterEuros(net)}.`, { taille: 10, largeur: 330 });
+    }
     if (p.iban) {
       ecrire(c, `Virement : IBAN ${formaterIban(p.iban)}${p.bic ? `, BIC ${p.bic}` : ''}`, { taille: 9.5, largeur: 330 });
       ecrire(c, `Référence à indiquer : ${reference}`, { taille: 9.5, largeur: 330 });
-      ecrire(c, 'Ou scannez le QR code avec l’application de votre banque.', { taille: 8.5, couleur: GRIS, largeur: 330 });
-      try {
+      if (!d.paiementApresLe) ecrire(c, 'Ou scannez le QR code avec l’application de votre banque.', { taille: 8.5, couleur: GRIS, largeur: 330 });
+      if (!d.paiementApresLe) try {
         dessinerQr(c, payloadVirementSepa({ beneficiaire: nomAvecForme(d.emetteur), iban: p.iban, bic: p.bic, montantCents: net, reference }),
           A4.l - MARGE - 100, hautBloc, 96);
       } catch { /* IBAN refusé : pas de QR (le contrôle d'émission l'exige valide) */ }

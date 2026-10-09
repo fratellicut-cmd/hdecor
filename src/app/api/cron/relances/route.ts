@@ -93,6 +93,9 @@ async function relancerImpayes(admin: ReturnType<typeof clientAdmin>): Promise<{
     });
     if (reservation === 'deja') continue;
     if (reservation === 'echec') { echecs++; continue; }
+    // Un seul lien valable à la fois : les liens précédents de la facture sont désactivés.
+    await admin.from('liens_publics').update({ revoque_le: new Date().toISOString() })
+      .eq('facture_id', f.facture_id).eq('organisation_id', f.organisation_id).is('revoque_le', null);
     const { jeton, sha256 } = nouveauJeton();
     const { error: eLien } = await admin.from('liens_publics').insert({
       organisation_id: f.organisation_id, facture_id: f.facture_id, finalite: 'consultation', jeton_sha256: sha256,

@@ -6,6 +6,7 @@ import { payloadVirementSepa } from '@/domain/virement';
 import { formaterDate, formaterEuros } from '@/domain/formats';
 import { QrVirement } from '@/components/factures/QrVirement';
 import { Message } from '@/components/ui/Message';
+import { aujourdHuiParis } from '@/domain/dates';
 import { stripeConfigure } from '@/lib/stripe';
 import { payerEnLigne } from './actions';
 
@@ -26,8 +27,11 @@ export default async function PageFacturePublique({ params, searchParams }: Page
     );
   }
   const reference = `Facture ${f.numero}`;
+  // Contrat signé chez le client : aucun paiement demandé pendant le délai de rétractation.
+  const attente = f.paiementApresLe && aujourdHuiParis() < f.paiementApresLe ? f.paiementApresLe : null;
+  const payable = f.type !== 'avoir' && f.statut === 'emise' && f.resteAPayerCents > 0n && !attente;
   let qr: string | null = null;
-  if (f.iban && f.resteAPayerCents > 0n) {
+  if (f.iban && payable) {
     try { qr = payloadVirementSepa({ beneficiaire: f.entreprise, iban: f.iban, bic: f.bic, montantCents: f.resteAPayerCents, reference }); } catch { qr = null; }
   }
   return (
@@ -46,21 +50,26 @@ export default async function PageFacturePublique({ params, searchParams }: Page
           {f.dateEcheance ? <> · au plus tard le <strong>{formaterDate(f.dateEcheance)}</strong></> : null}
         </p>
       )}
+      {attente && f.resteAPayerCents > 0n ? <Message type="info">Aucun paiement n’est demandé avant le {formaterDate(attente)} (délai de rétractation).</Message> : null}
       {sp.paiement === 'en_cours' && f.resteAPayerCents > 0n ? <Message type="info">Paiement par carte reçu par Stripe : il apparaîtra ici dès sa confirmation (quelques instants).</Message> : null}
       {sp.paiement === 'indisponible' ? <Message type="erreur">Le paiement par carte est indisponible pour l’instant : réessayez plus tard ou payez par virement.</Message> : null}
       <a href={`/f/${jeton}/pdf`} target="_blank" rel="noopener noreferrer" className={bouton}>Télécharger {f.type === 'avoir' ? 'l’avoir' : 'la facture'} (PDF)</a>
-      {stripeConfigure() && f.type !== 'avoir' && f.statut === 'emise' && f.resteAPayerCents > 0n ? (
+      {stripeConfigure() && payable ? (
         <form action={payerEnLigne.bind(null, jeton)}>
           <button type="submit" className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-anthracite px-4 font-semibold text-creme">
             Payer {formaterEuros(f.resteAPayerCents)} par carte
           </button>
         </form>
       ) : null}
-      {qr && f.iban ? (
+      {payable && f.iban ? (
         <section className="flex flex-col items-center gap-3 rounded-2xl border border-trait bg-white p-4">
           <h2 className="self-start text-lg font-bold">Payer par virement</h2>
-          <QrVirement contenu={qr} />
-          <p className="text-sm">Scannez ce QR code avec l’application de votre banque : le montant et la référence sont préremplis.</p>
+          {qr ? (
+            <>
+              <QrVirement contenu={qr} />
+              <p className="text-sm">Scannez ce QR code avec l’application de votre banque : le montant et la référence sont préremplis.</p>
+            </>
+          ) : null}
           <dl className="w-full text-sm">
             <div><dt className="inline font-semibold">IBAN : </dt><dd className="inline break-all">{formaterIban(f.iban)}</dd></div>
             {f.bic ? <div><dt className="inline font-semibold">BIC : </dt><dd className="inline">{f.bic}</dd></div> : null}

@@ -12,10 +12,12 @@ import { formaterQuantiteE4, UNITES } from '@/domain/devis-document';
 import { aujourdHuiParis } from '@/domain/dates';
 import { formaterDate, formaterDateHeure, formaterEuros, formaterTaux, montantVersSaisie, pourcentageVersSaisie } from '@/domain/formats';
 import { nomAffiche } from '@/domain/clients';
-import { genererFacturX, marquerEnvoyee, supprimerBrouillonFacture, supprimerLigneFacture } from '../actions';
+import {
+  genererFacturX, marquerEnvoyee, marquerIncidentTraite, revoquerLiensFacture, supprimerBrouillonFacture, supprimerLigneFacture,
+} from '../actions';
 import { FormulaireLigne, type LigneSaisie } from '@/components/devis/Formulaires';
 import {
-  AnnulerPaiement, DeplacerLigneFacture, EnvoiFacture, FormulaireAvancement, FormulaireEnteteFacture, FormulairePaiement,
+  AnnulerPaiement, DeplacerLigneFacture, RelanceFacture, EnvoiFacture, FormulaireAvancement, FormulaireEnteteFacture, FormulairePaiement,
 } from '@/components/factures/Formulaires';
 import { enregistrerLigneFacture } from '../actions';
 import { ActionConfirmee } from '@/components/formulaire/ActionConfirmee';
@@ -69,7 +71,7 @@ export default async function PageFacture({ params, searchParams }: PageProps<'/
       <Link href="/factures" className="inline-flex min-h-12 items-center underline underline-offset-4">← Factures</Link>
       <h1 className="text-2xl font-bold">{titre}</h1>
       <p className="text-encre-douce">
-        {LIBELLES_STATUT_FACTURE[f.statut_affiche!] ?? f.statut_affiche} · {nomClient}
+        {avoir && f.statut_affiche === 'emise' ? 'Émis' : LIBELLES_STATUT_FACTURE[f.statut_affiche!] ?? f.statut_affiche} · {nomClient}
         {chantier ? <> · <Link href={`/chantiers/${chantier.id}`} className="inline-flex min-h-11 items-center underline underline-offset-4">{chantier.nom}</Link></> : null}
         {devis ? <> · <Link href={`/devis/${devis.id}`} className="inline-flex min-h-11 items-center underline underline-offset-4">devis {devis.numero}</Link></> : null}
         {origine ? <> · sur <Link href={`/factures/${origine.id}`} className="inline-flex min-h-11 items-center underline underline-offset-4">{origine.numero}</Link></> : null}
@@ -163,18 +165,18 @@ export default async function PageFacture({ params, searchParams }: PageProps<'/
           ) : null}
         </Carte>
 
-        <Carte titre="Totaux">
-          <Totaux t={t} franchise={franchise} autoliquidation={f.autoliquidation!} deductions={deductions} net={net} avoir={avoir} />
-        </Carte>
-
         <Carte titre={avoir ? 'Motif et dates' : 'Dates et conditions'}>
-          <FormulaireEnteteFacture factureId={f.id} version={f.updated_at!} remiseModifiable={libre}
+          <FormulaireEnteteFacture factureId={f.id} version={f.updated_at!} type={f.type} remiseModifiable={libre}
             autoliquidationPossible={f.regime_tva === 'assujetti' && !avoir}
             entete={{
               date_prestation_debut: f.date_prestation_debut ?? '', date_prestation_fin: f.date_prestation_fin ?? '',
               delai_paiement_jours: String(f.delai_paiement_jours), notes_client: f.notes_client ?? '',
               remise_globale_bp: pourcentageVersSaisie(f.remise_globale_bp), autoliquidation: f.autoliquidation!,
             }} />
+        </Carte>
+
+        <Carte titre="Totaux">
+          <Totaux t={t} franchise={franchise} autoliquidation={f.autoliquidation!} deductions={deductions} net={net} avoir={avoir} />
         </Carte>
 
         <div className="sticky bottom-20 z-10 grid grid-cols-2 gap-2 rounded-2xl border border-trait bg-white/95 p-2 shadow-md">
@@ -187,10 +189,13 @@ export default async function PageFacture({ params, searchParams }: PageProps<'/
   }
 
   // ------------------------------------------------------------------ document émis
-  const [{ data: paiements }, { data: envois }, { data: avoirs }] = await Promise.all([
+  const maintenant = new Date().toISOString();
+  const [{ data: paiements }, { data: envois }, { data: avoirs }, { data: incidents }, { count: liensActifs }] = await Promise.all([
     sb.from('paiements').select('id, date_paiement, montant_cents, mode, reference, annule_paiement_id, created_at').eq('facture_id', f.id).order('created_at'),
     sb.from('envois').select('envoye_le, canal, destinataire, statut, nature, erreur').eq('document_type', 'facture').eq('document_id', f.id).order('envoye_le', { ascending: false }),
     avoir ? Promise.resolve({ data: [] }) : sb.from('factures').select('id, numero, statut, net_a_payer_cents').eq('facture_origine_id', f.id).order('created_at'),
+    sb.from('incidents_paiement').select('id, montant_cents, reference, motif, created_at').eq('facture_id', f.id).is('traite_le', null),
+    sb.from('liens_publics').select('id', { count: 'exact', head: true }).eq('facture_id', f.id).is('revoque_le', null).gt('expire_le', maintenant),
   ]);
   // Montants figés (base) ; la remise globale, non stockée, est recalculée depuis les lignes pour l'affichage.
   function remiseAffichee(): bigint {
@@ -207,7 +212,17 @@ export default async function PageFacture({ params, searchParams }: PageProps<'/
   return (
     <div className="flex flex-col gap-4">
       {entete}
-      {sp.paiement === 'enregistre' ? <><EffacerBrouillon cles={[`facture:paiement:${f.id}`]} /><Message type="succes">{avoir ? 'Remboursement enregistré.' : 'Paiement enregistré.'}</Message></> : null}
+      {(incidents ?? []).map((i) => (
+        <Message key={i.id} type="erreur">
+          Paiement par carte de {formaterEuros(i.montant_cents)} encaissé par Stripe le {formaterDateHeure(i.created_at)} mais NON enregistré ({i.motif}).
+          Remboursez-le dans votre tableau de bord Stripe (référence {i.reference ?? 'inconnue'}), puis :
+          <span className="mt-2 block"><ActionConfirmee action={marquerIncidentTraite} champs={{ id: i.id, facture_id: f.id }} libelle="C’est remboursé" confirmation="J’ai remboursé ce paiement dans Stripe" /></span>
+        </Message>
+      ))}
+      {sp.paiement === 'enregistre' ? <><EffacerBrouillon cles={[`facture:paiement:${f.id}`]} /><Message type="succes">{avoir ? 'Remboursement enregistré.' : 'Paiement enregistré.'} {avoir ? 'Reste à rembourser' : 'Reste à payer'} : {formaterEuros(reste)}.</Message></> : null}
+      {typeof sp.liens === 'string' && /^\d+$/.test(sp.liens) ? (
+        <Message type="succes">{sp.liens === '0' ? 'Aucun lien actif.' : `${sp.liens} lien${sp.liens === '1' ? '' : 's'} désactivé${sp.liens === '1' ? '' : 's'} : le client ne peut plus ouvrir la facture par ${sp.liens === '1' ? 'ce lien' : 'ces liens'}.`}</Message>
+      ) : null}
       {sp.paiement === 'annule' ? <Message type="succes">Paiement annulé : une écriture d’annulation a été ajoutée.</Message> : null}
       {sp.emise === '1' ? <Message type="succes">{avoir ? 'Avoir émis' : 'Facture émise'} : numéro attribué, PDF figé.{avoir ? '' : ' Envoyez-la au client.'}</Message> : null}
       {f.statut === 'annulee' ? <Message type="info">Annulée par avoir{f.annulee_le ? ` le ${formaterDate(f.annulee_le)}` : ''}.</Message> : null}
@@ -255,9 +270,21 @@ export default async function PageFacture({ params, searchParams }: PageProps<'/
         ) : null}
       </Carte>
 
+      {f.statut_affiche === 'en_retard' ? (
+        <Carte titre="Relancer le client">
+          <RelanceFacture factureId={f.id} email={client?.email ?? null} emailActif={emailConfigure()} />
+        </Carte>
+      ) : null}
+
       {!avoir && f.statut === 'emise' ? (
         <Carte titre="Envoyer au client">
           <EnvoiFacture factureId={f.id} email={client?.email ?? null} emailActif={emailConfigure()} />
+          {liensActifs ? (
+            <div className="mt-3">
+              <ActionConfirmee action={revoquerLiensFacture} champs={{ id: f.id }} libelle={`Désactiver le lien envoyé (${liensActifs})`} variante="discret"
+                explication="Lien parti chez la mauvaise personne ? Le client ne pourra plus ouvrir la facture par ce lien ; un nouvel envoi en crée un autre." />
+            </div>
+          ) : null}
           {!f.envoyee_le ? (
             <div className="mt-3">
               <ActionConfirmee action={marquerEnvoyee} champs={{ id: f.id }} libelle="Marquer envoyée (remise en main propre, courrier…)" variante="discret" />
@@ -299,14 +326,15 @@ export default async function PageFacture({ params, searchParams }: PageProps<'/
         </Carte>
       ) : null}
 
-      <Carte titre="Facture électronique (Factur-X)">
-        <p className="mb-2 text-sm">Données structurées préparées au format Factur-X (profil EN 16931), <strong>À VÉRIFIER</strong> : elles ne sont pas encore intégrées au PDF ni transmises à une plateforme.</p>
+      <details className="rounded-2xl border border-trait bg-white p-4">
+        <summary className="inline-flex min-h-12 cursor-pointer items-center font-semibold">Pour le comptable : données Factur-X</summary>
+        <p className="my-2 text-sm">Données structurées préparées au format Factur-X (profil EN 16931), <strong>À VÉRIFIER</strong> : elles ne sont pas encore intégrées au PDF ni transmises à une plateforme.</p>
         {f.facturx_chemin ? (
           <a href={`/factures/${f.id}/facturx`} className={`${bouton} border-2 border-trait bg-white`}>Télécharger le XML</a>
         ) : (
           <ActionConfirmee action={genererFacturX} champs={{ id: f.id }} libelle="Préparer le XML" variante="discret" />
         )}
-      </Carte>
+      </details>
     </div>
   );
 }
