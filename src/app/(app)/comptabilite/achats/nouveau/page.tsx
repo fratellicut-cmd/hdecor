@@ -24,7 +24,7 @@ export default async function PageNouvelAchat({ searchParams }: PageProps<'/comp
         <h1 className="text-2xl font-bold">Nouvel achat</h1>
       </div>
       <Carte>
-        <FormulaireDepense regime={regime} categories={categories} chantiers={chantiers} depense={{
+        <FormulaireDepense depuisChantier={chantierId || undefined} regime={regime} categories={categories} chantiers={chantiers} depense={{
           date_depense: aujourdHuiParis(), fournisseur: '', libelle: '', categorie_id: '', chantier_id: chantierId,
           montant_ttc_cents: '', tva_cents: '', mode_paiement: '', justificatif: false,
         }} />

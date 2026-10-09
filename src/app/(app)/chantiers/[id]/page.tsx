@@ -47,10 +47,13 @@ export default async function PageChantier({ params, searchParams }: PageProps<'
       </div>
       {sp.enregistre === '1' ? <Message type="succes">Chantier enregistré.</Message> : null}
       {sp.piece === 'supprimee' ? <Message type="succes">Pièce supprimée.</Message> : null}
+      {sp.achat === '1' ? <><EffacerBrouillon cles={['achat:nouveau']} /><Message type="succes">Achat enregistré pour ce chantier.</Message></> : null}
 
       <div className="grid grid-cols-2 gap-2">
         <Link href={`/chantiers/${chantier.id}/peinture`} className={`${bouton} bg-anthracite text-creme`}>Calcul peinture</Link>
         <Link href={`/chantiers/${chantier.id}/liste-achat`} className={`${bouton} border-2 border-anthracite bg-white`}>Liste d’achat</Link>
+        <a href="#temps" className={`${bouton} border-2 border-anthracite bg-white`}>Noter mon temps</a>
+        <Link href={`/comptabilite/achats/nouveau?chantier=${chantier.id}`} className={`${bouton} border-2 border-anthracite bg-white`}>Noter un achat</Link>
       </div>
 
       <Carte titre="Devis" action={<Link href={`/devis/nouveau?chantier=${chantier.id}`} className={`${bouton} bg-anthracite text-creme`}>+ Devis</Link>}>

@@ -1,5 +1,6 @@
 import 'server-only';
 import { clientServeur } from '@/lib/supabase/serveur';
+import { toutLire } from '@/lib/lecture';
 import { bornesMois } from '@/domain/comptabilite';
 import type { Achat, Recette } from '@/domain/comptabilite';
 import type { Regime } from '@/domain/devis';
@@ -25,14 +26,13 @@ export async function regimeTva(organisationId: string): Promise<Regime> {
 export async function chargerRecettes(periode: string): Promise<Recette[]> {
   const { du, au } = bornes(periode);
   const sb = await clientServeur();
-  const lignes = lu(await sb.from('v_livre_recettes')
-    .select('paiement_id, date_paiement, montant_cents, nature, mode, reference, facture_numero, client, facture_net_ttc_cents, facture_net_ht_cents, regime_tva')
+  const lignes = await toutLire((de, a) => sb.from('v_livre_recettes')
+    .select('paiement_id, date_paiement, montant_cents, nature, mode, reference, facture_numero, client, part_ht_cents')
     .gte('date_paiement', du).lte('date_paiement', au)
-    .order('date_paiement').order('facture_numero').order('paiement_id').limit(10_000), 'livre des recettes');
+    .order('date_paiement').order('facture_numero').order('paiement_id').range(de, a), 'livre des recettes');
   return lignes.map((l) => ({
     date: l.date_paiement!, montantCents: BigInt(l.montant_cents!), nature: l.nature!, mode: l.mode, reference: l.reference,
-    factureNumero: l.facture_numero, client: l.client ?? '', factureNetTtcCents: BigInt(l.facture_net_ttc_cents!),
-    factureNetHtCents: BigInt(l.facture_net_ht_cents!), regime: l.regime_tva!,
+    factureNumero: l.facture_numero, client: l.client ?? '', partHtCents: BigInt(l.part_ht_cents!),
   }));
 }
 
@@ -42,9 +42,9 @@ export type AchatListe = Achat & { id: string; chantierId: string | null };
 export async function chargerAchats(periode: string): Promise<AchatListe[]> {
   const { du, au } = bornes(periode);
   const sb = await clientServeur();
-  const lignes = lu(await sb.from('depenses')
+  const lignes = await toutLire((de, a) => sb.from('depenses')
     .select('id, date_depense, fournisseur, libelle, montant_ht_cents, tva_cents, montant_ttc_cents, mode_paiement, justificatif_chemin, chantier_id, categories_depenses(libelle), chantiers(nom)')
-    .gte('date_depense', du).lte('date_depense', au).order('date_depense').order('created_at').limit(10_000), 'registre des achats');
+    .gte('date_depense', du).lte('date_depense', au).order('date_depense').order('created_at').order('id').range(de, a), 'registre des achats');
   return lignes.map((l) => ({
     id: l.id, date: l.date_depense, fournisseur: l.fournisseur, libelle: l.libelle,
     categorie: l.categories_depenses?.libelle ?? null, chantier: l.chantiers?.nom ?? null, chantierId: l.chantier_id,

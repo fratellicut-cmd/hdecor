@@ -47,7 +47,8 @@ const duree = z.preprocess((v) => {
   const d = lireDecimal(v, 1);
   return d === null ? Number.NaN : Number(d) / 10;
 }, z.number({ error: 'Durée invalide (exemple : 3 ou 2,5).' })
-  .refine((n) => !Number.isNaN(n) && n >= 0.5 && n <= 365, { error: 'Durée : de 0,5 à 365 jours.' }));
+  .refine((n) => !Number.isNaN(n) && n >= 0.5 && n <= 365, { error: 'Durée : de 0,5 à 365 jours.' })
+  .refine((n) => Number.isInteger(n * 2), { error: 'Durée en jours ou demi-journées (exemple : 3 ou 2,5).' }));
 
 export const schemaPlanification = z.object({
   chantier_id: z.uuid({ error: 'Chantier introuvable.' }),
@@ -58,7 +59,8 @@ export const schemaPlanification = z.object({
 /** Temps passé « 2 h 30 », « 2:30 », « 2,5 » (heures) ou « 150 min ». */
 export function lireDuree(saisie: string): number | null {
   const t = saisie.trim().toLowerCase().replace(/\s+/g, '');
-  let m = /^(\d{1,2})(?:h|:)(\d{1,2})?(?:min)?$/.exec(t);
+  // Minutes sur deux chiffres après « h » ou « : » (« 2h5 » serait ambigu avec 2,5 h : refusé).
+  let m = /^(\d{1,2})(?:h|:)(\d{2})?(?:min)?$/.exec(t);
   if (m) { const min = Number(m[2] ?? 0); return min < 60 ? Number(m[1]) * 60 + min : null; }
   m = /^(\d{1,4})min$/.exec(t);
   if (m) return Number(m[1]);

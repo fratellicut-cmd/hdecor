@@ -1,5 +1,4 @@
 import type { Regime } from './devis';
-import { partHt } from './pilotage';
 import { formaterDate } from './formats';
 
 /**
@@ -77,9 +76,8 @@ export type Recette = {
   reference: string | null;
   factureNumero: string | null;
   client: string;
-  factureNetTtcCents: bigint;
-  factureNetHtCents: bigint;
-  regime: Regime;
+  /** Part HT (livre des recettes, répartie en cumulé par facture : voir repartirHt). */
+  partHtCents: bigint;
 };
 
 export type TotauxRecettes = { ttcCents: bigint; htCents: bigint; nombre: number };
@@ -89,8 +87,7 @@ export function totauxRecettes(recettes: Recette[]): TotauxRecettes {
     { ttcCents: 0n, htCents: 0n, nombre: 0 });
 }
 
-const partHtRecette = (r: Recette) => partHt({ date: r.date, montantCents: r.montantCents, factureNetTtcCents: r.factureNetTtcCents,
-  factureNetHtCents: r.factureNetHtCents, regime: r.regime });
+const partHtRecette = (r: Recette) => r.partHtCents;
 
 /**
  * Livre des recettes : date, client, facture, nature, mode, référence, montant

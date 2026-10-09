@@ -2003,6 +2003,34 @@ select tests.egal((select count(*) from public.v_livre_recettes where organisati
   'pilotage : B ne voit pas le livre des recettes de A');
 reset role;
 
+-- Part HT en cumulé : facture 100,00 HT / 120,00 TTC (assujetti) réglée en 3 × 40,00, puis une annulation de 40,00.
+-- Fixture posée déclencheurs suspendus (superutilisateur ; la vue ne dépend pas du statut), retirée ensuite.
+set session_replication_role = replica;
+insert into public.factures (id, organisation_id, type, client_id, delai_paiement_jours, regime_tva,
+  total_ht_cents, total_tva_cents, total_ttc_cents, ventilation_tva, net_a_payer_cents)
+values ('aaaaaaaa-0000-0000-0000-0000000f6001', 'aaaaaaaa-0000-0000-0000-00000000000a', 'libre', 'aaaaaaaa-0000-0000-0000-0000000c0001', 30,
+  'assujetti', 10000, 2000, 12000, '[{"taux_bp":2000,"base_ht_cents":10000,"tva_cents":2000}]', 12000);
+insert into public.paiements (id, organisation_id, facture_id, date_paiement, montant_cents, mode, created_at) values
+  ('aaaaaaaa-0000-0000-0000-0000000f6011', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f6001', '2026-10-01', 4000, 'virement', '2026-10-01 10:00+00'),
+  ('aaaaaaaa-0000-0000-0000-0000000f6012', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f6001', '2026-10-02', 4000, 'virement', '2026-10-02 10:00+00'),
+  ('aaaaaaaa-0000-0000-0000-0000000f6013', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f6001', '2026-10-03', 4000, 'virement', '2026-10-03 10:00+00');
+set session_replication_role = origin;
+select tests.egal((select string_agg(part_ht_cents::text, ',' order by date_paiement) || ' = ' || sum(part_ht_cents)
+                   from public.v_livre_recettes where facture_id = 'aaaaaaaa-0000-0000-0000-0000000f6001'),
+  '3333,3334,3333 = 10000', 'livre des recettes : 3 × 40,00 sur 100,00 HT / 120,00 TTC -> parts HT en cumulé, total exact 100,00');
+set session_replication_role = replica;
+insert into public.paiements (id, organisation_id, facture_id, date_paiement, montant_cents, mode, created_at, annule_paiement_id) values
+  ('aaaaaaaa-0000-0000-0000-0000000f6014', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f6001', '2026-10-04', -4000, 'virement', '2026-10-04 10:00+00',
+   'aaaaaaaa-0000-0000-0000-0000000f6013');
+set session_replication_role = origin;
+select tests.egal((select part_ht_cents::text || ' / ' || sum(part_ht_cents) over () from public.v_livre_recettes
+                   where facture_id = 'aaaaaaaa-0000-0000-0000-0000000f6001' order by date_paiement desc limit 1),
+  '-3333 / 6667', 'livre des recettes : annulation de 40,00 -> total HT = arrondi(80,00 × 100/120) = 66,67');
+set session_replication_role = replica;
+delete from public.paiements where facture_id = 'aaaaaaaa-0000-0000-0000-0000000f6001';
+delete from public.factures where id = 'aaaaaaaa-0000-0000-0000-0000000f6001';
+set session_replication_role = origin;
+
 -- Triggers : même le propriétaire de la base ne modifie pas une facture émise
 reset role;
 select tests.echoue(

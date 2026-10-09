@@ -76,7 +76,11 @@ export async function pdfComptabilite(entete: { entreprise: string; periode: str
     if (!t.lignes.length) ligneTexte('Aucune écriture sur la période.', 9, p.normal, GRIS);
     for (const r of [...t.lignes.map((x) => ({ x, gras: false })), ...(t.total ? [{ x: t.total, gras: true }] : [])]) {
       const cellules = r.x.map(texteCellule);
-      if (!ligne(cellules, r.gras ? p.gras : p.normal)) { nouvelle(); entetes(); ligne(cellules, r.gras ? p.gras : p.normal); }
+      if (!ligne(cellules, r.gras ? p.gras : p.normal)) {
+        nouvelle(); entetes();
+        // Une ligne plus haute qu'une page entière ne se coupe pas : erreur explicite plutôt qu'une ligne perdue.
+        if (!ligne(cellules, r.gras ? p.gras : p.normal)) throw new Error('Ligne trop longue pour une page du PDF : utilisez l’export Excel.');
+      }
     }
   }
 

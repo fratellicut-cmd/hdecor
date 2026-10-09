@@ -73,6 +73,12 @@ test('chantier : planification en jours ouvrés, temps passé, rentabilité, ach
   await page.getByLabel('Début', { exact: true }).fill('2026-10-02');
   await page.getByRole('button', { name: 'Planifier', exact: true }).click();
   await expect(page.getByText('Chantier planifié du 02/10/2026 au 05/10/2026 (2 j ouvrés).')).toBeVisible();
+  // Rien le week-end : le samedi 03/10 n'affiche pas le chantier, le lundi 05/10 si.
+  await page.goto('/planning?vue=jour&date=2026-10-03');
+  await expect(page.getByRole('region', { name: 'samedi 3 octobre' }).getByText(nom)).toHaveCount(0);
+  await page.goto('/planning?vue=jour&date=2026-10-05');
+  await expect(page.getByRole('region', { name: 'lundi 5 octobre' }).getByText(nom)).toBeVisible();
+  await page.goto(`/chantiers/${chantier}`);
 
   await page.getByLabel('Durée', { exact: true }).fill('7h30');
   await page.getByLabel('Tâche (facultatif)').fill('Ponçage');
@@ -96,7 +102,10 @@ test('chantier : planification en jours ouvrés, temps passé, rentabilité, ach
   await expect(page.getByText('La TVA dépasse le montant TTC.')).toBeVisible();
   await page.getByLabel('Dont TVA').fill('20');
   await page.getByRole('button', { name: 'Enregistrer l’achat' }).click();
-  await expect(page.getByText('Achat enregistré.')).toBeVisible();
+  // Noté depuis le chantier : retour au chantier.
+  await expect(page.getByText('Achat enregistré pour ce chantier.')).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/chantiers/${chantier}`));
+  await page.goto('/comptabilite/achats');
   await page.getByRole('link', { name: new RegExp(fournisseur) }).click();
   const img = page.getByRole('img', { name: /Justificatif/ });
   await expect(img).toBeVisible();

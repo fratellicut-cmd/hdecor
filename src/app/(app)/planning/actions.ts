@@ -7,9 +7,11 @@ import { clientServeur } from '@/lib/supabase/serveur';
 import { erreursParChamp, valeursTexte, type EtatFormulaire } from '@/lib/etat-formulaire';
 import { schemaEvenement, schemaPlanification, schemaRappel, schemaTemps } from '@/lib/validation/planning';
 import { finDeJourParis, instantParis } from '@/domain/dates';
-import { finChantier, premierJourOuvre } from '@/domain/pilotage';
+import { blocsOuvres, finChantier, premierJourOuvre } from '@/domain/pilotage';
 import { formaterDate } from '@/domain/formats';
 
+/** Heure d'un rappel saisi sans heure (affichée dans le formulaire). */
+const HEURE_RAPPEL_PAR_DEFAUT = '08:00';
 const ECHEC = 'L’enregistrement a échoué. Vérifiez la connexion et réessayez.';
 const INCOMPLET = 'Formulaire incomplet : rechargez la page.';
 const idDe = (fd: FormData, cle: string) => z.uuid().safeParse(fd.get(cle));
@@ -38,6 +40,8 @@ export async function enregistrerEvenement(_: EtatFormulaire, fd: FormData): Pro
   const nouveau = idDe(fd, 'id_nouveau');
   if (existant ? !existant.success : !nouveau.success) return { message: INCOMPLET };
   const e = lu.data;
+  // Un chantier se planifie depuis sa fiche (plages de jours ouvrés, date de début du chantier).
+  if (e.type === 'chantier') return { erreurs: { type: 'Un chantier se planifie depuis sa fiche : « Planning ».' }, valeurs: valeursTexte(fd) };
   const valeurs = { type: e.type, chantier_id: e.chantier_id, titre: e.titre, journee_entiere: e.journee_entiere, notes: e.notes, ...bornes(e) };
   const sb = await clientServeur();
   const { error } = existant?.success
@@ -61,10 +65,11 @@ export async function supprimerEvenement(_: EtatFormulaire, fd: FormData): Promi
 }
 
 /**
- * Planifie un chantier : un événement « chantier » sur N jours ouvrés (week-ends
- * exclus ; jours fériés non comptés, À VÉRIFIER à la main), et la date de début
- * prévue du chantier. Un chantier déjà planifié est replanifié (l'ancien
- * événement « chantier » est remplacé).
+ * Planifie un chantier : N jours ouvrés (week-ends exclus ; jours fériés non
+ * comptés, À VÉRIFIER à la main), enregistrés en plages du lundi au vendredi
+ * (rien n'apparaît le week-end), et la date de début prévue du chantier.
+ * Replanifier : les nouvelles plages sont créées AVANT le retrait des anciennes
+ * (un échec laisse l'ancien planning intact).
  */
 export async function planifierChantier(_: EtatFormulaire, fd: FormData): Promise<EtatFormulaire> {
   const session = await verifierSession();
@@ -75,13 +80,18 @@ export async function planifierChantier(_: EtatFormulaire, fd: FormData): Promis
   if (!ch) return { message: 'Chantier introuvable.' };
   const debut = premierJourOuvre(lu.data.date_debut);
   const fin = finChantier(debut, lu.data.duree_jours);
-  const { error: e1 } = await sb.from('evenements').delete().eq('chantier_id', ch.id).eq('type', 'chantier');
+  const { data: anciens, error: e0 } = await sb.from('evenements').select('id').eq('chantier_id', ch.id).eq('type', 'chantier');
+  if (e0) return { message: ECHEC, valeurs: valeursTexte(fd) };
+  const titre = [ch.nom, ch.ville].filter(Boolean).join(', ');
+  const { error: e1 } = await sb.from('evenements').insert(blocsOuvres(debut, fin).map((b) => ({
+    organisation_id: session.organisationId, chantier_id: ch.id, type: 'chantier', titre,
+    debut: instantParis(b.du, '00:00').toISOString(), fin: finDeJourParis(b.au).toISOString(), journee_entiere: true,
+  })));
   if (e1) return { message: ECHEC, valeurs: valeursTexte(fd) };
-  const { error: e2 } = await sb.from('evenements').insert({
-    organisation_id: session.organisationId, chantier_id: ch.id, type: 'chantier', titre: [ch.nom, ch.ville].filter(Boolean).join(', '),
-    debut: instantParis(debut, '00:00').toISOString(), fin: finDeJourParis(fin).toISOString(), journee_entiere: true,
-  });
-  if (e2) return { message: ECHEC, valeurs: valeursTexte(fd) };
+  if (anciens.length) {
+    const { error: e2 } = await sb.from('evenements').delete().in('id', anciens.map((a) => a.id));
+    if (e2) return { message: 'Nouveau planning enregistré, mais l’ancien n’a pas été retiré : replanifiez pour le retirer.' };
+  }
   const { error: e3 } = await sb.from('chantiers').update({ date_debut_prevue: debut, duree_estimee_jours: lu.data.duree_jours }).eq('id', ch.id);
   if (e3) return { message: 'Planning enregistré, mais la date de début du chantier n’a pas été mise à jour : réessayez.' };
   revalider(ch.id);
@@ -99,7 +109,7 @@ export async function ajouterRappel(_: EtatFormulaire, fd: FormData): Promise<Et
   const sb = await clientServeur();
   const { error } = await sb.from('rappels').upsert({
     id: nouveau.data, organisation_id: session.organisationId, type, titre: lu.data.titre, chantier_id: lu.data.chantier_id,
-    echeance: instantParis(lu.data.date, lu.data.heure ?? '08:00').toISOString(),
+    echeance: instantParis(lu.data.date, lu.data.heure ?? HEURE_RAPPEL_PAR_DEFAUT).toISOString(),
   }, { onConflict: 'id', ignoreDuplicates: true });
   if (error) return { message: ECHEC, valeurs: valeursTexte(fd) };
   revalider(lu.data.chantier_id);
@@ -124,7 +134,7 @@ export async function ajouterRappelSechage(_: EtatFormulaire, fd: FormData): Pro
   }, { onConflict: 'id', ignoreDuplicates: true });
   if (error) return { message: ECHEC };
   revalider(chantierId.data);
-  return { succes: `Rappel de séchage noté : couche suivante possible vers ${new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', weekday: 'long', hour: '2-digit', minute: '2-digit' }).format(echeance)}.` };
+  return { succes: `Rappel de séchage noté : couche suivante possible vers ${new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }).format(echeance)}. Il s’affichera dans « À faire » (pas d’alerte sur le téléphone).` };
 }
 
 export async function marquerRappelFait(_: EtatFormulaire, fd: FormData): Promise<EtatFormulaire> {

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { repartirHt } from '../pilotage';
 import { achatsParCategorie, bornesMois, decalerMois, libelleMois, lignesCsv, montantCsv, tableauAchats, tableauRecettes, totauxAchats,
   type Achat, type Recette } from '../comptabilite';
 
+// Part HT fournie par la base (répartie en cumulé : voir repartirHt) ; ici celle d'une facture 1 200 TTC / 1 000 HT.
 const recette = (montant: bigint, r: Partial<Recette> = {}): Recette => ({
   date: '2026-10-05', montantCents: montant, nature: montant < 0n ? 'remboursement' : 'encaissement', mode: 'virement', reference: null,
-  factureNumero: 'FAC-2026-0001', client: 'Mme Martin', factureNetTtcCents: 120000n, factureNetHtCents: 100000n, regime: 'assujetti', ...r,
+  factureNumero: 'FAC-2026-0001', client: 'Mme Martin', partHtCents: repartirHt([montant], 100000n, 120000n, 'assujetti')[0]!, ...r,
 });
 const achat = (ttc: bigint, tva: bigint, categorie: string | null, justificatif = true): Achat => ({
   date: '2026-10-02', fournisseur: 'Négoce', libelle: null, categorie, chantier: null, htCents: ttc - tva, tvaCents: tva, ttcCents: ttc, mode: 'carte', justificatif,
@@ -36,7 +38,7 @@ describe('livre des recettes', () => {
     expect(csv[0]![0]).toBe('05/10/2026');
   });
   it('franchise : pas de colonne HT, l’encaissement est le chiffre d’affaires', () => {
-    const t = tableauRecettes([recette(30000n, { regime: 'franchise', factureNetHtCents: 30000n, factureNetTtcCents: 30000n })], 'franchise', 'octobre 2026');
+    const t = tableauRecettes([recette(30000n, { partHtCents: 30000n })], 'franchise', 'octobre 2026');
     expect(t.entetes).toHaveLength(7);
     expect(lignesCsv(t).at(-1)).toEqual(['Total', '', '', '', '', '', '300,00']);
   });

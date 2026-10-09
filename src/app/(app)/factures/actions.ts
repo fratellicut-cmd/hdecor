@@ -526,18 +526,15 @@ export async function envoyerFacture(_: EtatFormulaire, fd: FormData): Promise<E
     sb.from('modeles_messages').select('sujet, corps').eq('code', 'envoi_facture').maybeSingle(),
     sb.from('parametres_entreprise').select('raison_sociale, email').eq('organisation_id', session.organisationId).single(),
   ]);
-  if (!modele) return { message: 'Modèle de message « envoi de facture » introuvable : partagez le lien.', lien };
+  if (!modele) {
+    await conclureEnvoi(sb, envoiId.data, { ok: false, nonConfigure: false, erreur: 'Modèle de message introuvable.' });
+    return { message: 'Modèle de message « envoi de facture » introuvable : partagez le lien.', lien };
+  }
   const valeurs = {
     client: (c.facture.copie_client as { nom_affiche?: string } | null)?.nom_affiche ?? '', entreprise: p?.raison_sociale ?? '',
     numero: c.facture.numero!, lien, montant: formaterEuros(BigInt(c.facture.reste_a_payer_cents ?? c.facture.net_a_payer_cents!)),
     echeance: formaterDate(c.facture.date_echeance!),
   };
-  // Réservé en base AVANT l'email : un envoi simultané du même formulaire est refusé (jamais deux emails).
-  const reservation = await reserverEnvoi(sb, {
-    id: envoiId.data, organisation_id: session.organisationId, document_type: 'facture', document_id: id.data, nature: 'envoi', destinataire: email,
-  });
-  if (reservation === 'deja') return { message: 'Cet email est déjà en cours d’envoi : rechargez la page dans un instant.', lien };
-  if (reservation === 'echec') return { message: `${ECHEC} Aucun email n’est parti : partagez le lien.`, lien };
   const r = await envoyerEmail({ a: email!, sujet: remplirModele(modele.sujet, valeurs), texte: remplirModele(modele.corps, valeurs), repondreA: p?.email });
   await conclureEnvoi(sb, envoiId.data, r);
   await conserverSeulLien(sb, id.data, nouveau.id, r.ok);
@@ -567,11 +564,14 @@ async function nouveauLienFacture(sb: Sb, organisationId: string, factureId: str
 
 /**
  * Après un envoi par email : réussi -> seul le nouveau lien reste valable ;
- * échoué -> le nouveau lien (jamais transmis) est désactivé, le client garde l'ancien.
+ * échoué -> aucun lien désactivé (le nouveau est proposé au partage à la main).
  */
 async function conserverSeulLien(sb: Sb, factureId: string, nouveauId: string, envoye: boolean) {
-  const requete = sb.from('liens_publics').update({ revoque_le: new Date().toISOString() }).eq('facture_id', factureId).is('revoque_le', null);
-  const { error } = await (envoye ? requete.neq('id', nouveauId) : requete.eq('id', nouveauId));
+  // Email non parti : rien n'est désactivé. Le nouveau lien est proposé au partage à la main (il doit rester
+  // valable), les anciens restent ouverts tant qu'aucun nouveau lien n'a été transmis.
+  if (!envoye) return;
+  const { error } = await sb.from('liens_publics').update({ revoque_le: new Date().toISOString() })
+    .eq('facture_id', factureId).is('revoque_le', null).neq('id', nouveauId);
   if (error) console.error('Envoi conclu, liens de la facture non mis à jour', factureId, error.code);
 }
 
@@ -667,7 +667,9 @@ export async function relancerFacture(_: EtatFormulaire, fd: FormData): Promise<
   await conclureEnvoi(sb, envoiId.data, r);
   await conserverSeulLien(sb, id.data, nouveau.id, r.ok);
   revalider(id.data);
-  return r.ok ? { succes: `Rappel ${rang} envoyé par email à ${email}.` } : { message: `${r.erreur} Partagez le message à la main.`, lien, texte };
+  // Échec : le message reste à partager à la main, et se note comme un rappel partagé (les anciens liens sont alors désactivés).
+  return r.ok ? { succes: `Rappel ${rang} envoyé par email à ${email}.` }
+    : { message: `${r.erreur} Partagez le message à la main.`, lien, texte, niveau, lienId: nouveau.id };
 }
 
 /** Rappel préparé, copié ou partagé par Yorick : noté une seule fois dans l'historique (canal « manuel »). */

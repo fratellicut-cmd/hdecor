@@ -50,10 +50,8 @@ export type Encaissement = {
   date: string;
   /** Signé : un remboursement ou une annulation de paiement est négatif. */
   montantCents: bigint;
-  /** Net de la facture (acomptes déduits), TTC et HT : part HT d'un encaissement. */
-  factureNetTtcCents: bigint;
-  factureNetHtCents: bigint;
-  regime: Regime;
+  /** Part HT de cet encaissement (livre des recettes, calculée en base : voir repartirHt). */
+  partHtCents: bigint;
 };
 
 /** Arrondi demi-supérieur (en valeur absolue) d'une division, signe conservé. */
@@ -62,13 +60,22 @@ function arrondiSigne(num: bigint, den: bigint): bigint {
 }
 
 /**
- * Part HT d'un encaissement : en franchise, tout l'encaissement ; sinon au
- * prorata HT / TTC de la facture (À VÉRIFIER : CA « encaissé HT » d'une
- * entreprise soumise à la TVA).
+ * Parts HT des encaissements successifs d'UNE facture (dans l'ordre des
+ * paiements). En franchise, tout l'encaissement. Sinon, réparties en CUMULÉ :
+ * part n = arrondi(cumul n × HT/TTC) − arrondi(cumul n−1 × HT/TTC), de sorte que
+ * les parts totalisent exactement le HT net de la facture (pas de dérive
+ * d'arrondi : 3 × 40 € sur 100 € HT / 120 € TTC -> 33,33 + 33,34 + 33,33).
+ * Règle reprise par la vue v_livre_recettes (part_ht_cents). À VÉRIFIER avec
+ * le comptable : CA « encaissé HT » d'une entreprise soumise à la TVA.
  */
-export function partHt(e: Encaissement): bigint {
-  if (e.regime === 'franchise' || e.factureNetTtcCents <= 0n) return e.montantCents;
-  return arrondiSigne(e.montantCents * e.factureNetHtCents, e.factureNetTtcCents);
+export function repartirHt(montants: bigint[], netHtCents: bigint, netTtcCents: bigint, regime: Regime): bigint[] {
+  if (regime === 'franchise' || netTtcCents <= 0n) return [...montants];
+  let cumul = 0n;
+  return montants.map((m) => {
+    const avant = arrondiSigne(cumul * netHtCents, netTtcCents);
+    cumul += m;
+    return arrondiSigne(cumul * netHtCents, netTtcCents) - avant;
+  });
 }
 
 export type Chiffre = { ttcCents: bigint; htCents: bigint };
@@ -76,7 +83,7 @@ export type Chiffre = { ttcCents: bigint; htCents: bigint };
 /** Chiffre d'affaires ENCAISSÉ sur la période (recettes moins remboursements). */
 export function chiffreAffaires(encaissements: Encaissement[], p: Periode): Chiffre {
   return encaissements.filter((e) => dans(e.date, p)).reduce(
-    (a, e) => ({ ttcCents: a.ttcCents + e.montantCents, htCents: a.htCents + partHt(e) }),
+    (a, e) => ({ ttcCents: a.ttcCents + e.montantCents, htCents: a.htCents + e.partHtCents }),
     { ttcCents: 0n, htCents: 0n },
   );
 }
@@ -251,6 +258,20 @@ export function finChantier(debut: string, dureeJours: number): string {
   let d = premierJourOuvre(debut);
   for (let i = 1; i < n; i++) d = premierJourOuvre(ajouterJours(d, 1));
   return d;
+}
+
+/**
+ * Plages continues de jours ouvrés entre deux dates incluses : un chantier du
+ * vendredi au mardi donne [ven-ven] et [lun-mar] (rien n'est affiché le week-end).
+ */
+export function blocsOuvres(debut: string, fin: string): { du: string; au: string }[] {
+  const blocs: { du: string; au: string }[] = [];
+  for (let d = premierJourOuvre(debut); d <= fin; d = premierJourOuvre(ajouterJours(d, 1))) {
+    const dernier = blocs.at(-1);
+    if (dernier && ajouterJours(dernier.au, 1) === d) dernier.au = d;
+    else blocs.push({ du: d, au: d });
+  }
+  return blocs;
 }
 
 // --------------------------------------------------------------------------

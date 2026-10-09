@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { verifierSession } from '@/lib/dal';
 import { clientServeur } from '@/lib/supabase/serveur';
 import { rentabiliteChantier } from '@/lib/pilotage';
+import { toutLire } from '@/lib/lecture';
 import { aujourdHuiParis } from '@/domain/dates';
 import { formaterDuree } from '@/domain/chiffrage';
 import { formaterDate, formaterDateHeure, formaterEuros, formaterTaux } from '@/domain/formats';
@@ -9,6 +10,7 @@ import { supprimerTemps } from '@/app/(app)/planning/actions';
 import { FormulairePlanification, FormulaireRappel, FormulaireSechage, FormulaireTemps } from '@/components/planning/Formulaires';
 import { ActionConfirmee } from '@/components/formulaire/ActionConfirmee';
 import { Carte } from '@/components/ui/Carte';
+import { Repliable } from '@/components/ui/Repliable';
 
 const duree = (minutes: number) => formaterDuree(BigInt(Math.abs(minutes)));
 const ecartDuree = (minutes: number) => (minutes === 0 ? 'conforme' : `${minutes > 0 ? '+' : '−'}${duree(minutes)}`);
@@ -20,30 +22,38 @@ export async function CartesPilotage({ chantier }: { chantier: { id: string; dat
   const sb = await clientServeur();
   const aujourdhui = aujourdHuiParis();
   const [temps, rappels, planifie, r] = await Promise.all([
-    sb.from('temps_passes').select('id, jour, minutes, tache').eq('chantier_id', chantier.id).order('jour', { ascending: false }).order('created_at', { ascending: false }).limit(500),
+    toutLire((de, a) => sb.from('temps_passes').select('id, jour, minutes, tache').eq('chantier_id', chantier.id)
+      .order('jour', { ascending: false }).order('created_at', { ascending: false }).order('id').range(de, a), 'temps passés'),
     sb.from('rappels').select('id, titre, echeance').eq('chantier_id', chantier.id).eq('statut', 'a_envoyer').order('echeance').limit(50),
-    sb.from('evenements').select('debut, fin').eq('chantier_id', chantier.id).eq('type', 'chantier').limit(1).maybeSingle(),
+    sb.from('evenements').select('debut, fin').eq('chantier_id', chantier.id).eq('type', 'chantier').order('debut').limit(100),
     rentabiliteChantier(chantier.id, session.organisationId),
   ]);
-  if (temps.error || rappels.error || planifie.error) throw new Error('Lecture impossible : pilotage du chantier.');
-  const lesTemps = temps.data;
+  if (rappels.error || planifie.error) throw new Error('Lecture impossible : pilotage du chantier.');
+  const lesTemps = temps;
+  // Plages de jours ouvrés du chantier : du début de la première à la fin de la dernière.
+  const plages = planifie.data;
+  const prevu = plages.length ? { debut: plages[0]!.debut, fin: plages.reduce((a, p) => (p.fin > a ? p.fin : a), plages[0]!.fin) } : null;
+  const formulairePlanning = (
+    <FormulairePlanification chantierId={chantier.id} debut={chantier.date_debut_prevue ?? aujourdhui}
+      duree={chantier.duree_estimee_jours === null ? '' : String(chantier.duree_estimee_jours).replace('.', ',')} />
+  );
   const total = lesTemps.reduce((a, t) => a + t.minutes, 0);
   const libelleCout = r.regime === 'franchise' ? 'Achats (TTC, TVA non récupérée)' : 'Achats HT';
 
   return (
     <>
       <Carte titre="Planning">
-        {planifie.data ? (
-          <p className="mb-3">
-            Prévu du <strong>{formaterDate(new Date(planifie.data.debut))}</strong> au <strong>{formaterDate(new Date(planifie.data.fin))}</strong>.{' '}
-            <Link href={`/planning?vue=semaine&date=${aujourdHuiParis(new Date(planifie.data.debut))}`} className="inline-flex min-h-11 items-center underline underline-offset-4">Voir le planning</Link>
+        {prevu ? (
+          <p>
+            Prévu du <strong>{formaterDate(new Date(prevu.debut))}</strong> au <strong>{formaterDate(new Date(prevu.fin))}</strong> (week-ends exclus).{' '}
+            <Link href={`/planning?vue=semaine&date=${aujourdHuiParis(new Date(prevu.debut))}`} className="inline-flex min-h-11 items-center underline underline-offset-4">Voir le planning</Link>
           </p>
-        ) : <p className="mb-3 text-encre-douce">Pas encore planifié.</p>}
-        <FormulairePlanification chantierId={chantier.id} debut={chantier.date_debut_prevue ?? aujourdhui}
-          duree={chantier.duree_estimee_jours === null ? '' : String(chantier.duree_estimee_jours).replace('.', ',')} />
+        ) : <p className="text-encre-douce">Pas encore planifié.</p>}
+        {/* Toujours au même endroit : le message de l'enregistrement reste affiché une fois le chantier planifié. */}
+        <Repliable titre={prevu ? 'Replanifier…' : 'Planifier'} ouvert={!prevu}>{formulairePlanning}</Repliable>
       </Carte>
 
-      <Carte titre="Temps passé">
+      <div id="temps" className="scroll-mt-4"><Carte titre="Temps passé">
         <FormulaireTemps chantierId={chantier.id} aujourdhui={aujourdhui} />
         {lesTemps.length ? (
           <>
@@ -61,7 +71,7 @@ export async function CartesPilotage({ chantier }: { chantier: { id: string; dat
             <p className="mt-2 border-t border-trait pt-2 font-semibold tabular-nums">Total : {duree(total)}</p>
           </>
         ) : <p className="mt-3 text-encre-douce">Aucun temps noté.</p>}
-      </Carte>
+      </Carte></div>
 
       <Carte titre="Rappels du chantier">
         {rappels.data.length ? (
@@ -83,7 +93,7 @@ export async function CartesPilotage({ chantier }: { chantier: { id: string; dat
           <Ligne libelle="Marge brute" valeur={`${formaterEuros(r.margeBruteCents)}${r.tauxMargeBp === null ? '' : ` (${formaterTaux(r.tauxMargeBp)})`}`} fort />
           {r.devisSignes ? (
             <>
-              <Ligne libelle="Matière : réel / prévu" valeur={`${formaterEuros(r.achatsCents)} / ${formaterEuros(r.matierePrevueCents)} (${ecartEuros(r.ecartMatiereCents)})`} />
+              <Ligne libelle="Achats du chantier / matière prévue" valeur={`${formaterEuros(r.achatsCents)} / ${formaterEuros(r.matierePrevueCents)} (${ecartEuros(r.ecartMatiereCents)})`} />
               <Ligne libelle="Temps : réel / prévu" valeur={`${duree(r.minutesReelles)} / ${duree(r.minutesPrevues)} (${ecartDuree(r.ecartMinutes)})`} />
             </>
           ) : <Ligne libelle="Temps passé" valeur={duree(r.minutesReelles)} />}
@@ -96,7 +106,7 @@ export async function CartesPilotage({ chantier }: { chantier: { id: string; dat
         </dl>
         <p className="mt-3 text-sm text-encre-douce">
           {r.devisSignes ? 'Prévu : lignes du ou des devis signés (options retenues comprises). ' : 'Aucun devis signé : pas de prévu à comparer. '}
-          Achats : ceux rattachés à ce chantier dans la comptabilité.
+          Achats : tous ceux rattachés à ce chantier dans la comptabilité (déplacements compris), comparés à la seule matière prévue.
           {r.valeurTempsCents === null ? ' Renseignez le taux horaire dans Paramètres pour valoriser le temps.' : ' La valeur du temps est indicative (ce n’est pas une dépense).'}
         </p>
         <Link href={`/comptabilite/achats/nouveau?chantier=${chantier.id}`} className="mt-2 inline-flex min-h-12 items-center font-semibold underline underline-offset-4">+ Noter un achat pour ce chantier</Link>

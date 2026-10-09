@@ -31,6 +31,8 @@ alter table public.depenses add constraint justificatif_chemin_depense check (
 alter table public.depenses add column updated_at timestamptz not null default now();
 create trigger depenses_updated_at before update on public.depenses
   for each row execute function public.maj_updated_at();
+-- Rentabilité par chantier (achats du chantier) et clé étrangère vers chantiers.
+create index depenses_chantier_idx on public.depenses (organisation_id, chantier_id) where chantier_id is not null;
 
 -- Catégories par défaut (modifiables), créées une fois pour l'organisation de la session.
 create or replace function public.initialiser_categories_depenses()
@@ -69,7 +71,7 @@ create index rappels_org_echeance_idx on public.rappels (organisation_id, statut
 
 -- 5. Livre des recettes ------------------------------------------------------------
 -- Colonnes ajoutées en fin de vue : net de la facture (TTC et HT, acomptes
--- déduits) et régime, pour la part HT d'un encaissement (assujetti).
+-- déduits), régime, et part HT de l'encaissement (assujetti ; À VÉRIFIER avec le comptable).
 create or replace view public.v_livre_recettes with (security_invoker = true) as
 select p.organisation_id, p.date_paiement,
        case when f.type = 'avoir' then -p.montant_cents else p.montant_cents end as montant_cents,
@@ -82,6 +84,22 @@ select p.organisation_id, p.date_paiement,
        f.total_ht_cents - coalesce((select sum((d ->> 'ht')::bigint) from jsonb_array_elements(f.deductions) d), 0)::bigint
          as facture_net_ht_cents,
        f.regime_tva,
-       f.chantier_id
+       f.chantier_id,
+       e.part_ht_cents
 from public.paiements p
-join public.factures f on f.id = p.facture_id;
+join public.factures f on f.id = p.facture_id
+cross join lateral (
+  select case when f.type = 'avoir' then -p.montant_cents else p.montant_cents end as m,
+         f.total_ht_cents - coalesce((select sum((d ->> 'ht')::bigint) from jsonb_array_elements(f.deductions) d), 0) as ht,
+         f.net_a_payer_cents as ttc
+) n
+cross join lateral (
+  -- Part HT en CUMULÉ (assujetti) : arrondi(cumul × HT/TTC) − arrondi(cumul précédent × HT/TTC).
+  -- Les parts d'une facture totalisent exactement son HT net, quel que soit le nombre de paiements.
+  select case when f.regime_tva = 'franchise' or n.ttc <= 0 then n.m
+         else (round(c.cumul::numeric * n.ht / n.ttc) - round((c.cumul - n.m)::numeric * n.ht / n.ttc))::bigint end as part_ht_cents
+  from (select sum(case when f2.type = 'avoir' then -p2.montant_cents else p2.montant_cents end) as cumul
+        from public.paiements p2 join public.factures f2 on f2.id = p2.facture_id
+        where p2.facture_id = p.facture_id
+          and (p2.date_paiement, p2.created_at, p2.id) <= (p.date_paiement, p.created_at, p.id)) c
+) e;

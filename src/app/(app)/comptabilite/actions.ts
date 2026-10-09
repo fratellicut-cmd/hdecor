@@ -62,8 +62,9 @@ const revalider = (chantierId?: string | null) => {
 
 /**
  * Achat (création ou modification), avec photo ou PDF du ticket. Création :
- * identifiant fixé par le formulaire (un second envoi après une réponse perdue
- * retrouve l'achat déjà créé, sans doublon ni second dépôt).
+ * identifiant fixé par le formulaire ; un second envoi (réponse perdue, ou
+ * saisie corrigée entre-temps) met à jour l'achat déjà créé, sans doublon. Un
+ * justificatif joint remplace le précédent (l'ancien fichier est retiré).
  */
 export async function enregistrerDepense(_: EtatFormulaire, fd: FormData): Promise<EtatFormulaire> {
   const session = await verifierSession();
@@ -77,24 +78,24 @@ export async function enregistrerDepense(_: EtatFormulaire, fd: FormData): Promi
   const sb = await clientServeur();
   const id = existant?.success ? existant.data : nouveau.data!;
 
-  let ancien: string | null = null;
-  if (existant) {
-    const { data, error } = await sb.from('depenses').update(lu.data).eq('id', id).select('justificatif_chemin').maybeSingle();
-    if (error) return { message: messageErreur(error.code), valeurs: valeursTexte(fd) };
-    if (!data) return { message: 'Achat introuvable.' };
-    ancien = data.justificatif_chemin;
-  } else {
-    const { error } = await sb.from('depenses').upsert({ ...lu.data, id, organisation_id: session.organisationId }, { onConflict: 'id', ignoreDuplicates: true });
-    if (error) return { message: messageErreur(error.code), valeurs: valeursTexte(fd) };
-    // Second envoi d'un achat déjà créé avec son justificatif : pas de second dépôt.
-    const { data } = await sb.from('depenses').select('justificatif_chemin').eq('id', id).maybeSingle();
-    if (data?.justificatif_chemin) ancien = data.justificatif_chemin;
-  }
-  const dejaJoint = !existant && ancien !== null;
-  const avertissement = fichier && !dejaJoint ? await attacher(session.organisationId, id, fichier, ancien) : null;
+  const { data: avant, error: eAvant } = await sb.from('depenses').select('justificatif_chemin, chantier_id').eq('id', id).maybeSingle();
+  if (eAvant) return { message: ECHEC, valeurs: valeursTexte(fd) };
+  if (existant && !avant) return { message: 'Achat introuvable.' };
+  const ecrire = async () => (avant
+    ? sb.from('depenses').update(lu.data).eq('id', id)
+    : sb.from('depenses').insert({ ...lu.data, id, organisation_id: session.organisationId }));
+  let { error } = await ecrire();
+  // Deux envois simultanés de la même création : le second met à jour l'achat créé par le premier.
+  if (error?.code === '23505' && !avant) ({ error } = await sb.from('depenses').update(lu.data).eq('id', id));
+  if (error) return { message: messageErreur(error.code), valeurs: valeursTexte(fd) };
+  const avertissement = fichier ? await attacher(session.organisationId, id, fichier, avant?.justificatif_chemin ?? null) : null;
   revalider(lu.data.chantier_id);
+  if (avant?.chantier_id && avant.chantier_id !== lu.data.chantier_id) revalider(avant.chantier_id);
   if (avertissement) return { message: avertissement };
   if (existant) return { succes: 'Achat modifié.' };
+  // Noté depuis la fiche d'un chantier (et toujours rattaché à lui) : retour au chantier.
+  const depuis = idDe(fd, 'depuis_chantier');
+  if (depuis.success && depuis.data === lu.data.chantier_id) redirect(`/chantiers/${depuis.data}?achat=1`);
   redirect(`/comptabilite/achats?mois=${lu.data.date_depense.slice(0, 7)}&enregistre=1`);
 }
 

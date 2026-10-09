@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 const LIENS = [
-  { href: '/', libelle: 'Accueil', icone: '⌂', aussi: [] },
+  { href: '/', libelle: 'Accueil', icone: '⌂', aussi: ['/planning', '/comptabilite'] },
   { href: '/chantiers', libelle: 'Chantiers', icone: '▦', aussi: [] },
   { href: '/devis', libelle: 'Devis', icone: '✎', aussi: [] },
   { href: '/factures', libelle: 'Factures', icone: '€', aussi: [] },
@@ -20,7 +20,7 @@ export function Navigation() {
     <nav aria-label="Navigation principale" className="fixed inset-x-0 bottom-0 z-20 border-t border-trait bg-white pb-[env(safe-area-inset-bottom)]">
       <ul className="mx-auto grid max-w-3xl grid-cols-6">
         {LIENS.map((l) => {
-          const actif = l.href === '/' ? chemin === '/' : [l.href, ...l.aussi].some((h) => chemin.startsWith(h));
+          const actif = l.href === '/' ? chemin === '/' || l.aussi.some((h) => chemin.startsWith(h)) : [l.href, ...l.aussi].some((h) => chemin.startsWith(h));
           return (
             <li key={l.href}>
               <Link

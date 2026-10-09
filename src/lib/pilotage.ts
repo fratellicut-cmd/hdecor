@@ -1,5 +1,6 @@
 import 'server-only';
 import { clientServeur } from '@/lib/supabase/serveur';
+import { toutLire } from '@/lib/lecture';
 import { aujourdHuiParis, finDeJourParis } from '@/domain/dates';
 import { ajouterJours } from '@/domain/devis-document';
 import { deductionsDomaine } from '@/lib/factures';
@@ -18,12 +19,11 @@ function lu<T>(r: { data: T | null; error: unknown }, quoi: string): NonNullable
 
 /** Encaissements (livre des recettes) depuis le 1er janvier de l'année précédente : base du CA et des seuils. */
 async function encaissementsDepuis(sb: Sb, du: string): Promise<Encaissement[]> {
-  const lignes = lu(await sb.from('v_livre_recettes')
-    .select('date_paiement, montant_cents, facture_net_ttc_cents, facture_net_ht_cents, regime_tva')
-    .gte('date_paiement', du).limit(20_000), 'livre des recettes');
+  const lignes = await toutLire((de, a) => sb.from('v_livre_recettes')
+    .select('date_paiement, montant_cents, part_ht_cents')
+    .gte('date_paiement', du).order('date_paiement').order('paiement_id').range(de, a), 'livre des recettes');
   return lignes.map((l) => ({
-    date: l.date_paiement!, montantCents: BigInt(l.montant_cents!), factureNetTtcCents: BigInt(l.facture_net_ttc_cents!),
-    factureNetHtCents: BigInt(l.facture_net_ht_cents!), regime: l.regime_tva!,
+    date: l.date_paiement!, montantCents: BigInt(l.montant_cents!), partHtCents: BigInt(l.part_ht_cents!),
   }));
 }
 
@@ -108,24 +108,25 @@ export async function chargerTableauDeBord(organisationId: string): Promise<Tabl
   if (eP || !p) throw new Error('Lecture impossible : paramètres.');
   const [encaissements, devis, factures, chantiers, faire] = await Promise.all([
     encaissementsDepuis(sb, periodes.annee.precedente.du),
-    sb.from('v_devis').select('statut, date_emission, valide_jusqu_au, accepte_le, total_ttc_cents')
-      .neq('statut', 'brouillon').gte('created_at', `${anPrecedent(anPrecedent(aujourdhui))}T00:00:00Z`).limit(5_000),
-    sb.from('v_factures').select('reste_a_payer_cents, date_echeance, statut_affiche').eq('statut', 'emise').neq('type', 'avoir')
-      .gt('reste_a_payer_cents', 0).limit(5_000),
+    toutLire((de, a) => sb.from('v_devis').select('statut, date_emission, valide_jusqu_au, accepte_le, total_ttc_cents')
+      .neq('statut', 'brouillon').gte('created_at', `${anPrecedent(anPrecedent(aujourdhui))}T00:00:00Z`).order('id').range(de, a), 'devis'),
+    toutLire((de, a) => sb.from('v_factures').select('reste_a_payer_cents, date_echeance, statut_affiche').eq('statut', 'emise').neq('type', 'avoir')
+      .gt('reste_a_payer_cents', 0).order('id').range(de, a), 'factures à encaisser'),
     sb.from('v_chantiers').select('id, nom, statut, statut_affiche, date_debut_prevue, reste_a_facturer_cents, created_at')
       .neq('statut', 'termine').order('date_debut_prevue', { ascending: true, nullsFirst: false }).limit(500),
     aFaire(sb, aujourdhui, p),
   ]);
   const ch = lu(chantiers, 'chantiers');
-  const restesAFacturer = lu(await sb.from('v_chantiers').select('reste_a_facturer_cents').gt('reste_a_facturer_cents', 0).limit(5_000), 'restes à facturer');
-  const fa = lu(factures, 'factures à encaisser');
+  const restesAFacturer = await toutLire((de, a) => sb.from('v_chantiers').select('reste_a_facturer_cents').gt('reste_a_facturer_cents', 0)
+    .order('id').range(de, a), 'restes à facturer');
+  const fa = factures;
   const ca = (k: 'mois' | 'trimestre' | 'annee') => ({
     courant: chiffreAffaires(encaissements, periodes[k].courante), precedent: chiffreAffaires(encaissements, periodes[k].precedente),
   });
   const annee = chiffreAffaires(encaissements, periodes.annee.courante);
   // Seuils : CA hors taxes de l'année civile en cours (base à faire confirmer par le comptable).
   const base = annee.htCents;
-  const devisResumes: DevisResume[] = lu(devis, 'devis').map((d) => ({
+  const devisResumes: DevisResume[] = devis.map((d) => ({
     statut: d.statut as DevisResume['statut'], dateEmission: d.date_emission, valideJusquAu: d.valide_jusqu_au,
     accepteLe: d.accepte_le ? aujourdHuiParis(new Date(d.accepte_le)) : null, totalTtcCents: BigInt(d.total_ttc_cents ?? 0),
   }));
@@ -162,22 +163,22 @@ export async function rentabiliteChantier(chantierId: string, organisationId: st
   const [p, devis, temps, depenses] = await Promise.all([
     sb.from('parametres_entreprise').select('regime_tva, taux_horaire_cents').eq('organisation_id', organisationId).single(),
     sb.from('devis').select('id, signature_id').eq('chantier_id', chantierId).eq('statut', 'accepte'),
-    sb.from('temps_passes').select('minutes').eq('chantier_id', chantierId).limit(10_000),
-    sb.from('depenses').select('montant_ht_cents, montant_ttc_cents').eq('chantier_id', chantierId).limit(10_000),
+    toutLire((de, a) => sb.from('temps_passes').select('minutes').eq('chantier_id', chantierId).order('id').range(de, a), 'temps passés'),
+    toutLire((de, a) => sb.from('depenses').select('montant_ht_cents, montant_ttc_cents').eq('chantier_id', chantierId).order('id').range(de, a), 'achats'),
   ]);
   const param = lu(p, 'paramètres');
   const signes = lu(devis, 'devis signés');
   const idsDevis = signes.map((d) => d.id);
   const [lignes, signatures, factures] = await Promise.all([
-    idsDevis.length ? sb.from('devis_lignes').select('id, devis_id, type, optionnelle, cout_matiere_prevu_cents, minutes_prevues').in('devis_id', idsDevis)
-      : Promise.resolve({ data: [], error: null }),
+    idsDevis.length ? toutLire((de, a) => sb.from('devis_lignes').select('id, devis_id, type, optionnelle, cout_matiere_prevu_cents, minutes_prevues')
+      .in('devis_id', idsDevis).order('id').range(de, a), 'lignes des devis') : Promise.resolve([]),
     signes.some((d) => d.signature_id) ? sb.from('signatures').select('id, options_acceptees').in('id', signes.map((d) => d.signature_id).filter((x): x is string => !!x))
       : Promise.resolve({ data: [], error: null }),
     sb.from('factures').select('id, type, statut, total_ht_cents, deductions, facture_origine_id, chantier_id, devis_id')
-      .neq('statut', 'brouillon').or(`chantier_id.eq.${chantierId}${idsDevis.length ? `,devis_id.in.(${idsDevis.join(',')})` : ''}`).limit(1_000),
+      .neq('statut', 'brouillon').or(`chantier_id.eq.${chantierId}${idsDevis.length ? `,devis_id.in.(${idsDevis.join(',')})` : ''}`).order('id').limit(1_000),
   ]);
   const options = new Set(lu(signatures, 'signatures').flatMap((s) => s.options_acceptees ?? []));
-  const retenues = lu(lignes, 'lignes des devis').filter((l) => l.type === 'ligne' && (!l.optionnelle || options.has(l.id)));
+  const retenues = lignes.filter((l) => l.type === 'ligne' && (!l.optionnelle || options.has(l.id)));
   const fs = lu(factures, 'factures du chantier');
   // Avoirs : rattachés par leur facture d'origine (ni chantier ni devis).
   const avoirs = fs.length ? lu(await sb.from('factures').select('total_ht_cents, deductions').eq('type', 'avoir').neq('statut', 'brouillon')
@@ -186,8 +187,8 @@ export async function rentabiliteChantier(chantierId: string, organisationId: st
   const factureHt = fs.filter((f) => f.type !== 'avoir').reduce((a, f) => a + netHt(f), 0n) - avoirs.reduce((a, f) => a + netHt(f), 0n);
   const donnees: DonneesMarge = {
     factureHtCents: factureHt,
-    achatsCents: lu(depenses, 'achats').reduce((a, d) => a + coutAchat({ htCents: BigInt(d.montant_ht_cents), ttcCents: BigInt(d.montant_ttc_cents) }, param.regime_tva), 0n),
-    minutesReelles: lu(temps, 'temps passés').reduce((a, t) => a + t.minutes, 0),
+    achatsCents: depenses.reduce((a, d) => a + coutAchat({ htCents: BigInt(d.montant_ht_cents), ttcCents: BigInt(d.montant_ttc_cents) }, param.regime_tva), 0n),
+    minutesReelles: temps.reduce((a, t) => a + t.minutes, 0),
     matierePrevueCents: retenues.reduce((a, l) => a + BigInt(l.cout_matiere_prevu_cents ?? 0), 0n),
     minutesPrevues: retenues.reduce((a, l) => a + (l.minutes_prevues ?? 0), 0),
     tauxHoraireCents: param.taux_horaire_cents === null ? null : BigInt(param.taux_horaire_cents),

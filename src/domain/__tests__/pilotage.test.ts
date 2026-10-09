@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  anPrecedent, chiffreAffaires, coutAchat, evolutionBp, fichierIcs, finChantier, jaugeSeuil, margeChantier, partHt,
+  anPrecedent, blocsOuvres, chiffreAffaires, coutAchat, evolutionBp, fichierIcs, finChantier, jaugeSeuil, margeChantier, repartirHt,
   periodesTableauDeBord, premierJourOuvre, statistiquesDevis, tresoreriePrevisionnelle, type DevisResume, type Encaissement,
 } from '../pilotage';
 
@@ -16,19 +16,27 @@ describe('périodes du tableau de bord', () => {
 });
 
 describe('chiffre d’affaires encaissé', () => {
-  const franchise = (date: string, m: bigint): Encaissement => ({ date, montantCents: m, factureNetTtcCents: 100_000n, factureNetHtCents: 100_000n, regime: 'franchise' });
+  const franchise = (date: string, m: bigint): Encaissement => ({ date, montantCents: m, partHtCents: m });
   it('somme des encaissements de la période, remboursements déduits', () => {
     const e = [franchise('2026-10-01', 30_000n), franchise('2026-10-09', 70_000n), franchise('2026-10-10', 5_000n), franchise('2026-09-30', 1n),
       franchise('2026-10-05', -10_000n)];
     expect(chiffreAffaires(e, { du: '2026-10-01', au: '2026-10-09' })).toEqual({ ttcCents: 90_000n, htCents: 90_000n });
   });
-  it('assujetti : part HT au prorata de la facture (1 100 TTC dont 1 000 HT ; 550 encaissés -> 500 HT)', () => {
-    const e: Encaissement = { date: '2026-10-01', montantCents: 55_000n, factureNetTtcCents: 110_000n, factureNetHtCents: 100_000n, regime: 'assujetti' };
-    expect(partHt(e)).toBe(50_000n);
-    // 333,33 sur 1 200 TTC / 1 000 HT : 333,33 × 1000 / 1200 = 277,775 -> 277,78
-    expect(partHt({ ...e, montantCents: 33_333n, factureNetTtcCents: 120_000n })).toBe(27_778n);
-    // Annulation du même paiement : exactement l'opposé.
-    expect(partHt({ ...e, montantCents: -33_333n, factureNetTtcCents: 120_000n })).toBe(-27_778n);
+  it('assujetti : part HT au prorata, répartie en cumulé (1 100 TTC dont 1 000 HT ; 550 encaissés -> 500 HT)', () => {
+    expect(repartirHt([55_000n], 100_000n, 110_000n, 'assujetti')).toEqual([50_000n]);
+    // 333,33 sur 1 200 TTC / 1 000 HT : 333,33 × 1000 / 1200 = 277,775 -> 277,78 ; annulation : exactement l'opposé.
+    expect(repartirHt([33_333n, -33_333n], 100_000n, 120_000n, 'assujetti')).toEqual([27_778n, -27_778n]);
+  });
+  it('3 × 40 € sur 100 € HT / 120 € TTC : 33,33 + 33,34 + 33,33 = 100,00 € HT (pas de dérive d’arrondi)', () => {
+    const parts = repartirHt([4_000n, 4_000n, 4_000n], 10_000n, 12_000n, 'assujetti');
+    expect(parts).toEqual([3_333n, 3_334n, 3_333n]);
+    expect(parts.reduce((a, b) => a + b, 0n)).toBe(10_000n);
+    // Sept paiements de 1/7 d'une facture mixte (1 000 HT dont TVA 20 % et 10 % : 1 150 TTC) : total HT exact.
+    const sept = repartirHt([16_429n, 16_429n, 16_428n, 16_429n, 16_428n, 16_429n, 16_428n], 100_000n, 115_000n, 'assujetti');
+    expect(sept.reduce((a, b) => a + b, 0n)).toBe(100_000n);
+  });
+  it('franchise : la part HT est l’encaissement lui-même', () => {
+    expect(repartirHt([4_000n, -1_000n], 10_000n, 10_000n, 'franchise')).toEqual([4_000n, -1_000n]);
   });
   it('évolution : +12,5 % ; sans base, rien', () => {
     expect(evolutionBp(112_500n, 100_000n)).toBe(1_250);
@@ -111,6 +119,10 @@ describe('planning : jours ouvrés', () => {
     expect(finChantier('2026-10-08', 0.5)).toBe('2026-10-08');
     expect(finChantier('2026-10-08', 2.5)).toBe('2026-10-12');
     expect(finChantier('2026-10-10', 1)).toBe('2026-10-12');
+    // Vendredi 09/10 -> mardi 13/10 : deux plages, rien le samedi ni le dimanche.
+    expect(blocsOuvres('2026-10-09', '2026-10-13')).toEqual([{ du: '2026-10-09', au: '2026-10-09' }, { du: '2026-10-12', au: '2026-10-13' }]);
+    expect(blocsOuvres('2026-10-05', '2026-10-09')).toEqual([{ du: '2026-10-05', au: '2026-10-09' }]);
+    expect(blocsOuvres('2026-10-10', '2026-10-11')).toEqual([]);
   });
 });
 

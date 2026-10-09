@@ -30,10 +30,11 @@ export function FormulaireEvenement({ evenement, chantiers }: { evenement: Evene
       <RetourFormulaire etat={etat} />
       <MessagesGarde garde={garde} />
       <Selection libelle="Type" nom="type" value={type} onChange={(ev) => setType(ev.target.value)} erreur={e.type}>
-        {TYPES_EVENEMENT.map((t) => <option key={t} value={t}>{LIBELLES_EVENEMENT[t]}</option>)}
+        {/* Un chantier se planifie depuis sa fiche (plages de jours ouvrés). */}
+        {TYPES_EVENEMENT.filter((t) => t !== 'chantier').map((t) => <option key={t} value={t}>{LIBELLES_EVENEMENT[t]}</option>)}
       </Selection>
-      <Selection libelle={type === 'chantier' ? 'Chantier' : 'Chantier (facultatif)'} nom="chantier_id" defaultValue={v('chantier_id')} erreur={e.chantier_id}>
-        <option value="">{type === 'chantier' ? 'Choisir…' : 'Aucun'}</option>
+      <Selection libelle="Chantier (facultatif)" nom="chantier_id" defaultValue={v('chantier_id')} erreur={e.chantier_id}>
+        <option value="">Aucun</option>
         {chantiers.map((c) => <option key={c.id} value={c.id}>{c.libelle}</option>)}
       </Selection>
       <Champ libelle="Titre" nom="titre" defaultValue={v('titre')} erreur={e.titre} placeholder="Exemple : métré chez Mme Martin" />
@@ -68,8 +69,9 @@ export function FormulaireRappel({ aujourdhui, chantierId }: { aujourdhui: strin
       <Champ libelle="Me rappeler de" nom="titre" defaultValue={sv?.titre ?? ''} erreur={e.titre} placeholder="Exemple : commander la peinture" />
       <div className="grid grid-cols-2 gap-3">
         <Champ libelle="Le" nom="date" type="date" defaultValue={sv?.date ?? aujourdhui} erreur={e.date} />
-        <Champ libelle="À (facultatif)" nom="heure" type="time" defaultValue={sv?.heure ?? ''} erreur={e.heure} />
+        <Champ libelle="À (sinon 8 h)" nom="heure" type="time" defaultValue={sv?.heure ?? ''} erreur={e.heure} />
       </div>
+      <p className="text-sm text-encre-douce">Le rappel s’affiche dans « À faire » sur l’accueil et dans le planning. Pas d’alerte sur le téléphone.</p>
       <Bouton type="submit" variante="secondaire" disabled={enCours}>{enCours ? 'Un instant…' : 'Ajouter le rappel'}</Bouton>
     </form>
   );
@@ -121,7 +123,8 @@ export function FormulaireSechage({ chantierId, heures }: { chantierId: string; 
       <RetourFormulaire etat={etat} />
       <Champ libelle="Séchage avant la couche suivante (heures)" nom="heures" inputMode="decimal" defaultValue={etat.valeurs?.heures ?? heures}
         erreur={etat.erreurs?.heures} aide="D’après la fiche technique du produit." />
-      <Bouton type="submit" variante="secondaire" disabled={enCours}>{enCours ? 'Un instant…' : 'Me prévenir à la fin du séchage'}</Bouton>
+      <Bouton type="submit" variante="secondaire" disabled={enCours}>{enCours ? 'Un instant…' : 'Noter la fin du séchage'}</Bouton>
+      <p className="text-sm text-encre-douce">L’heure de fin s’affichera dans « À faire » sur l’accueil. L’appli n’envoie pas d’alerte sur le téléphone : pensez à l’ouvrir.</p>
     </form>
   );
 }

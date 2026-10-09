@@ -1522,7 +1522,7 @@ isOneToOne: false
                   ]
                 },"v_livre_recettes": {
                   Row: {
-                    "chantier_id": string | null,"client": string | null,"date_paiement": string | null,"facture_id": string | null,"facture_net_ht_cents": number | null,"facture_net_ttc_cents": number | null,"facture_numero": string | null,"mode": Database["public"]['Enums']["mode_paiement"] | null,"montant_cents": number | null,"nature": string | null,"organisation_id": string | null,"paiement_id": string | null,"reference": string | null,"regime_tva": Database["public"]['Enums']["regime_tva"] | null
+                    "chantier_id": string | null,"client": string | null,"date_paiement": string | null,"facture_id": string | null,"facture_net_ht_cents": number | null,"facture_net_ttc_cents": number | null,"facture_numero": string | null,"mode": Database["public"]['Enums']["mode_paiement"] | null,"montant_cents": number | null,"nature": string | null,"organisation_id": string | null,"paiement_id": string | null,"part_ht_cents": number | null,"reference": string | null,"regime_tva": Database["public"]['Enums']["regime_tva"] | null
                   }
                   ComputedFields: never
                   Relationships: [

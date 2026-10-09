@@ -19,6 +19,13 @@ export default async function PageMateriel() {
     sb.from('depenses').select('id, date_depense, fournisseur, montant_ttc_cents').order('date_depense', { ascending: false }).limit(300),
   ]);
   if (error || e2) throw new Error('Lecture impossible : matériel.');
+  // Achat déjà rattaché mais plus ancien que la liste : ajouté aux choix (sinon le rattachement se perdrait à l'enregistrement).
+  const manquants = [...new Set(materiel.map((m) => m.depense_id).filter((d): d is string => !!d && !achats.some((a) => a.id === d)))];
+  if (manquants.length) {
+    const { data: anciens, error: e3 } = await sb.from('depenses').select('id, date_depense, fournisseur, montant_ttc_cents').in('id', manquants);
+    if (e3) throw new Error('Lecture impossible : achats rattachés.');
+    achats.push(...anciens);
+  }
   const options = achats.map((a) => ({ id: a.id, libelle: `${formaterDate(a.date_depense)} · ${a.fournisseur} · ${formaterEuros(a.montant_ttc_cents)}` }));
   const total = materiel.reduce((s, m) => s + BigInt(m.valeur_cents ?? 0), 0n);
   return (

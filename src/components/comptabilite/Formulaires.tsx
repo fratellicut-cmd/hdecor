@@ -18,7 +18,8 @@ export type DepenseSaisie = {
 };
 
 /** Côté le plus long d'une photo réduite : un ticket reste lisible, le fichier pèse quelques centaines de Ko. */
-const COTE_MAX = 2000;
+const COTE_MAX = 1600;
+const QUALITE_JPEG = 0.75;
 
 /**
  * Réduit une photo avant l'envoi (une photo de téléphone dépasse souvent la
@@ -30,13 +31,13 @@ async function reduire(fichier: File): Promise<File> {
   try {
     const image = await createImageBitmap(fichier);
     const echelle = Math.min(1, COTE_MAX / Math.max(image.width, image.height));
-    if (echelle === 1 && fichier.size <= 1_500_000 && fichier.type === 'image/jpeg') return fichier;
+    if (echelle === 1 && fichier.size <= 1_000_000 && fichier.type === 'image/jpeg') return fichier;
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(image.width * echelle);
     canvas.height = Math.round(image.height * echelle);
     canvas.getContext('2d')?.drawImage(image, 0, 0, canvas.width, canvas.height);
     image.close();
-    const blob = await new Promise<Blob | null>((ok) => canvas.toBlob(ok, 'image/jpeg', 0.82));
+    const blob = await new Promise<Blob | null>((ok) => canvas.toBlob(ok, 'image/jpeg', QUALITE_JPEG));
     return blob ? new File([blob], fichier.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' }) : fichier;
   } catch {
     return fichier;
@@ -74,8 +75,8 @@ function ChoixJustificatif({ existant, erreur }: { existant: boolean; erreur?: s
   );
 }
 
-export function FormulaireDepense({ depense, categories, chantiers, regime }: {
-  depense: DepenseSaisie; categories: Option[]; chantiers: Option[]; regime: 'franchise' | 'assujetti';
+export function FormulaireDepense({ depense, categories, chantiers, regime, depuisChantier }: {
+  depense: DepenseSaisie; categories: Option[]; chantiers: Option[]; regime: 'franchise' | 'assujetti'; depuisChantier?: string;
 }) {
   const nouveau = !depense.id;
   const { etat, action, enCours, formRef, garde, surEnvoi } = useFormulaire(nouveau ? 'achat:nouveau' : `achat:${depense.id}`, enregistrerDepense);
@@ -84,6 +85,7 @@ export function FormulaireDepense({ depense, categories, chantiers, regime }: {
   return (
     <form ref={formRef} action={action} onSubmit={surEnvoi} className="flex flex-col gap-3" noValidate>
       {depense.id ? <input type="hidden" name="id" value={depense.id} /> : null}
+      {depuisChantier ? <input type="hidden" name="depuis_chantier" value={depuisChantier} /> : null}
       <RetourFormulaire etat={etat} />
       <MessagesGarde garde={garde} />
       <ChoixJustificatif existant={depense.justificatif} erreur={e.justificatif} />
