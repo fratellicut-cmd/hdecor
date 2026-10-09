@@ -25,7 +25,7 @@ test('4G « menteuse » à l’envoi d’un client : message en français, page 
   await page.getByLabel('Nom', { exact: true }).fill(nom);
   await couperLesEnvois(page);
   await page.getByRole('button', { name: 'Enregistrer' }).click();
-  await expect(page.getByText('Le réseau ne répond pas : rien n’a été enregistré.').first()).toBeVisible();
+  await expect(page.getByText('Le réseau ne répond pas : l’enregistrement n’est pas confirmé.').first()).toBeVisible();
   await expect(page.getByLabel('Nom', { exact: true })).toHaveValue(nom);
   await page.unroute('**/*');
   await page.getByRole('button', { name: 'Enregistrer' }).click();

@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 
 const LIENS = [
   { href: '/', libelle: 'Accueil', icone: '⌂' },
+  { href: '/chantiers', libelle: 'Chantiers', icone: '▦' },
   { href: '/clients', libelle: 'Clients', icone: '☺' },
   { href: '/parametres', libelle: 'Paramètres', icone: '⚙' },
   { href: '/compte', libelle: 'Compte', icone: '●' },
@@ -15,7 +16,7 @@ export function Navigation() {
   const chemin = usePathname();
   return (
     <nav aria-label="Navigation principale" className="fixed inset-x-0 bottom-0 z-20 border-t border-trait bg-white pb-[env(safe-area-inset-bottom)]">
-      <ul className="mx-auto grid max-w-3xl grid-cols-4">
+      <ul className="mx-auto grid max-w-3xl grid-cols-5">
         {LIENS.map((l) => {
           const actif = l.href === '/' ? chemin === '/' : chemin.startsWith(l.href);
           return (

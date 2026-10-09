@@ -30,6 +30,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - run: sudo apt-get update && sudo apt-get install -y poppler-utils
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
@@ -61,7 +62,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      # postgresql-client : tests SQL ; poppler-utils : texte des PDF générés (pdftotext).
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client poppler-utils
       - run: npm ci
       # Télécharge GoTrue et PostgREST, crée hdecor_dev, écrit .env.local.
       - run: npm run local:start

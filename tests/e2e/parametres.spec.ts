@@ -34,7 +34,7 @@ test('conditions : une valeur À VÉRIFIER se confirme une par une', async ({ pa
       'escompte_texte', 'validite_devis_jours', 'acompte_pct_defaut_bp', 'taux_penalites_bp'],
   }).eq('raison_sociale', 'Entreprise de test E2E');
   await page.goto('/parametres/conditions');
-  const champ = page.locator('label[for="taux_penalites_bp"]');
+  const champ = page.locator('label').filter({ hasText: 'Taux des pénalités de retard' });
   await expect(champ.getByText('À VÉRIFIER')).toBeVisible();
   await page.getByLabel('Taux des pénalités de retard (% par an)').fill('abc');
   await page.getByRole('button', { name: 'Enregistrer' }).click();
@@ -48,7 +48,7 @@ test('conditions : une valeur À VÉRIFIER se confirme une par une', async ({ pa
   await expect(page.getByLabel('Taux des pénalités de retard (% par an)')).toHaveValue('12,5');
   await expect(champ.getByText('À VÉRIFIER')).toHaveCount(0);
   // Les autres valeurs par défaut restent à vérifier.
-  await expect(page.locator('label[for="indemnite_recouvrement_cents"]').getByText('À VÉRIFIER')).toBeVisible();
+  await expect(page.locator('label').filter({ hasText: 'Indemnité forfaitaire de recouvrement' }).getByText('À VÉRIFIER')).toBeVisible();
 });
 
 test('assurances : ajout puis suppression', async ({ page }) => {

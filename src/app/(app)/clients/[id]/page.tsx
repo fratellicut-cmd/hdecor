@@ -108,15 +108,19 @@ export default async function PageClient({ params, searchParams }: PageProps<'/c
         </>
       ) : null}
 
-      <Carte titre="Chantiers">
+      <Carte titre="Chantiers" action={!anonymise ? (
+        <Link href={`/chantiers/nouveau?client=${client.id}`} className="inline-flex min-h-12 items-center px-2 font-semibold underline underline-offset-4">+ Chantier</Link>
+      ) : undefined}>
         {chantiers?.length ? (
           <ul className="flex flex-col divide-y divide-trait">
             {chantiers.map((c) => (
-              <li key={c.id} className="flex flex-col py-2">
-                <span className="font-semibold">{c.nom}</span>
-                <span className="text-sm text-encre-douce">
-                  {[libelleStatut(c.statut_affiche), c.ville, c.date_debut_prevue ? `début ${formaterDate(c.date_debut_prevue)}` : null].filter(Boolean).join(' · ')}
-                </span>
+              <li key={c.id}>
+                <Link href={`/chantiers/${c.id}`} className="flex min-h-12 flex-col justify-center py-2">
+                  <span className="font-semibold underline underline-offset-4">{c.nom}</span>
+                  <span className="text-sm text-encre-douce">
+                    {[libelleStatut(c.statut_affiche), c.ville, c.date_debut_prevue ? `début ${formaterDate(c.date_debut_prevue)}` : null].filter(Boolean).join(' · ')}
+                  </span>
+                </Link>
               </li>
             ))}
           </ul>

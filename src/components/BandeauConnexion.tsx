@@ -22,7 +22,7 @@ export function BandeauConnexion() {
   if (enLigne) return null;
   return (
     <div role="status" className="sticky top-0 z-30 bg-alerte-fond px-4 py-3 text-center font-semibold text-alerte">
-      Hors connexion : vos saisies sont gardées sur ce téléphone. Enregistrez au retour du réseau.
+      Hors connexion : rien n’est envoyé. Les saisies en cours restent sur ce téléphone ; enregistrez au retour du réseau.
     </div>
   );
 }

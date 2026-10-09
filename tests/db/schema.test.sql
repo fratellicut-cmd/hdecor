@@ -717,8 +717,14 @@ values ('aaaaaaaa-0000-0000-0000-0000000f0f01', 'aaaaaaaa-0000-0000-0000-0000000
         'aaaaaaaa-0000-0000-0000-00000000000a/chantiers/aaaaaaaa-0000-0000-0000-0000000ca0f1/p.jpg');
 select tests.echoue($$update public.photos set chemin = 'aaaaaaaa-0000-0000-0000-00000000000a/f7.pdf' where id = 'aaaaaaaa-0000-0000-0000-0000000f0f01'$$,
   'permission denied', 'H1 : le chemin d''une photo n''est plus modifiable par une session');
-delete from public.photos where id = 'aaaaaaaa-0000-0000-0000-0000000f0f01';
-delete from public.chantiers where id = 'aaaaaaaa-0000-0000-0000-0000000ca0f1';
+-- Phase 2 : un chantier ne se supprime plus directement (fichiers orphelins) ;
+-- la fonction dédiée met ses fichiers en file dans la même transaction.
+select tests.echoue($$delete from public.chantiers where id = 'aaaaaaaa-0000-0000-0000-0000000ca0f1'$$,
+  'permission denied', 'chantier : pas de suppression directe par une session');
+select tests.egal(public.supprimer_chantier('aaaaaaaa-0000-0000-0000-0000000ca0f1'), 1,
+  'chantier sans document supprimé, sa photo mise en file de suppression');
+select tests.echoue($$select public.supprimer_chantier('aaaaaaaa-0000-0000-0000-0000000ca002')$$,
+  'ne peut pas être supprimé', 'chantier avec devis ou factures : suppression refusée');
 reset role;
 insert into public.fichiers_a_supprimer (organisation_id, espace, chemin)
 values ('aaaaaaaa-0000-0000-0000-00000000000a', 'documents', 'aaaaaaaa-0000-0000-0000-00000000000a/f7.pdf');
@@ -769,13 +775,13 @@ select tests.egal((select copie_client ->> 'nom_affiche' from public.factures wh
 select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prosecdef and has_function_privilege('authenticated', p.oid, 'execute')),
-  'effacer_client,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,refuser_devis,signer_devis_sur_place',
+  'effacer_client,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,refuser_devis,signer_devis_sur_place,supprimer_chantier',
   'sécurité : liste exacte des fonctions SECURITY DEFINER appelables par une session');
 select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prokind = 'f' and p.prorettype <> 'trigger'::regtype
      and has_function_privilege('authenticated', p.oid, 'execute')),
-  'aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,deductions_bien_formees,effacer_client,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,organisation_du_chemin,rechercher_clients,refuser_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,texte_recherche,ventilation_attendue,ventilation_bien_formee',
+  'aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,copier_poste,deductions_bien_formees,definir_preparations,dupliquer_piece,effacer_client,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,organisation_du_chemin,rechercher_clients,refuser_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,ventilation_attendue,ventilation_bien_formee',
   'sécurité : liste COMPLÈTE des fonctions appelables par une session');
 select tests.echoue($$select public.purger_journal_audit(now() - interval '20 years')$$, 'permission denied',
   'sécurité : purge du journal réservée au serveur');
@@ -1353,9 +1359,108 @@ select tests.echoue($$select public.purger_prospects_inactifs()$$, 'permission d
 -- -----------------------------------------------------------------------------
 -- 4. Utilisateur B : ne voit ni ne touche rien de A
 -- -----------------------------------------------------------------------------
+-- Phase 2 : valeurs de départ du calcul, toutes À VÉRIFIER, créées pour chaque organisation.
+select tests.egal((select count(*) from public.referentiel_calcul where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and statut_verification = 'a_verifier'),
+  13::bigint, 'calcul : une ligne par type de produit (13), toutes À VÉRIFIER');
+select tests.egal((select string_agg(type_produit, ',' order by type_produit) from public.referentiel_calcul
+                   where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and rendement_min is null),
+  'anti_humidite,anti_rouille,autre,facade,sous_couche_bloquante', 'calcul : sans fourchette au cahier des charges, rendement vide (rien d''inventé)');
+select tests.egal((select count(*) from public.referentiel_calcul where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and sechage_recouvrable_h is not null),
+  0::bigint, 'calcul : aucun temps de séchage inventé');
+select tests.egal((select string_agg(code || ':' || type_produit || ':' || couches, ',' order by code) from public.etapes_preparation
+                   where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and type_produit is not null),
+  'enduit_1_passe:enduit:1,enduit_2_passes:enduit:2,impression:impression:1,sous_couche_bloquante:sous_couche_bloquante:1',
+  'préparation : matière des étapes par type de produit (impression, bloquante, enduit)');
+select tests.echoue($$update public.referentiel_calcul set rendement_min = 12, rendement_max = 10
+  where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and type_produit = 'laque'$$, 'referentiel_rendements',
+  'référentiel : minimum supérieur au maximum refusé');
+select tests.egal((select rendement_min::text || '-' || rendement_max::text from public.referentiel_calcul
+                   where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and type_produit = 'acrylique'),
+  '10.00-12.00', 'calcul : acrylique 10 à 12 m²/L (cahier des charges §5.4)');
+select tests.egal((select count(*) from public.referentiel_calcul where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and minutes_par_m2_couche is not null),
+  0::bigint, 'calcul : aucun temps de pose inventé');
+select tests.egal((select count(*) from public.coefficients_support where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and coef_rendement_bp = 10000 and statut_verification = 'a_verifier'),
+  10::bigint, 'calcul : 10 supports, coefficient neutre 1,00 À VÉRIFIER');
+select tests.egal((select count(*) from public.etapes_preparation where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and minutes_par_m2 = 0 and statut_verification = 'a_verifier'),
+  11::bigint, 'calcul : 11 étapes de préparation, temps à renseigner');
+select tests.egal((select porte_largeur_mm || 'x' || porte_hauteur_mm || ' ' || array_to_string(formats_pots_ml, ',') from public.parametres_entreprise
+                   where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'),
+  '830x2040 1000,2500,5000,10000,15000', 'paramètres : porte 83 × 204 cm, pots 1 / 2,5 / 5 / 10 / 15 L');
+select tests.echoue($$update public.parametres_entreprise set formats_pots_ml = array[1000, 0] where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'$$,
+  'check', 'paramètres : format de pot nul refusé');
+select tests.echoue($$insert into public.postes_travaux (organisation_id, piece_id, cible, support)
+  select organisation_id, id, 'murs', 'beton' from public.pieces where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' limit 1$$,
+  'poste_produit_ou_type', 'poste : un produit ou un type de produit est exigé');
+select tests.echoue($$insert into public.consommables (organisation_id, libelle, mode, prix_ht_cents)
+  values ('aaaaaaaa-0000-0000-0000-00000000000a', 'Bâches', 'par_m2', -1)$$, 'check', 'consommable : prix négatif refusé');
+insert into public.consommables (organisation_id, libelle, mode, prix_ht_cents)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'Bâches et adhésif', 'par_chantier', 2500);
+
+-- Duplication atomique d'une pièce (ouvertures, éléments, postes, préparations).
+insert into public.pieces (id, organisation_id, chantier_id, nom, mode_saisie, longueur_mm, largeur_mm, hauteur_mm)
+values ('aaaaaaaa-0000-0000-0000-0000000d1e01', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca001', 'Chambre 1', 'rectangle', 4000, 3000, 2500);
+insert into public.ouvertures (organisation_id, piece_id, type, largeur_mm, hauteur_mm)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000d1e01', 'porte', 830, 2040);
+insert into public.elements (id, organisation_id, piece_id, type, unite, quantite_e4, developpe_mm)
+values ('aaaaaaaa-0000-0000-0000-0000000d1e02', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000d1e01', 'plinthe', 'ml', 140000, 100);
+insert into public.postes_travaux (id, organisation_id, piece_id, cible, element_id, support, type_produit)
+values ('aaaaaaaa-0000-0000-0000-0000000d1e03', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000d1e01', 'element',
+        'aaaaaaaa-0000-0000-0000-0000000d1e02', 'bois_brut', 'laque');
+select public.definir_preparations('aaaaaaaa-0000-0000-0000-0000000d1e03',
+  array(select id from public.etapes_preparation where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and code in ('poncage', 'impression')));
+select tests.egal((select count(*) from public.postes_preparations where poste_id = 'aaaaaaaa-0000-0000-0000-0000000d1e03'), 2::bigint,
+  'préparations : deux étapes enregistrées');
+select public.definir_preparations('aaaaaaaa-0000-0000-0000-0000000d1e03',
+  array(select id from public.etapes_preparation where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and code = 'poncage'));
+select tests.egal((select count(*) from public.postes_preparations where poste_id = 'aaaaaaaa-0000-0000-0000-0000000d1e03'), 1::bigint,
+  'préparations : remplacées en bloc');
+-- (Duplication d'abord, vérification ensuite : une même requête ne voit pas
+-- les lignes insérées par la fonction qu'elle appelle.)
+select set_config('tests.copie', public.dupliquer_piece('aaaaaaaa-0000-0000-0000-0000000d1e01', 'Chambre 2')::text, false);
+select tests.egal((select count(*) from public.pieces p
+  join public.ouvertures o on o.piece_id = p.id
+  join public.elements e on e.piece_id = p.id
+  join public.postes_travaux t on t.piece_id = p.id and t.element_id = e.id
+  join public.postes_preparations x on x.poste_id = t.id
+  where p.id = current_setting('tests.copie')::uuid and p.nom = 'Chambre 2'), 1::bigint,
+  'duplication : ouverture, élément, poste rattaché au NOUVEL élément, préparation');
+
+-- Copie d'un poste (murs) vers d'autres pièces : préparations comprises, sans doublon au second envoi.
+insert into public.postes_travaux (id, organisation_id, piece_id, cible, support, type_produit, finition, teinte_libre, exterieur)
+values ('aaaaaaaa-0000-0000-0000-0000000d1e04', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000d1e01', 'murs',
+        'platre_neuf', 'acrylique', 'velours', 'Blanc RAL 9010', true);
+select public.definir_preparations('aaaaaaaa-0000-0000-0000-0000000d1e04',
+  array(select id from public.etapes_preparation where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and code = 'impression'));
+select tests.egal(public.copier_poste('aaaaaaaa-0000-0000-0000-0000000d1e04', array[current_setting('tests.copie')::uuid, 'aaaaaaaa-0000-0000-0000-0000000d1e01']),
+  1, 'copie de poste : une pièce copiée (la pièce d''origine est ignorée)');
+select tests.egal(public.copier_poste('aaaaaaaa-0000-0000-0000-0000000d1e04', array[current_setting('tests.copie')::uuid]),
+  0, 'copie de poste : un second envoi ne crée pas de doublon');
+select tests.egal((select bool_and(id::text ~ '^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') from public.postes_travaux
+  where piece_id = current_setting('tests.copie')::uuid and cible = 'murs'), true, 'copie de poste : identifiant au format UUID (version 5, variante RFC)');
+select tests.egal(public.dupliquer_piece('aaaaaaaa-0000-0000-0000-0000000d1e01', 'Chambre 3', 'aaaaaaaa-0000-4000-8000-0000000d1e09'),
+  'aaaaaaaa-0000-4000-8000-0000000d1e09'::uuid, 'duplication : identifiant fixé par le formulaire');
+select tests.egal(public.dupliquer_piece('aaaaaaaa-0000-0000-0000-0000000d1e01', 'Chambre 3', 'aaaaaaaa-0000-4000-8000-0000000d1e09'),
+  'aaaaaaaa-0000-4000-8000-0000000d1e09'::uuid, 'duplication : un second envoi renvoie la même copie');
+select tests.egal((select count(*) from public.pieces where nom = 'Chambre 3'), 1::bigint, 'duplication : pas de doublon au second envoi');
+select tests.egal((select count(*) from public.postes_travaux t join public.postes_preparations x on x.poste_id = t.id
+  where t.piece_id = current_setting('tests.copie')::uuid and t.cible = 'murs' and t.finition = 'velours'
+    and t.teinte_libre = 'Blanc RAL 9010' and t.exterieur), 1::bigint, 'copie de poste : finition, teinte libre, extérieur et préparation recopiés');
+select tests.echoue($$select public.copier_poste('aaaaaaaa-0000-0000-0000-0000000d1e03', array[current_setting('tests.copie')::uuid])$$,
+  'élément', 'copie de poste : refusée pour un poste sur un élément');
+select tests.echoue($$select public.copier_poste('aaaaaaaa-0000-0000-0000-0000000d1e04', array[gen_random_uuid()])$$,
+  'introuvable', 'copie de poste : pièce hors du chantier refusée');
+select tests.echoue($$update public.postes_travaux set teinte_libre = '  ' where id = 'aaaaaaaa-0000-0000-0000-0000000d1e04'$$,
+  'check', 'teinte libre : texte vide refusé');
+
 set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000001';
 select tests.egal((select count(*) from public.clients), 0::bigint, 'B ne voit pas les clients de A');
 select tests.egal((select count(*) from public.rechercher_clients('helene')), 0::bigint, 'B ne trouve pas les clients de A par la recherche');
+select tests.egal((select count(*) from public.consommables), 0::bigint, 'B ne voit pas les consommables de A');
+select tests.echoue($$select public.dupliquer_piece('aaaaaaaa-0000-0000-0000-0000000d1e01', 'Vol')$$, 'introuvable', 'B ne duplique pas une pièce de A');
+select tests.echoue($$select public.definir_preparations('aaaaaaaa-0000-0000-0000-0000000d1e03', '{}')$$, 'introuvable', 'B ne modifie pas les préparations de A');
+select tests.echoue($$select public.copier_poste('aaaaaaaa-0000-0000-0000-0000000d1e04', '{}')$$, 'introuvable', 'B ne copie pas un poste de A');
+select tests.egal((select count(*) from public.referentiel_calcul where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'), 0::bigint,
+  'B ne voit pas le référentiel de calcul de A');
 select tests.egal(public.confirmer_valeurs('aaaaaaaa-0000-0000-0000-00000000000a', array['validite_devis_jours']), false,
   'B ne peut pas confirmer les valeurs de A');
 select tests.echoue($$select public.effacer_client('aaaaaaaa-0000-0000-0000-0000000c0001')$$, 'introuvable', 'B ne peut pas effacer un client de A (identifiant deviné)');
@@ -1367,7 +1472,9 @@ select tests.egal((select count(*) from public.journal_audit), 0::bigint, 'B ne 
 select tests.egal((select count(*) from public.temps_passes) + (select count(*) from public.rappels) + (select count(*) from public.devis_achats) + (select count(*) from public.devis_echeances), 0::bigint, 'B ne voit ni temps, ni rappels, ni achats, ni échéancier de A');
 select tests.egal((select count(*) from storage.objects), 0::bigint, 'B ne voit pas les fichiers de A');
 select tests.egal(tests.lignes($$update public.clients set nom = 'pirate'$$), 0::bigint, 'B ne modifie pas les clients de A');
-select tests.egal(tests.lignes($$delete from public.chantiers$$), 0::bigint, 'B ne supprime pas les chantiers de A');
+select tests.echoue($$delete from public.chantiers$$, 'permission denied', 'B ne supprime pas les chantiers de A (aucune suppression directe)');
+select tests.echoue($$select public.supprimer_chantier('aaaaaaaa-0000-0000-0000-0000000ca002')$$, 'introuvable',
+  'B ne supprime pas un chantier de A par la fonction');
 select tests.echoue(
   $$select public.emettre_facture('aaaaaaaa-0000-0000-0000-0000000f0001', '{}', '{}', '{}', 'x', repeat('a', 64))$$,
   'introuvable', 'B ne peut pas émettre une facture de A');

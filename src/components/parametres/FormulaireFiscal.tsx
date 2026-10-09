@@ -14,13 +14,13 @@ type P = Pick<Ligne<'parametres_entreprise'>, 'regime_tva' | 'mention_franchise'
   | 'seuil_ca_micro_cents' | 'seuil_franchise_tva_cents' | 'seuils_confirmes_le' | 'seuil_alerte_1_bp' | 'seuil_alerte_2_bp'>;
 
 export function FormulaireFiscal({ p }: { p: P }) {
-  const { etat, action, enCours, formRef, garde } = useFormulaire('parametres:fiscal', enregistrerFiscal);
+  const { etat, action, enCours, formRef, garde, surEnvoi } = useFormulaire('parametres:fiscal', enregistrerFiscal);
   const e = etat.erreurs ?? {};
   const sv = etat.valeurs;
   const val = (cle: string, defaut: string) => sv?.[cle] ?? defaut;
   const coche = (cle: string, defaut: boolean) => (sv ? sv[cle] === 'on' : defaut);
   return (
-    <form ref={formRef} action={action} onSubmit={garde.surEnvoi} className="flex flex-col gap-4" noValidate>
+    <form ref={formRef} action={action} onSubmit={surEnvoi} className="flex flex-col gap-4" noValidate>
       <RetourFormulaire etat={etat} />
       <MessagesGarde garde={garde} />
       <fieldset className="flex flex-col gap-2">

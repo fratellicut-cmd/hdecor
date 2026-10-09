@@ -24,7 +24,7 @@ const VIDE: C = {
 
 export function FormulaireClient({ id, client = VIDE }: { id?: string; client?: C }) {
   // Version de la fiche : un brouillon plus ancien qu'une modification n'est pas remis d'office.
-  const { etat, action, enCours, formRef, garde } = useFormulaire(cleBrouillonClient(id), enregistrerClient,
+  const { etat, action, enCours, formRef, garde, surEnvoi } = useFormulaire(cleBrouillonClient(id), enregistrerClient,
     { version: id ? (client.updated_at ?? null) : undefined });
   const e = etat.erreurs ?? {};
   const v = (cle: keyof C) => (etat.valeurs?.[cle] ?? client[cle] ?? '') as string;
@@ -32,7 +32,7 @@ export function FormulaireClient({ id, client = VIDE }: { id?: string; client?: 
   const pro = type === 'professionnel';
 
   return (
-    <form ref={formRef} action={action} onSubmit={garde.surEnvoi} className="flex flex-col gap-4" noValidate>
+    <form ref={formRef} action={action} onSubmit={surEnvoi} className="flex flex-col gap-4" noValidate>
       {id ? <input type="hidden" name="id" value={id} /> : null}
       <MessagesGarde garde={garde} />
       <RetourFormulaire etat={etat} />
@@ -41,7 +41,7 @@ export function FormulaireClient({ id, client = VIDE }: { id?: string; client?: 
         <legend className="mb-1 font-semibold">Type de client</legend>
         <div className="grid grid-cols-2 gap-2">
           {(['particulier', 'professionnel'] as const).map((t) => (
-            <label key={t} className={`flex min-h-12 cursor-pointer items-center justify-center rounded-xl border-2 px-3 font-semibold ${type === t ? 'border-anthracite bg-anthracite text-creme' : 'border-trait bg-white'}`}>
+            <label key={t} className={`flex min-h-12 cursor-pointer items-center justify-center rounded-xl border-2 px-3 font-semibold has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-or-fonce ${type === t ? 'border-anthracite bg-anthracite text-creme' : 'border-trait bg-white'}`}>
               {/* Non contrôlé : React 19 réinitialise le formulaire après chaque envoi ;
                   defaultChecked suit l'état, la réinitialisation remet donc le bon choix. */}
               <input type="radio" name="type" value={t} defaultChecked={type === t} onChange={() => setType(t)} className="sr-only" />

@@ -71,28 +71,59 @@ function lireFormulaire(form: HTMLFormElement): Record<string, string> {
   return valeurs;
 }
 
-/** Remet un brouillon dans le formulaire. Renvoie vrai si quelque chose a changé. */
-function restaurer(form: HTMLFormElement, valeurs: Record<string, string>): boolean {
+/**
+ * Écrit une valeur comme le ferait l'utilisateur : setter natif puis
+ * événements « input » et « change ». React voit ainsi le changement (un
+ * champ qui pilote l'affichage, comme le nombre de murs, est pris en compte).
+ */
+function saisir(champ: Champ, valeur: string) {
+  const proto = champ instanceof HTMLSelectElement ? HTMLSelectElement.prototype
+    : champ instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(proto, 'value')?.set?.call(champ, valeur);
+  champ.dispatchEvent(new Event('input', { bubbles: true }));
+  champ.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+/**
+ * Remet un brouillon dans le formulaire. Renvoie les clés du brouillon qui
+ * n'ont trouvé aucun champ (champs qui n'apparaissent qu'après un rendu).
+ */
+function restaurer(form: HTMLFormElement, valeurs: Record<string, string>, appliquees: Set<string>): { change: boolean; restantes: number } {
   let change = false;
   // Boutons radio d'abord, par un vrai clic : l'état React qui en dépend
   // (champs affichés ou masqués) suit.
   for (const champ of champsGardes(form)) {
-    if (champ instanceof HTMLInputElement && champ.type === 'radio' && valeurs[champ.name] === champ.value && !champ.checked) {
-      champ.click();
-      change = true;
+    if (champ instanceof HTMLInputElement && champ.type === 'radio' && valeurs[champ.name] === champ.value) {
+      appliquees.add(champ.name);
+      if (!champ.checked) { champ.click(); change = true; }
     }
   }
   for (const champ of champsGardes(form)) {
     if (champ instanceof HTMLInputElement && champ.type === 'radio') continue;
     if (champ instanceof HTMLInputElement && champ.type === 'checkbox') {
       const v = valeurs[cleCase(champ)];
-      if (v !== undefined && (v === '1') !== champ.checked) { champ.checked = v === '1'; change = true; }
+      if (v === undefined) continue;
+      appliquees.add(cleCase(champ));
+      if ((v === '1') !== champ.checked) { champ.click(); change = true; }
       continue;
     }
     const v = valeurs[champ.name];
-    if (v !== undefined && v !== champ.value) { champ.value = v; change = true; }
+    if (v === undefined) continue;
+    appliquees.add(champ.name);
+    if (v !== champ.value) { saisir(champ, v); change = true; }
   }
-  return change;
+  return { change, restantes: Object.keys(valeurs).filter((k) => !appliquees.has(k)).length };
+}
+
+/** Restauration en deux temps : les champs qui apparaissent après le premier rendu sont remplis ensuite. */
+function restaurerTout(form: HTMLFormElement, valeurs: Record<string, string>, fini: (change: boolean) => void) {
+  const appliquees = new Set<string>();
+  const premier = restaurer(form, valeurs, appliquees);
+  if (!premier.restantes) { fini(premier.change); return; }
+  window.setTimeout(() => {
+    const second = restaurer(form, valeurs, appliquees);
+    fini(premier.change || second.change);
+  }, 0);
 }
 
 export type Garde = {
@@ -117,8 +148,10 @@ export type Garde = {
  *    depuis (« version ») : le conflit est alors signalé et l'utilisateur choisit ;
  *  - l'envoi est bloqué tant que le téléphone se sait hors connexion.
  * Le brouillon est effacé après enregistrement, à la déconnexion et après 24 h.
+ * Sans clé (petite action : retrait, statut…), rien n'est copié : seul
+ * l'envoi hors connexion est bloqué.
  */
-export function useGardeSaisie(cle: string, formRef: RefObject<HTMLFormElement | null>, version?: string | null): Garde {
+export function useGardeSaisie(cle: string | null, formRef: RefObject<HTMLFormElement | null>, version?: string | null): Garde {
   const [recupere, setRecupere] = useState(false);
   const [conflit, setConflit] = useState<Brouillon | null>(null);
   const [horsLigne, setHorsLigne] = useState(false);
@@ -126,7 +159,9 @@ export function useGardeSaisie(cle: string, formRef: RefObject<HTMLFormElement |
 
   useEffect(() => {
     const form = formRef.current;
-    if (!form) return;
+    const reseau = () => { if (navigator.onLine) setHorsLigne(false); };
+    window.addEventListener('online', reseau);
+    if (!form || cle === null) return () => window.removeEventListener('online', reseau);
     if (!restaure.current) {
       restaure.current = true;
       const b = lire(cle);
@@ -135,7 +170,7 @@ export function useGardeSaisie(cle: string, formRef: RefObject<HTMLFormElement |
         // stockage du téléphone) ne peut se faire qu'après son montage.
         // eslint-disable-next-line react-hooks/set-state-in-effect
         if (version !== undefined && (b.version ?? null) !== (version ?? null)) setConflit(b);
-        else if (restaurer(form, b.valeurs)) setRecupere(true);
+        else restaurerTout(form, b.valeurs, (change) => { if (change) setRecupere(true); });
       }
     }
     const sauver = () => {
@@ -145,10 +180,8 @@ export function useGardeSaisie(cle: string, formRef: RefObject<HTMLFormElement |
         } satisfies Brouillon));
       } catch { /* stockage plein ou interdit : la saisie reste dans la page */ }
     };
-    const reseau = () => { if (navigator.onLine) setHorsLigne(false); };
     form.addEventListener('input', sauver);
     form.addEventListener('change', sauver);
-    window.addEventListener('online', reseau);
     return () => {
       form.removeEventListener('input', sauver);
       form.removeEventListener('change', sauver);
@@ -164,13 +197,12 @@ export function useGardeSaisie(cle: string, formRef: RefObject<HTMLFormElement |
   }, []);
 
   const reprendre = useCallback(() => {
-    if (conflit && formRef.current) restaurer(formRef.current, conflit.valeurs);
+    if (conflit && formRef.current) restaurerTout(formRef.current, conflit.valeurs, () => setRecupere(true));
     setConflit(null);
-    setRecupere(true);
   }, [conflit, formRef]);
 
   const annuler = useCallback(() => {
-    effacerBrouillon(cle);
+    if (cle !== null) effacerBrouillon(cle);
     window.location.reload();
   }, [cle]);
 

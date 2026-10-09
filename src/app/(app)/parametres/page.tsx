@@ -9,9 +9,10 @@ export const metadata: Metadata = { title: 'Paramètres' };
 export default async function PageParametres() {
   const p = await lireParametres();
   const supabase = await clientServeur();
-  const [{ data: assurances }, { data: taux }] = await Promise.all([
+  const [{ data: assurances }, { data: taux }, { count: calculAVerifier }] = await Promise.all([
     supabase.from('assurances').select('type'),
     supabase.from('taux_tva').select('a_verifier'),
+    supabase.from('referentiel_calcul').select('type_produit', { count: 'exact', head: true }).neq('statut_verification', 'verifie'),
   ]);
   const types = new Set((assurances ?? []).map((a) => a.type));
   const sections: { href: string; titre: string; detail: string; manque?: boolean; aVerifier?: boolean }[] = [
@@ -21,6 +22,7 @@ export default async function PageParametres() {
     { href: '/parametres/conditions', titre: 'Conditions et tarifs', detail: 'Paiement, pénalités, devis, taux horaire', manque: p.taux_penalites_bp === null, aVerifier: p.valeurs_a_verifier.length > 0 },
     { href: '/parametres/mentions', titre: 'Médiateur et mentions', detail: 'Médiateur de la consommation, pied de page', manque: !p.mediateur_nom },
     { href: '/parametres/taux-tva', titre: 'Taux de TVA', detail: 'Taux proposés dans les devis', aVerifier: (taux ?? []).some((t) => t.a_verifier) },
+    { href: '/parametres/calcul', titre: 'Réglages de calcul', detail: 'Rendements, supports, temps de préparation, consommables', aVerifier: (calculAVerifier ?? 0) > 0 },
     { href: '/parametres/journal', titre: 'Journal des actions', detail: 'Qui a créé, modifié ou effacé quoi, et quand' },
     { href: '/confidentialite', titre: 'Confidentialité', detail: 'Données traitées, durées de conservation, droits' },
   ];
