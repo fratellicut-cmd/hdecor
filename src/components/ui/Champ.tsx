@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes, ReactNode } from 'react';
+import { useId, type InputHTMLAttributes, type ReactNode } from 'react';
 
 type Props = InputHTMLAttributes<HTMLInputElement> & {
   libelle: string;
@@ -14,16 +14,18 @@ type Props = InputHTMLAttributes<HTMLInputElement> & {
  * inputMode="decimal" (clavier numérique, virgule acceptée).
  */
 export function Champ({ libelle, nom, erreur, aide, aVerifier, className = '', ...props }: Props) {
-  const idAide = aide ? `${nom}-aide` : undefined;
-  const idErreur = erreur ? `${nom}-erreur` : undefined;
+  // Identifiant unique : un même nom de champ peut figurer sur plusieurs lignes d'une page.
+  const id = `${nom}-${useId()}`;
+  const idAide = aide ? `${id}-aide` : undefined;
+  const idErreur = erreur ? `${id}-erreur` : undefined;
   return (
     <div className={`flex min-w-0 flex-col gap-1 ${className}`}>
-      <label htmlFor={nom} className="flex flex-wrap items-center gap-2 font-semibold">
+      <label htmlFor={id} className="flex flex-wrap items-center gap-2 font-semibold">
         {libelle}
         {aVerifier ? <BadgeAVerifier /> : null}
       </label>
       <input
-        id={nom}
+        id={id}
         name={nom}
         aria-invalid={erreur ? true : undefined}
         aria-describedby={[idAide, idErreur].filter(Boolean).join(' ') || undefined}
