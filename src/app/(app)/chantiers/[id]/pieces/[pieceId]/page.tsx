@@ -100,7 +100,7 @@ export default async function PagePiece({ params, searchParams }: PageProps<'/ch
               return (
                 <li key={el.id} className="flex items-center justify-between gap-3 py-2">
                   <span className="flex min-w-0 flex-col">
-                    <span>{libelleElement(el.type)} : {quantiteVersSaisie(el.quantite_e4)} {UNITES[el.unite]}{el.faces > 1 ? ', 2 faces' : ''}</span>
+                    <span>{libelleElement(el.type).replace(/^./, (c) => c.toUpperCase())} : {quantiteVersSaisie(el.quantite_e4)} {UNITES[el.unite]}{el.faces > 1 ? ', 2 faces' : ''}</span>
                     <span className="text-sm text-encre-douce">{'mm2' in s ? `À peindre : ${formaterSurface(s.mm2)}` : s.manque}</span>
                   </span>
                   <ActionConfirmee action={retirerLigne} champs={{ id: el.id, piece_id: piece.id, table: 'elements' }} libelle="Retirer" variante="discret" />

@@ -6,6 +6,7 @@ import { formaterEuros, pourcentageVersSaisie } from '@/domain/formats';
 import { formaterContenance } from '@/domain/peinture';
 import { longueurVersSaisie } from '@/domain/saisie';
 import { LIBELLES_SUPPORT, type TypeProduit } from '@/domain/systemes';
+import { TYPES_PRODUIT } from '@/lib/validation/chantiers';
 import { actionConsommable } from './actions';
 import { ActionConfirmee } from '@/components/formulaire/ActionConfirmee';
 import { EnTeteSection } from '@/components/parametres/EnTeteSection';
@@ -17,6 +18,9 @@ import { Message } from '@/components/ui/Message';
 export const metadata: Metadata = { title: 'Réglages de calcul' };
 
 const num = (v: number | null) => (v === null ? '' : String(v).replace('.', ','));
+/** 450 min -> « 7,5 » (heures). */
+const formaterHeures = (minutes: number) => num(Math.round(minutes / 6) / 10);
+const typesProduit = TYPES_PRODUIT.map((t) => ({ valeur: t, libelle: libelleType(t) }));
 
 export default async function PageReglagesCalcul() {
   const session = await verifierSession();
@@ -26,7 +30,7 @@ export default async function PageReglagesCalcul() {
     supabase.from('coefficients_support').select('*'),
     supabase.from('etapes_preparation').select('*').eq('actif', true).order('ordre'),
     supabase.from('consommables').select('*').eq('actif', true).order('libelle'),
-    supabase.from('parametres_entreprise').select('porte_largeur_mm, porte_hauteur_mm, formats_pots_ml').eq('organisation_id', session.organisationId).single(),
+    supabase.from('parametres_entreprise').select('porte_largeur_mm, porte_hauteur_mm, formats_pots_ml, formats_sacs_g, hauteur_alerte_mm, minutes_par_jour').eq('organisation_id', session.organisationId).single(),
   ]);
   if (ref.error || coefs.error || etapes.error || conso.error || param.error) throw new Error('Lecture impossible : réglages de calcul.');
   const coefDe = new Map(coefs.data.map((c) => [c.support, c]));
@@ -38,14 +42,17 @@ export default async function PageReglagesCalcul() {
 
       <Carte titre="Métré et pots">
         <FormulaireMetre porteLargeur={longueurVersSaisie(param.data.porte_largeur_mm, 'cm')} porteHauteur={longueurVersSaisie(param.data.porte_hauteur_mm, 'cm')}
-          formats={param.data.formats_pots_ml.map((f) => formaterContenance(f).replace(/ L$/, '')).join(' ; ')} />
+          formats={param.data.formats_pots_ml.map((f) => formaterContenance(f).replace(/ L$/, '')).join(' ; ')}
+          sacs={param.data.formats_sacs_g.map((f) => formaterContenance(f).replace(/ L$/, '')).join(' ; ')}
+          hauteurAlerte={longueurVersSaisie(param.data.hauteur_alerte_mm, 'm')}
+          heuresParJour={formaterHeures(param.data.minutes_par_jour)} />
       </Carte>
 
       <Carte titre="Rendements par type de produit">
         <p className="mb-2 text-sm text-encre-douce">Sans produit du catalogue, le calcul prend le rendement mini (choix prudent).</p>
         {ref.data.map((r) => (
           <LigneReferentiel key={r.type_produit} type={r.type_produit} libelle={libelleType(r.type_produit as TypeProduit)}
-            min={num(r.rendement_min)} max={num(r.rendement_max)} minutes={num(r.minutes_par_m2_couche)} aVerifier={r.statut_verification !== 'verifie'} />
+            min={num(r.rendement_min)} max={num(r.rendement_max)} minutes={num(r.minutes_par_m2_couche)} sechage={num(r.sechage_recouvrable_h)} aVerifier={r.statut_verification !== 'verifie'} />
         ))}
       </Carte>
 
@@ -57,9 +64,10 @@ export default async function PageReglagesCalcul() {
       </Carte>
 
       <Carte titre="Temps de préparation">
-        <p className="mb-2 text-sm text-encre-douce">Aucun temps n’est fourni par défaut : renseignez les vôtres.</p>
+        <p className="mb-2 text-sm text-encre-douce">Aucun temps n’est fourni par défaut : renseignez les vôtres. La matière d’une étape (enduit, impression…) est comptée avec le rendement de son type de produit.</p>
         {etapes.data.map((e) => (
-          <LigneEtape key={e.id} id={e.id} libelle={e.libelle} minutes={num(e.minutes_par_m2)} aVerifier={e.statut_verification !== 'verifie'} />
+          <LigneEtape key={e.id} id={e.id} libelle={e.libelle} minutes={num(e.minutes_par_m2)} typeProduit={e.type_produit ?? ''} couches={String(e.couches)}
+            avecMatiere={e.avec_matiere} types={typesProduit} aVerifier={e.statut_verification !== 'verifie'} />
         ))}
       </Carte>
 

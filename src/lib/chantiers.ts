@@ -6,7 +6,7 @@ import { centiemes } from '@/domain/chiffrage';
 import { lireDecimal } from '@/domain/saisie';
 import {
   calculerPoste, listeAchat, type Consommable, type EtapeCalc, type ParametresCalcul, type PosteCalc, type ProduitCalc,
-  type ResultatPoste, type ListeAchat,
+  type ResultatPoste, type ListeAchat, type Finition,
 } from '@/domain/calculateur';
 import { calculerSurfacesPiece, ErreurMetre, surfaceElementMm2, type SurfacesPiece } from '@/domain/metre';
 import type { Support, TypeProduit } from '@/domain/systemes';
@@ -168,7 +168,10 @@ export async function calculerChantier(id: string) {
       etapes: etapesCalc.filter((e) => lesPrepas.some((x) => x.poste_id === poste.id && x.etape_id === e.id)),
       produit: poste.produit_id ? produitsCalc.get(poste.produit_id) ?? null : null,
       typeProduit: poste.type_produit as TypeProduit | null,
-      teinte: poste.teinte_id ? { id: poste.teinte_id, nom: lesTeintes.find((t) => t.id === poste.teinte_id)?.nom ?? 'Teinte' } : null,
+      teinte: poste.teinte_id ? { id: poste.teinte_id, nom: lesTeintes.find((t) => t.id === poste.teinte_id)?.nom ?? 'Teinte' }
+        // Saisie libre : « Blanc » et « blanc » désignent la même teinte.
+        : poste.teinte_libre ? { id: `libre:${poste.teinte_libre.trim().toLocaleLowerCase('fr')}`, nom: poste.teinte_libre.trim() } : null,
+      finition: poste.finition as Finition | null,
       couches: poste.couches,
       rendementForceCentiemes: centiemes(poste.rendement_force),
       margePerteBp: poste.marge_perte_bp,

@@ -34,7 +34,7 @@ const etape = (code: string, libelle: string, minutes: number, autres: Partial<E
 const posteMurs: PosteCalc = {
   id: 'm', libelle: 'Chambre : murs', surface: { mm2: 31_926_800n }, cleSurface: 'chambre|murs|', hauteurMm: 2500, cible: 'murs',
   support: 'ancienne_peinture', zoneHumide: false, taches: false, exterieur: false, etapes: [etape('lessivage', 'Lessivage', 5)],
-  produit: acryliqueCatalogue, typeProduit: null, teinte: { id: 't1', nom: 'Blanc (fictif)' }, couches: 2,
+  produit: acryliqueCatalogue, typeProduit: null, teinte: { id: 't1', nom: 'Blanc (fictif)' }, finition: null, couches: 2,
   rendementForceCentiemes: null, margePerteBp: null, majorationTempsBp: 0,
 };
 
@@ -116,6 +116,13 @@ describe('liste d’achat', () => {
   it('teinte différente : ligne séparée', () => {
     const l = listeAchat([res(posteMurs), res({ ...plafond, teinte: { id: 't2', nom: 'Gris (fictif)' } })], [], params);
     expect(l.lignes.map((x) => x.teinte)).toEqual(['Blanc (fictif)', 'Gris (fictif)']);
+  });
+  it('finition différente : ligne séparée, finition affichée (velours murs, mat plafond : deux achats)', () => {
+    const sansProduit = (q: PosteCalc, finition: PosteCalc['finition']): PosteCalc => ({ ...q, produit: null, typeProduit: 'acrylique', teinte: null, finition });
+    const l = listeAchat([res(sansProduit(posteMurs, 'velours')), res(sansProduit(plafond, 'mat')), res(sansProduit({ ...plafond, id: 'p2', libelle: 'Salon : plafond', cleSurface: 'salon|plafond|' }, 'mat'))], [], params);
+    expect(l.lignes.map((x) => [x.libelle, x.finition, x.postes.length])).toEqual([
+      ['Acrylique (produit à choisir)', 'mat', 2], ['Acrylique (produit à choisir)', 'velours', 1],
+    ]);
   });
   it('totaux : matière, consommables, temps, main-d’œuvre, prix de vente (matière × 130 % + main-d’œuvre)', () => {
     // matière 80,00 € (murs) ; consommable 0,15 €/m² × 31,9268 = 4,79 € -> 84,79 €

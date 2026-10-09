@@ -228,10 +228,13 @@ export async function enregistrerPoste(_: EtatFormulaire, formData: FormData): P
   const chantierId = idDe(formData, 'chantier_id');
   if (!chantierId.success) return { message: 'Chantier introuvable.' };
   // Les étapes cochées sont rendues avec la saisie (une seule chaîne) pour survivre à une erreur.
-  const saisie = () => ({ ...valeursTexte(formData, ['etapes']), etapes: formData.getAll('etapes').map(String).join(',') });
-  const lu = schemaPoste.safeParse(lireChamps(formData, ['etapes']));
+  const saisie = () => ({
+    ...valeursTexte(formData, ['etapes', 'pieces_copie']),
+    etapes: formData.getAll('etapes').map(String).join(','), pieces_copie: formData.getAll('pieces_copie').map(String).join(','),
+  });
+  const lu = schemaPoste.safeParse(lireChamps(formData, ['etapes', 'pieces_copie']));
   if (!lu.success) return { erreurs: erreursParChamp(lu.error), valeurs: saisie() };
-  const { etapes, ...poste } = lu.data;
+  const { etapes, pieces_copie: piecesCopie, ...poste } = lu.data;
   const supabase = await clientServeur();
 
   // La pièce doit appartenir au chantier (et l'élément à la pièce : clé étrangère composite côté base).
@@ -264,6 +267,11 @@ export async function enregistrerPoste(_: EtatFormulaire, formData: FormData): P
   }
   const { error: ePrep } = await supabase.rpc('definir_preparations', { p_poste_id: id, p_etapes: etapes });
   if (ePrep) return { message: 'Poste enregistré, mais pas ses étapes de préparation : réessayez.', valeurs: saisie() };
+  if (piecesCopie.length) {
+    // Copies à identifiant dérivé : un nouvel envoi ne les double pas.
+    const { error: eCopie } = await supabase.rpc('copier_poste', { p_poste_id: id, p_pieces: piecesCopie });
+    if (eCopie) return { message: 'Poste enregistré, mais pas sa copie vers les autres pièces : réessayez.', valeurs: saisie() };
+  }
   revalidatePath(`/chantiers/${chantierId.data}`, 'layout');
   redirect(`/chantiers/${chantierId.data}/peinture?enregistre=1#poste-${id}`);
 }

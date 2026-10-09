@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import { z } from 'zod';
 import { calculerChantier } from '@/lib/chantiers';
 import { formaterEuros } from '@/domain/formats';
-import { formaterQuantite } from '@/domain/peinture';
+import { formaterQuantiteCourte } from '@/domain/peinture';
 import { texteListeAchat, totalMatiere } from '@/domain/liste-texte';
 import { AVERTISSEMENT_RENDEMENT } from '@/domain/systemes';
 import { BoutonPartage } from '@/components/chantiers/BoutonPartage';
@@ -37,12 +37,26 @@ export default async function PageListeAchat({ params }: PageProps<'/chantiers/[
         </p>
       ) : null}
 
+      {liste.nonChiffres.length ? (
+        <div className="flex flex-col gap-1 rounded-xl border-2 border-danger bg-danger-fond p-3 text-danger">
+          <p className="font-bold">Liste incomplète : {liste.nonChiffres.length} poste{liste.nonChiffres.length > 1 ? 's' : ''} non chiffré{liste.nonChiffres.length > 1 ? 's' : ''}</p>
+          <ul className="flex list-disc flex-col gap-1 pl-5 text-sm font-semibold">
+            {liste.nonChiffres.map((n) => <li key={n.libelle}>{n.libelle} : {n.raison}</li>)}
+          </ul>
+        </div>
+      ) : null}
+
       {liste.lignes.map((l) => (
         <Carte key={l.cle}>
           <div className="flex flex-col gap-1">
             <p className="flex flex-wrap items-center gap-2 text-lg font-bold">{l.libelle}{l.aVerifier ? <BadgeAVerifier /> : null}</p>
-            {l.reference || l.teinte ? <p className="text-sm text-encre-douce">{[l.reference ? `Réf. ${l.reference}` : null, l.teinte ? `Teinte : ${l.teinte}` : null].filter(Boolean).join(' · ')}</p> : null}
-            <p className="tabular-nums">Besoin : <strong>{formaterQuantite(l.quantite.dixMilliemes)} {l.unite}</strong></p>
+            {l.reference || l.teinte || l.finition ? (
+              <p className="font-semibold">
+                {[l.reference ? `Réf. ${l.reference}` : null, l.finition ? `Finition : ${l.finition}` : null, l.teinte ? `Teinte : ${l.teinte}` : null].filter(Boolean).join(' · ')}
+              </p>
+            ) : null}
+            {!l.finition && !l.reference ? <p className="text-sm font-semibold text-alerte">Finition non précisée sur le poste.</p> : null}
+            <p className="tabular-nums">Besoin : <strong>{formaterQuantiteCourte(l.quantite)} {l.unite}</strong></p>
             {l.pots ? (
               <p className="text-lg font-bold tabular-nums">{texteCombinaison(l.pots.retenue, l.unite)}</p>
             ) : <p className="font-semibold text-danger">{l.probleme}</p>}
@@ -56,7 +70,7 @@ export default async function PageListeAchat({ params }: PageProps<'/chantiers/[
         <Carte titre="Consommables">
           <ul className="flex flex-col gap-1">
             {liste.consommables.map((k) => (
-              <li key={k.libelle} className="flex flex-wrap items-center justify-between gap-2 tabular-nums">
+              <li key={k.id} className="flex flex-wrap items-center justify-between gap-2 tabular-nums">
                 <span className="flex items-center gap-2">{k.libelle}{k.aVerifier ? <BadgeAVerifier /> : null}</span>
                 <span>{formaterEuros(k.coutCents)}</span>
               </li>

@@ -1,16 +1,16 @@
 'use client';
 
-import { useActionState } from 'react';
 import { changerStatutChantier } from '@/app/(app)/chantiers/actions';
-import { ETAT_INITIAL } from '@/lib/etat-formulaire';
+import { useFormulaire } from '@/components/formulaire/useFormulaire';
+import { AlerteHorsLigne } from '@/components/formulaire/MessagesGarde';
 import { RetourFormulaire } from '@/components/parametres/RetourFormulaire';
 import { LIBELLES_STATUT_CHANTIER } from './FormulaireChantier';
 
 /** Statut en un toucher : chaque bouton envoie directement. */
 export function ChoixStatut({ id, statut }: { id: string; statut: keyof typeof LIBELLES_STATUT_CHANTIER }) {
-  const [etat, action, enCours] = useActionState(changerStatutChantier, ETAT_INITIAL);
+  const { etat, action, enCours, formRef, garde } = useFormulaire(null, changerStatutChantier);
   return (
-    <form action={action} className="flex flex-col gap-2">
+    <form ref={formRef} action={action} onSubmit={garde.surEnvoi} className="flex flex-col gap-2">
       <input type="hidden" name="id" value={id} />
       <fieldset className="grid grid-cols-3 gap-2" disabled={enCours}>
         <legend className="sr-only">Statut du chantier</legend>
@@ -21,6 +21,7 @@ export function ChoixStatut({ id, statut }: { id: string; statut: keyof typeof L
           </button>
         ))}
       </fieldset>
+      {garde.horsLigne ? <AlerteHorsLigne sansBrouillon /> : null}
       <RetourFormulaire etat={etat} />
     </form>
   );

@@ -33,11 +33,20 @@ export function MessagesGarde({ garde }: { garde: Garde }) {
 }
 
 /** Juste au-dessus du bouton d'envoi : le retour arrive là où le pouce a appuyé. */
-export function RappelEnvoi({ garde, etat }: { garde: Garde; etat: EtatFormulaire }) {
-  if (garde.horsLigne) {
-    return <Message type="alerte">Hors connexion : rien n’a été envoyé, votre saisie est gardée sur ce téléphone. Réessayez au retour du réseau.</Message>;
-  }
+export function RappelEnvoi({ garde, etat, sansBrouillon = false }: { garde: Garde; etat: EtatFormulaire; sansBrouillon?: boolean }) {
+  if (garde.horsLigne) return <AlerteHorsLigne sansBrouillon={sansBrouillon} />;
   if (etat.message) return <p className="font-semibold text-danger">{etat.message}</p>;
   if (etat.erreurs && Object.keys(etat.erreurs).length) return <p className="font-semibold text-danger">Corrigez les champs signalés en rouge.</p>;
   return null;
+}
+
+/** Envoi bloqué hors connexion ; « sans brouillon » : petite action, rien à garder. */
+export function AlerteHorsLigne({ sansBrouillon = false }: { sansBrouillon?: boolean }) {
+  return (
+    <Message type="alerte">
+      {sansBrouillon
+        ? 'Hors connexion : rien n’a été envoyé. Réessayez au retour du réseau.'
+        : 'Hors connexion : rien n’a été envoyé, votre saisie est gardée sur ce téléphone. Réessayez au retour du réseau.'}
+    </Message>
+  );
 }

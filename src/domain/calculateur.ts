@@ -84,7 +84,10 @@ export type PosteCalc = {
   etapes: EtapeCalc[];
   produit: ProduitCalc | null;
   typeProduit: TypeProduit | null;
+  /** Teinte du catalogue, ou saisie libre (id « libre:… ») : deux teintes = deux lignes d'achat. */
   teinte: { id: string; nom: string } | null;
+  /** Finition demandée : 30 L de velours et 3 L de satin ne s'achètent pas en une ligne. */
+  finition: Finition | null;
   couches: number;
   rendementForceCentiemes: number | null;
   margePerteBp: number | null;
@@ -125,6 +128,9 @@ export type ResultatPoste = {
   /** Matière des étapes de préparation (enduit, impression…). */
   matierePreparation: MatiereCalc[];
 };
+
+export type Finition = 'mat' | 'velours' | 'satin' | 'brillant';
+export const LIBELLES_FINITION: Record<Finition, string> = { mat: 'mat', velours: 'velours', satin: 'satin', brillant: 'brillant' };
 
 const LIBELLES_TYPE: Record<TypeProduit, string> = {
   sous_couche: 'Sous-couche', impression: 'Impression', acrylique: 'Acrylique', glycero: 'Glycéro', laque: 'Laque',
@@ -272,6 +278,7 @@ export type LigneAchat = {
   libelle: string;
   reference: string | null;
   teinte: string | null;
+  finition: string | null;
   unite: 'L' | 'kg';
   quantite: Quantite;
   pots: ChoixPots | null;
@@ -302,12 +309,12 @@ export type ListeAchat = {
   prixVenteHtCents: bigint | null;
 };
 
-type Cumul = Omit<MatiereCalc, 'cle'> & { teinte: string | null; postes: string[] };
+type Cumul = Omit<MatiereCalc, 'cle'> & { teinte: string | null; finition: string | null; postes: string[] };
 
 export function listeAchat(postes: { poste: PosteCalc; resultat: ResultatPoste }[], consommables: Consommable[], p: ParametresCalcul): ListeAchat {
   const cumuls = new Map<string, Cumul>();
-  const ajouter = (cle: string, m: Omit<MatiereCalc, 'cle'>, teinte: string | null, poste: string) => {
-    const c = cumuls.get(cle) ?? { ...m, quantite: FRACTION_NULLE, teinte, postes: [] };
+  const ajouter = (cle: string, m: Omit<MatiereCalc, 'cle'>, teinte: string | null, finition: string | null, poste: string) => {
+    const c = cumuls.get(cle) ?? { ...m, quantite: FRACTION_NULLE, teinte, finition, postes: [] };
     c.quantite = additionner(c.quantite, m.quantite);
     c.aVerifier = c.aVerifier || m.aVerifier;
     if (!c.postes.includes(poste)) c.postes.push(poste);
@@ -332,15 +339,15 @@ export function listeAchat(postes: { poste: PosteCalc; resultat: ResultatPoste }
     if (resultat.quantite) {
       const pr = poste.produit;
       const type = pr?.type ?? poste.typeProduit!;
-      ajouter(`${pr ? `p:${pr.id}` : `t:${type}`}|${poste.teinte?.id ?? ''}`, {
+      ajouter(`${pr ? `p:${pr.id}` : `t:${type}`}|${poste.teinte?.id ?? ''}|${poste.finition ?? ''}`, {
         libelle: pr?.libelle ?? `${LIBELLES_TYPE[type]} (produit à choisir)`, reference: pr?.reference ?? null, unite: resultat.unite,
         formats: pr?.formats.length ? pr.formats : formatsDefaut(p, resultat.unite), aVerifier: pr ? pr.aVerifier : true,
         quantite: resultat.quantite.exacte,
-      }, poste.teinte?.nom ?? null, poste.libelle);
+      }, poste.teinte?.nom ?? null, poste.finition ? LIBELLES_FINITION[poste.finition] : null, poste.libelle);
     } else {
       nonChiffres.push({ libelle: poste.libelle, raison: resultat.manques[0] ?? 'Quantité non calculée.' });
     }
-    for (const m of resultat.matierePreparation) ajouter(m.cle, m, null, `${poste.libelle} (préparation)`);
+    for (const m of resultat.matierePreparation) ajouter(m.cle, m, null, null, `${poste.libelle} (préparation)`);
   }
 
   let cout = 0n;
@@ -355,8 +362,12 @@ export function listeAchat(postes: { poste: PosteCalc; resultat: ResultatPoste }
     }
     const coutLigne = pots?.retenue.coutCents ?? null;
     if (coutLigne === null) prixComplets = false; else cout += coutLigne;
-    return { cle, libelle: c.libelle, reference: c.reference, teinte: c.teinte, unite: c.unite, quantite, pots, probleme, coutCents: coutLigne, aVerifier: c.aVerifier, postes: c.postes };
-  }).sort((a, b) => a.libelle.localeCompare(b.libelle, 'fr') || (a.teinte ?? '').localeCompare(b.teinte ?? '', 'fr'));
+    return {
+      cle, libelle: c.libelle, reference: c.reference, teinte: c.teinte, finition: c.finition, unite: c.unite, quantite, pots, probleme,
+      coutCents: coutLigne, aVerifier: c.aVerifier, postes: c.postes,
+    };
+  }).sort((a, b) => a.libelle.localeCompare(b.libelle, 'fr') || (a.finition ?? '').localeCompare(b.finition ?? '', 'fr')
+    || (a.teinte ?? '').localeCompare(b.teinte ?? '', 'fr'));
 
   // Consommables au m² : chaque surface traitée comptée une fois (impression + finition sur un même mur = une surface).
   const surfaceTraitee = [...surfaces.values()].reduce((a, b) => a + b, 0n);

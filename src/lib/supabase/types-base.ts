@@ -995,14 +995,14 @@ isOneToOne: false
                   ]
                 },"postes_travaux": {
                   Row: {
-                    "cible": string,"couches": number,"created_at": string,"element_id": string | null,"exterieur": boolean,"finition": string | null,"id": string,"majoration_temps_bp": number,"marge_perte_bp": number | null,"ordre": number,"organisation_id": string,"piece_id": string,"produit_id": string | null,"rendement_force": number | null,"support": string,"taches": boolean,"teinte_id": string | null,"type_produit": string | null,"updated_at": string,"zone_humide": boolean
+                    "cible": string,"couches": number,"created_at": string,"element_id": string | null,"exterieur": boolean,"finition": string | null,"id": string,"majoration_temps_bp": number,"marge_perte_bp": number | null,"ordre": number,"organisation_id": string,"piece_id": string,"produit_id": string | null,"rendement_force": number | null,"support": string,"taches": boolean,"teinte_id": string | null,"teinte_libre": string | null,"type_produit": string | null,"updated_at": string,"zone_humide": boolean
                   }
                   ComputedFields: never
                   Insert: {
-                    "cible": string,"couches"?: number,"created_at"?: string,"element_id"?: string | null,"exterieur"?: boolean,"finition"?: string | null,"id"?: string,"majoration_temps_bp"?: number,"marge_perte_bp"?: number | null,"ordre"?: number,"organisation_id": string,"piece_id": string,"produit_id"?: string | null,"rendement_force"?: number | null,"support": string,"taches"?: boolean,"teinte_id"?: string | null,"type_produit"?: string | null,"updated_at"?: string,"zone_humide"?: boolean
+                    "cible": string,"couches"?: number,"created_at"?: string,"element_id"?: string | null,"exterieur"?: boolean,"finition"?: string | null,"id"?: string,"majoration_temps_bp"?: number,"marge_perte_bp"?: number | null,"ordre"?: number,"organisation_id": string,"piece_id": string,"produit_id"?: string | null,"rendement_force"?: number | null,"support": string,"taches"?: boolean,"teinte_id"?: string | null,"teinte_libre"?: string | null,"type_produit"?: string | null,"updated_at"?: string,"zone_humide"?: boolean
                   }
                   Update: {
-                    "cible"?: string,"couches"?: number,"created_at"?: string,"element_id"?: string | null,"exterieur"?: boolean,"finition"?: string | null,"id"?: string,"majoration_temps_bp"?: number,"marge_perte_bp"?: number | null,"ordre"?: number,"organisation_id"?: string,"piece_id"?: string,"produit_id"?: string | null,"rendement_force"?: number | null,"support"?: string,"taches"?: boolean,"teinte_id"?: string | null,"type_produit"?: string | null,"updated_at"?: string,"zone_humide"?: boolean
+                    "cible"?: string,"couches"?: number,"created_at"?: string,"element_id"?: string | null,"exterieur"?: boolean,"finition"?: string | null,"id"?: string,"majoration_temps_bp"?: number,"marge_perte_bp"?: number | null,"ordre"?: number,"organisation_id"?: string,"piece_id"?: string,"produit_id"?: string | null,"rendement_force"?: number | null,"support"?: string,"taches"?: boolean,"teinte_id"?: string | null,"teinte_libre"?: string | null,"type_produit"?: string | null,"updated_at"?: string,"zone_humide"?: boolean
                   }
                   Relationships: [
                     {
@@ -1459,6 +1459,9 @@ isOneToOne: false
                            },
 "controler_ventilation":
 { Args: { "p_regime": Database["public"]['Enums']["regime_tva"],"p_total_ht": number,"p_total_tva": number,"p_ventilation": Json }; Returns: undefined
+                           },
+"copier_poste":
+{ Args: { "p_pieces": (string)[],"p_poste_id": string }; Returns: number
                            },
 "deductions_bien_formees":
 { Args: { "p": Json }; Returns: boolean

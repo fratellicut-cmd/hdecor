@@ -79,7 +79,7 @@ export async function pdfListeAchat(entete: { entreprise: string; chantier: stri
     c.page.drawLine({ start: { x: MARGE, y: c.y }, end: { x: A4.l - MARGE, y: c.y }, thickness: 0.5, color: GRIS });
     c.y -= 6;
     ecrire(c, `${l.libelle}${l.aVerifier ? '  [À VÉRIFIER]' : ''}`, { taille: 11, gras: true });
-    const details = [l.reference ? `Réf. ${l.reference}` : null, l.teinte ? `Teinte : ${l.teinte}` : null].filter(Boolean).join('   ');
+    const details = [l.reference ? `Réf. ${l.reference}` : null, l.finition ? `Finition : ${l.finition}` : null, l.teinte ? `Teinte : ${l.teinte}` : null].filter(Boolean).join('   ');
     if (details) ecrire(c, details, { couleur: GRIS });
     ecrire(c, `Besoin : ${formaterQuantiteCourte(l.quantite)} ${l.unite}`);
     if (l.pots) {

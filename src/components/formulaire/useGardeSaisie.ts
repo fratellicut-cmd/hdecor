@@ -148,8 +148,10 @@ export type Garde = {
  *    depuis (« version ») : le conflit est alors signalé et l'utilisateur choisit ;
  *  - l'envoi est bloqué tant que le téléphone se sait hors connexion.
  * Le brouillon est effacé après enregistrement, à la déconnexion et après 24 h.
+ * Sans clé (petite action : retrait, statut…), rien n'est copié : seul
+ * l'envoi hors connexion est bloqué.
  */
-export function useGardeSaisie(cle: string, formRef: RefObject<HTMLFormElement | null>, version?: string | null): Garde {
+export function useGardeSaisie(cle: string | null, formRef: RefObject<HTMLFormElement | null>, version?: string | null): Garde {
   const [recupere, setRecupere] = useState(false);
   const [conflit, setConflit] = useState<Brouillon | null>(null);
   const [horsLigne, setHorsLigne] = useState(false);
@@ -157,7 +159,9 @@ export function useGardeSaisie(cle: string, formRef: RefObject<HTMLFormElement |
 
   useEffect(() => {
     const form = formRef.current;
-    if (!form) return;
+    const reseau = () => { if (navigator.onLine) setHorsLigne(false); };
+    window.addEventListener('online', reseau);
+    if (!form || cle === null) return () => window.removeEventListener('online', reseau);
     if (!restaure.current) {
       restaure.current = true;
       const b = lire(cle);
@@ -176,10 +180,8 @@ export function useGardeSaisie(cle: string, formRef: RefObject<HTMLFormElement |
         } satisfies Brouillon));
       } catch { /* stockage plein ou interdit : la saisie reste dans la page */ }
     };
-    const reseau = () => { if (navigator.onLine) setHorsLigne(false); };
     form.addEventListener('input', sauver);
     form.addEventListener('change', sauver);
-    window.addEventListener('online', reseau);
     return () => {
       form.removeEventListener('input', sauver);
       form.removeEventListener('change', sauver);
@@ -200,7 +202,7 @@ export function useGardeSaisie(cle: string, formRef: RefObject<HTMLFormElement |
   }, [conflit, formRef]);
 
   const annuler = useCallback(() => {
-    effacerBrouillon(cle);
+    if (cle !== null) effacerBrouillon(cle);
     window.location.reload();
   }, [cle]);
 

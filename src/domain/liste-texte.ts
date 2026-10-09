@@ -7,7 +7,7 @@ export function texteListeAchat(titre: string, liste: ListeAchat): string {
   const lignes = [`Liste d’achat : ${titre}`, ''];
   for (const l of liste.lignes) {
     const pots = l.pots?.retenue.pots.map((p) => `${p.nombre} × ${formaterContenance(p.contenanceMl, l.unite)}`).join(' + ');
-    lignes.push(`• ${l.libelle}${l.reference ? ` (réf. ${l.reference})` : ''}${l.teinte ? `, teinte ${l.teinte}` : ''}`);
+    lignes.push(`• ${l.libelle}${l.reference ? ` (réf. ${l.reference})` : ''}${l.finition ? `, finition ${l.finition}` : ''}${l.teinte ? `, teinte ${l.teinte}` : ''}`);
     lignes.push(`  ${formaterQuantiteCourte(l.quantite)} ${l.unite} -> ${pots ?? l.probleme ?? 'pots à déterminer'}`);
   }
   if (liste.nonChiffres.length) {

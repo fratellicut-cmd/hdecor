@@ -8,7 +8,7 @@ export const SUPPORTS = ['platre_neuf', 'ancienne_peinture', 'beton', 'enduit', 
 export const TYPES_PRODUIT = ['sous_couche', 'impression', 'acrylique', 'glycero', 'laque', 'facade', 'lasure', 'vernis',
   'enduit', 'anti_humidite', 'anti_rouille', 'sous_couche_bloquante', 'autre'] as const;
 export const TYPES_OUVERTURE = ['porte', 'fenetre', 'baie', 'autre'] as const;
-export const TYPES_ELEMENT = ['plinthe', 'corniche', 'porte', 'fenetre', 'radiateur', 'volet', 'escalier', 'rambarde', 'autre'] as const;
+export const TYPES_ELEMENT = ['plinthe', 'corniche', 'porte', 'fenetre', 'radiateur', 'volet', 'escalier', 'rambarde', 'facade', 'autre'] as const;
 
 const vide = (v: unknown) => typeof v !== 'string' || v.trim() === '';
 
@@ -131,13 +131,23 @@ export const schemaPoste = z.object({
   produit_id: uuidFacultatif,
   type_produit: z.preprocess((v) => (vide(v) ? null : v), z.enum(TYPES_PRODUIT, { error: 'Type de produit invalide.' }).nullable()),
   teinte_id: uuidFacultatif,
+  // Teinte tapée (« blanc », « RAL 9010 ») tant que le catalogue des teintes est vide.
+  teinte_libre: texteFacultatif(80),
   finition: z.preprocess((v) => (vide(v) ? null : v), z.enum(['mat', 'velours', 'satin', 'brillant']).nullable()),
   couches: entier(1, 5, 'Nombre de couches'),
   rendement_force: rendementFacultatif,
   marge_perte_bp: z.preprocess((v) => (vide(v) ? null : v), z.union([z.null(), pourcentage(0, 5000)])),
   majoration_temps_bp: z.preprocess((v) => (vide(v) ? '0' : v), pourcentage(0, 50_000)),
   etapes: z.array(z.uuid()).max(30),
+  /** Même poste (murs ou plafond) créé aussi sur ces pièces du chantier. */
+  pieces_copie: z.array(z.uuid()).max(100),
 }).superRefine((v, ctx) => {
   if (v.cible === 'element' && !v.element_id) ctx.addIssue({ code: 'custom', path: ['element_id'], message: 'Choisissez l’élément à peindre.' });
   if (!v.produit_id && !v.type_produit) ctx.addIssue({ code: 'custom', path: ['type_produit'], message: 'Choisissez un produit ou un type de produit.' });
-}).transform((v) => ({ ...v, element_id: v.cible === 'element' ? v.element_id : null }));
+}).transform((v) => ({
+  ...v,
+  element_id: v.cible === 'element' ? v.element_id : null,
+  // Une teinte du catalogue choisie l'emporte sur la saisie libre.
+  teinte_libre: v.teinte_id ? null : v.teinte_libre,
+  pieces_copie: v.cible === 'element' ? [] : [...new Set(v.pieces_copie)].filter((p) => p !== v.piece_id),
+}));

@@ -2,7 +2,7 @@ import type { ResultatPoste } from '@/domain/calculateur';
 import { formaterDuree } from '@/domain/chiffrage';
 import { formaterEuros } from '@/domain/formats';
 import { formaterSurface } from '@/domain/metre';
-import { formaterContenance, formaterQuantite, formaterQuantiteCourte } from '@/domain/peinture';
+import { formaterContenance, formaterQuantite, formaterQuantiteCourte, quantiteDepuisFraction } from '@/domain/peinture';
 import type { Combinaison } from '@/domain/pots';
 import { BadgeAVerifier } from '@/components/ui/Champ';
 
@@ -13,11 +13,14 @@ export function texteCombinaison(c: Combinaison, unite: 'L' | 'kg') {
 }
 
 /** Résultat d'un poste : chaque valeur avec sa provenance ; rien n'est caché. */
-export function ResultatPosteVue({ r }: { r: ResultatPoste }) {
+export function ResultatPosteVue({ r, communs }: { r: ResultatPoste; communs?: Set<string> }) {
   const u = r.unite;
+  // Messages communs à plusieurs postes : affichés une seule fois en haut de la page.
+  const manques = communs ? r.manques.filter((m) => !communs.has(m)) : r.manques;
+  const tempsInconnu = r.temps !== null && r.incomplet.temps && r.temps.minutes === 0n;
   return (
     <div className="flex flex-col gap-2">
-      {r.manques.map((m) => <p key={m} className="rounded-lg bg-danger-fond px-3 py-2 text-sm font-semibold text-danger">{m}</p>)}
+      {manques.map((m) => <p key={m} className="rounded-lg bg-danger-fond px-3 py-2 text-sm font-semibold text-danger">{m}</p>)}
       <dl className="grid grid-cols-2 gap-x-3 gap-y-2 tabular-nums">
         <div><dt className="text-sm text-encre-douce">Surface</dt><dd className="font-semibold">{r.surfaceMm2 === null ? '—' : formaterSurface(r.surfaceMm2)}</dd></div>
         <div>
@@ -38,8 +41,17 @@ export function ResultatPosteVue({ r }: { r: ResultatPoste }) {
           </dd>
         </div>
         <div><dt className="text-sm text-encre-douce">Coût matière HT</dt><dd className="font-semibold">{r.coutMatiereCents === null ? 'prix à renseigner' : formaterEuros(r.coutMatiereCents)}</dd></div>
-        <div><dt className="text-sm text-encre-douce">Temps{r.incomplet.temps ? ' (partiel)' : ''}</dt><dd className="font-semibold">{r.temps ? formaterDuree(r.temps.minutes) : '—'}{r.coutMainOeuvreCents !== null ? ` · ${formaterEuros(r.coutMainOeuvreCents)}` : ''}</dd></div>
+        <div><dt className="text-sm text-encre-douce">Temps{r.incomplet.temps && !tempsInconnu ? ' (partiel)' : ''}</dt><dd className="font-semibold">
+          {r.temps === null ? '—' : tempsInconnu ? 'non renseigné' : formaterDuree(r.temps.minutes)}
+          {r.coutMainOeuvreCents !== null && !tempsInconnu ? ` · ${formaterEuros(r.coutMainOeuvreCents)}` : ''}
+        </dd></div>
       </dl>
+      {r.matierePreparation.length ? (
+        <p className="text-sm">
+          Préparation (comptée dans la liste d’achat) :{' '}
+          {r.matierePreparation.map((m) => `${m.libelle} ${formaterQuantiteCourte(quantiteDepuisFraction(m.quantite))} ${m.unite}`).join(' ; ')}
+        </p>
+      ) : null}
       {r.avertissements.map((a) => <p key={a} className="rounded-lg bg-alerte-fond px-3 py-2 text-sm font-semibold text-alerte">⚠ {a}</p>)}
       {r.sechage ? <p className="text-sm">{r.sechage}</p> : null}
       {r.aVerifier.length ? (

@@ -92,7 +92,7 @@ export default async function PageChantier({ params, searchParams }: PageProps<'
 
       <ActionConfirmee action={supprimerChantier} champs={{ id: chantier.id! }} libelle="Supprimer ce chantier" variante="danger"
         confirmation="Je confirme la suppression du chantier, de ses pièces et de son métré."
-        explication="Impossible si un devis, une facture ou un PV y est rattaché." />
+        explication="Sont aussi supprimés : postes de peinture, photos, documents, temps passés, rendez-vous, rappels et listes de contrôle. Impossible si un devis, une facture, une dépense ou un PV y est rattaché." />
     </div>
   );
 }

@@ -18,7 +18,7 @@ const poste: PosteCalc = {
   id: 'm', libelle: 'Chambre : murs', surface: { mm2: 31_926_800n }, cleSurface: 'c|murs|', hauteurMm: 2500, cible: 'murs',
   support: 'ancienne_peinture', zoneHumide: false, taches: false, exterieur: false,
   etapes: [], couches: 2, rendementForceCentiemes: null, margePerteBp: null, majorationTempsBp: 0, typeProduit: null,
-  teinte: { id: 't', nom: 'Blanc cassé (fictif)' },
+  teinte: { id: 't', nom: 'Blanc cassé (fictif)' }, finition: 'velours',
   produit: { id: 'p', libelle: 'Acrylique mat (fictif)', reference: 'REF-FICTIVE', type: 'acrylique', unite: 'L', rendementCentiemes: 1000,
     couchesRecommandees: 2, sechageDixiemesH: null, usages: ['mur'], aVerifier: true, archive: false,
     formats: [{ contenanceMl: 2500, prixCents: 3000n }, { contenanceMl: 5000, prixCents: 5000n }, { contenanceMl: 10_000, prixCents: 9000n }] },
@@ -56,7 +56,7 @@ describe('liste d’achat en PDF (PDF réel, texte extrait)', () => {
 describe('texte à partager', () => {
   it('liste lisible dans un message, sans donnée du client', () => {
     const t = texteListeAchat('Appartement Lilas', liste);
-    expect(t).toContain('• Acrylique mat (fictif) (réf. REF-FICTIVE), teinte Blanc cassé (fictif)');
+    expect(t).toContain('• Acrylique mat (fictif) (réf. REF-FICTIVE), finition velours, teinte Blanc cassé (fictif)');
     expect(t).toContain('7,02 L -> 1 × 5 L + 1 × 2,5 L');
     expect(t).toContain('Rendements indicatifs');
   });

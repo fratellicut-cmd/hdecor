@@ -1,7 +1,8 @@
 'use client';
 
-import { useActionState } from 'react';
-import { ETAT_INITIAL, type EtatFormulaire } from '@/lib/etat-formulaire';
+import type { EtatFormulaire } from '@/lib/etat-formulaire';
+import { useFormulaire } from './useFormulaire';
+import { AlerteHorsLigne } from './MessagesGarde';
 import { RetourFormulaire } from '@/components/parametres/RetourFormulaire';
 import { Bouton } from '@/components/ui/Bouton';
 import { CaseACocher } from '@/components/ui/Autres';
@@ -18,11 +19,13 @@ type Props = {
 
 /** Petite action serveur (retrait, suppression, changement d'état) avec retour affiché. */
 export function ActionConfirmee({ action, champs, libelle, confirmation, variante = 'secondaire', explication }: Props) {
-  const [etat, envoyer, enCours] = useActionState(action, ETAT_INITIAL);
+  // Coupure réseau : envoi bloqué ou message clair, jamais la page d'erreur.
+  const { etat, action: envoyer, enCours, formRef, garde } = useFormulaire(null, action);
   const formulaire = (
-    <form action={envoyer} className="flex flex-col gap-2">
+    <form ref={formRef} action={envoyer} onSubmit={garde.surEnvoi} className="flex flex-col gap-2">
       {Object.entries(champs).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
       <RetourFormulaire etat={etat} />
+      {garde.horsLigne ? <AlerteHorsLigne sansBrouillon /> : null}
       {explication ? <p className="text-sm">{explication}</p> : null}
       {confirmation ? <CaseACocher nom="confirmation" libelle={confirmation} required /> : null}
       <Bouton type="submit" variante={variante} disabled={enCours}>{enCours ? 'Un instant…' : libelle}</Bouton>
