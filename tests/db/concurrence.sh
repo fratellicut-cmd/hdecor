@@ -9,7 +9,7 @@ ORG=aaaaaaaa-0000-0000-0000-00000000000a
 USR=aaaaaaaa-0000-0000-0000-000000000001
 
 psql -q -X -v ON_ERROR_STOP=1 -d "$DB" <<SQL
-insert into auth.users values ('$USR', 'a@test');
+insert into auth.users (id, email) values ('$USR', 'a@test');
 insert into public.organisations (id, nom) values ('$ORG', 'Org A');
 insert into public.membres values ('$ORG', '$USR', 'proprietaire');
 insert into public.parametres_entreprise (organisation_id, raison_sociale) values ('$ORG', 'Org A');

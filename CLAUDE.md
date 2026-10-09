@@ -51,14 +51,21 @@ Tests exécutés et verts, TypeScript / lint / build sans erreur ni warning, auc
 Validation légale finale par le comptable de Yorick (TVA, mentions, rétractation, facturation électronique, seuils micro-entreprise). Vérification des références et rendements de peinture sur les fiches techniques fabricants.
 
 ## Commandes
-- Tests du schéma SQL (Phase 0, sans application) : `bash tests/db/run.sh`
-  Prérequis : PostgreSQL 16 local démarré, et un rôle superuser au nom de l'utilisateur système
-  (`sudo -u postgres createuser -s "$USER"`). Le script recrée la base `hdecor_test`, applique
-  `tests/db/shim_supabase.sql` puis `supabase/migrations/*.sql`, lance `tests/db/schema.test.sql`
-  et le test de numérotation concurrente `tests/db/concurrence.sh`.
-- À partir de la Phase 1 :
-- Développement : `npm run dev`
-- Tests : `npm run test`
-- Parcours : `npm run test:e2e`
-- Lint / types : `npm run lint` et `npm run typecheck`
-- Build : `npm run build`
+- **Pile locale** (sans Docker : PostgreSQL 16, GoTrue et PostgREST en binaires) :
+  `npm run local:start` (crée la base `hdecor_dev`, applique les migrations, écrit `.env.local`)
+  et `npm run local:stop`. Prérequis : PostgreSQL 16 démarré (`pg_ctlcluster 16 main start`).
+  Création du compte : `npx tsx scripts/creer-compte.ts` (mot de passe demandé, jamais en argument).
+- **Tests du schéma SQL** : `npm run test:db` (ou `bash tests/db/run.sh`). Variables : `DB` (base
+  de test, `hdecor_test` par défaut) et `AUTH=shim|gotrue` (schéma auth simulé ou vrai schéma
+  GoTrue). Le script recrée la base, applique `tests/db/shim_supabase.sql` puis
+  `supabase/migrations/*.sql`, lance `tests/db/schema.test.sql` et les 4 tests de concurrence
+  `tests/db/concurrence.sh`. Prérequis : un rôle superuser au nom de l'utilisateur système
+  (`sudo -u postgres createuser -s "$USER"`).
+- **Développement** : `npm run dev`
+- **Tests unitaires** : `npm run test`
+- **Parcours** (Playwright, pile locale et serveur lancés) : `npm run test:e2e`
+  (Chromium préinstallé : `PW_CHROMIUM=/opt/pw-browsers/chromium`).
+- **Lint / types** : `npm run lint` et `npm run typecheck`
+- **Build** : `npm run build`
+- **Types de la base** après une migration : `npm run types:db` (variable `DB_URL` : URL de la base locale `hdecor_dev`).
+- **Icônes provisoires** : `bash scripts/generer-icones.sh` (à remplacer par le logo officiel).

@@ -1,0 +1,87 @@
+# Contrôles à chaque envoi : qualité (lint, types, tests unitaires, audit des
+# dépendances de production, build), puis schéma SQL et parcours de bout en
+# bout sur une pile réelle (PostgreSQL 16 + GoTrue + PostgREST, sans Docker).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualite:
+    name: Lint, types, tests unitaires, audit, build
+    runs-on: ubuntu-24.04
+    env:
+      # Valeurs PUBLIQUES factices : le build les exige, aucun secret ici.
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: cle-anonyme-factice-pour-le-build-ci
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test
+      # Bloquant : dépendances livrées en production. L'outillage de
+      # développement est suivi à part (docs/securite/dependances.md).
+      - run: npm audit --omit=dev --audit-level=low
+      - run: npm run build
+
+  base-et-parcours:
+    name: Schéma SQL et parcours (téléphone)
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres-ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGUSER: postgres
+      PGPASSWORD: postgres-ci
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - run: npm ci
+      # Télécharge GoTrue et PostgREST, crée hdecor_dev, écrit .env.local.
+      - run: npm run local:start
+      - name: Schéma SQL (auth simulé)
+        run: DB=hdecor_shim AUTH=shim bash tests/db/run.sh
+      - name: Schéma SQL (vrai schéma auth GoTrue)
+        run: DB=hdecor_gotrue AUTH=gotrue bash tests/db/run.sh
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Parcours de bout en bout sur la build de production
+        run: |
+          npx next start -p 3000 > next.log 2>&1 &
+          for i in $(seq 1 60); do curl -fsS -o /dev/null http://localhost:3000/connexion && break; sleep 1; done
+          npm run test:e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: traces-parcours
+          path: |
+            test-results/
+            next.log
+            .supabase-local/logs/
+          retention-days: 7

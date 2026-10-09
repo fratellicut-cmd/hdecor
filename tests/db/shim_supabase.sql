@@ -23,6 +23,18 @@ create table auth.users (id uuid primary key, email text);
 create function auth.uid() returns uuid language sql stable as $$
   select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
 $$;
+-- Comme Supabase : auth.jwt() lit les claims de la requête ; table des
+-- facteurs de double authentification (colonnes utiles seulement).
+create function auth.jwt() returns jsonb language sql stable as $$
+  select nullif(current_setting('request.jwt.claims', true), '')::jsonb
+$$;
+create table auth.mfa_factors (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  factor_type text not null,
+  status text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now());
 
 create schema storage;
 create table storage.buckets (
@@ -35,7 +47,7 @@ create table storage.objects (
 alter table storage.objects enable row level security;
 
 grant usage on schema public, auth, storage, extensions to anon, authenticated, service_role;
-grant execute on function auth.uid() to anon, authenticated, service_role;
+grant execute on function auth.uid(), auth.jwt() to anon, authenticated, service_role;
 grant all on storage.objects to authenticated, service_role;
 grant select on storage.buckets to authenticated, service_role;
 
