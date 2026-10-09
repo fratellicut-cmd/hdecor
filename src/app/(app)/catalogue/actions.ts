@@ -252,7 +252,7 @@ export type EtatImport = {
   };
 };
 
-const schemaContenu = z.string().min(1, { error: 'Choisissez un fichier CSV.' }).max(TAILLE_MAX_CSV, { error: 'Fichier trop volumineux (1 Mo au maximum).' });
+const schemaContenu = z.string().min(1, { error: 'Choisissez un fichier CSV.' }).max(TAILLE_MAX_CSV, { error: 'Fichier trop volumineux (900 Ko au maximum).' });
 
 /** Fourchettes indicatives du référentiel (alertes de plausibilité de l'aperçu). */
 async function fourchettes(): Promise<FourchettesRendement> {

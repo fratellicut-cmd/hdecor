@@ -75,7 +75,7 @@ Catalogue > Importer ou exporter.
 - **Modèle** : « Télécharger le modèle vide », le remplir dans Excel, l'enregistrer en « CSV (séparateur : point-virgule) » ou « CSV UTF-8 ». Les deux encodages sont reconnus (accents compris).
 - **Colonnes** : Marque, Gamme, Référence fabricant, Désignation, Type, Usages, Finition, Unité (L ou kg), Rendement, Couches recommandées, Séchage (h), Formats, Prix d'achat HT par format, Fournisseur, Fiche technique. Obligatoires : Marque, Désignation, Type.
 - **Formats et prix** dans une cellule, séparés par « / » : « 2,5 / 10 » et « 32,50 / 115,00 ». Formats de 0,1 à 100 (L ou kg).
-- **Limites** : 1 Mo et 2 000 lignes par fichier.
+- **Limites** : 900 Ko et 2 000 lignes par fichier.
 - **Aperçu** avant tout enregistrement : erreurs ligne par ligne, alertes de plausibilité (unité, rendement très éloigné de la fourchette du type). On peut n'importer que les lignes valides.
 - **Mise à jour** d'un produit existant (même marque et même référence, ou même désignation sans référence) : seules les cellules remplies remplacent ; une cellule vide ou une colonne absente garde la valeur actuelle. Une valeur technique modifiée repasse le produit « À VÉRIFIER ». Un changement d'unité est refusé si le produit a des formats.
 - **Export** : même format que le modèle, réimportable tel quel.

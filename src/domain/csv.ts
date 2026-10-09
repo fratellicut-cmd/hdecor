@@ -34,7 +34,7 @@ export function fichierCsv(entetes: string[], lignes: (string | null | undefined
  * L'apostrophe de protection ajoutée à l'export (« '=… ») est retirée.
  */
 export function lireCsv(texte: string): string[][] {
-  if (texte.length > TAILLE_MAX_CSV) throw new ErreurCsv('Fichier trop volumineux (1 Mo au maximum).');
+  if (texte.length > TAILLE_MAX_CSV) throw new ErreurCsv('Fichier trop volumineux (900 Ko au maximum).');
   const t = texte.replace(/^﻿/, '');
   const premiere = t.split(/\r?\n/, 1)[0] ?? '';
   const sep = premiere.split(';').length >= premiere.split(',').length ? ';' : ',';

@@ -221,11 +221,11 @@ export function ImportCatalogue() {
     setIgnorer(false);
     setImportDe(null);
     if (!f) return;
-    if (f.size > TAILLE_MAX_CSV) { setLecture('Fichier trop volumineux (1 Mo au maximum).'); return; }
+    if (f.size > TAILLE_MAX_CSV) { setLecture('Fichier trop volumineux (900 Ko au maximum).'); return; }
     // Excel en français enregistre le CSV en Windows-1252 : décodage sans perte des accents.
     const { texte, encodage } = decoderCsv(new Uint8Array(await f.arrayBuffer()));
     // Envoyé en UTF-8 : un accent Windows-1252 y prend 2 octets ; la limite est vérifiée après décodage.
-    if (new TextEncoder().encode(texte).length > TAILLE_MAX_CSV) { setLecture('Fichier trop volumineux (1 Mo au maximum).'); return; }
+    if (new TextEncoder().encode(texte).length > TAILLE_MAX_CSV) { setLecture('Fichier trop volumineux (900 Ko au maximum).'); return; }
     setFichier((x) => ({ nom: f.name, encodage, numero: (x?.numero ?? 0) + 1 }));
     setContenu(texte);
     const fd = new FormData();
@@ -256,7 +256,7 @@ export function ImportCatalogue() {
     <div className="flex flex-col gap-4">
       <label className="flex min-h-16 cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-trait bg-white p-4 text-center has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-or-fonce">
         <span className="font-semibold">{fichier ? `Fichier : ${fichier.nom} (${fichier.encodage})` : 'Choisir le fichier CSV'}</span>
-        <span className="text-sm text-encre-douce">Enregistré depuis Excel « CSV (séparateur : point-virgule) » ou « CSV UTF-8 », 1 Mo au maximum</span>
+        <span className="text-sm text-encre-douce">Enregistré depuis Excel « CSV (séparateur : point-virgule) » ou « CSV UTF-8 », 900 Ko au maximum</span>
         <input type="file" accept=".csv,text/csv" onChange={choisir} className="sr-only" />
       </label>
       {lecture ? <Message type="erreur">{lecture}</Message> : null}
