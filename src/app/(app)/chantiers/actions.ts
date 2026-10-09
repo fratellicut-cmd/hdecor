@@ -25,6 +25,14 @@ function lireChamps(formData: FormData, tableaux: string[] = []): Record<string,
 
 const idDe = (formData: FormData, cle: string) => identifiant.safeParse(formData.get(cle));
 
+/**
+ * Identifiant de la future fiche, fixé par le formulaire à son ouverture : un
+ * nouvel envoi après une réponse perdue (4G « menteuse ») retrouve la fiche
+ * déjà créée au lieu d'en créer une seconde (ouverture déduite deux fois…).
+ */
+const idNouveau = (formData: FormData) => identifiant.safeParse(formData.get('id_nouveau'));
+const FORMULAIRE_INCOMPLET = 'Formulaire incomplet : rechargez la page.';
+
 // --------------------------------------------------------------------------
 // Chantiers
 // --------------------------------------------------------------------------
@@ -56,10 +64,12 @@ export async function enregistrerChantier(_: EtatFormulaire, formData: FormData)
     if (!data) return { message: 'Chantier introuvable.' };
     id = data.id;
   } else {
-    const { data, error } = await supabase.from('chantiers')
-      .insert({ ...valeurs, organisation_id: session.organisationId }).select('id').single();
+    const nouveau = idNouveau(formData);
+    if (!nouveau.success) return { message: FORMULAIRE_INCOMPLET };
+    const { error } = await supabase.from('chantiers')
+      .upsert({ ...valeurs, id: nouveau.data, organisation_id: session.organisationId }, { onConflict: 'id', ignoreDuplicates: true });
     if (error) return { message: messageErreur(error.code), valeurs: valeursTexte(formData) };
-    id = data.id;
+    id = nouveau.data;
   }
   revalidatePath('/chantiers');
   redirect(`/chantiers/${id}?enregistre=1`);
@@ -119,12 +129,17 @@ export async function enregistrerPiece(_: EtatFormulaire, formData: FormData): P
     if (!data) return { message: 'Pièce introuvable.' };
     id = data.id;
   } else {
+    const nouveau = idNouveau(formData);
+    if (!nouveau.success) return { message: FORMULAIRE_INCOMPLET };
     const { data: ordre } = await supabase.from('pieces').select('ordre').eq('chantier_id', chantierId.data)
       .order('ordre', { ascending: false }).limit(1).maybeSingle();
-    const { data, error } = await supabase.from('pieces').insert({
-      ...lu.data, organisation_id: session.organisationId, chantier_id: chantierId.data, ordre: (ordre?.ordre ?? -1) + 1,
-    }).select('id').single();
+    const { error } = await supabase.from('pieces').upsert({
+      ...lu.data, id: nouveau.data, organisation_id: session.organisationId, chantier_id: chantierId.data, ordre: (ordre?.ordre ?? -1) + 1,
+    }, { onConflict: 'id', ignoreDuplicates: true });
     if (error) return { message: messageErreur(error.code), valeurs: valeursTexte(formData) };
+    // Déjà créée par un premier envoi : elle doit être dans ce chantier.
+    const { data } = await supabase.from('pieces').select('id').eq('id', nouveau.data).eq('chantier_id', chantierId.data).maybeSingle();
+    if (!data) return { message: 'Pièce introuvable.' };
     id = data.id;
   }
   revalidatePath(`/chantiers/${chantierId.data}`, 'layout');
@@ -139,7 +154,9 @@ export async function dupliquerPiece(_: EtatFormulaire, formData: FormData): Pro
   if (!id.success || !chantierId.success) return { message: 'Demande invalide. Rechargez la page.' };
   if (!nom.success) return { erreurs: { nom: 'Nom de la copie : 1 à 100 caractères.' } };
   const supabase = await clientServeur();
-  const { data, error } = await supabase.rpc('dupliquer_piece', { p_piece_id: id.data, p_nom: nom.data });
+  const nouveau = idNouveau(formData);
+  if (!nouveau.success) return { message: FORMULAIRE_INCOMPLET };
+  const { data, error } = await supabase.rpc('dupliquer_piece', { p_piece_id: id.data, p_nom: nom.data, p_nouvelle: nouveau.data });
   if (error || !data) return { message: ECHEC };
   revalidatePath(`/chantiers/${chantierId.data}`, 'layout');
   redirect(`/chantiers/${chantierId.data}/pieces/${data}?enregistre=1`);
@@ -174,8 +191,11 @@ export async function ajouterOuverture(_: EtatFormulaire, formData: FormData): P
   if (!pieceId.success) return { message: 'Pièce introuvable.' };
   const lu = schemaOuverture.safeParse(lireChamps(formData));
   if (!lu.success) return { erreurs: erreursParChamp(lu.error), valeurs: valeursTexte(formData) };
+  const nouveau = idNouveau(formData);
+  if (!nouveau.success) return { message: FORMULAIRE_INCOMPLET };
   const supabase = await clientServeur();
-  const { error } = await supabase.from('ouvertures').insert({ ...lu.data, organisation_id: session.organisationId, piece_id: pieceId.data });
+  const { error } = await supabase.from('ouvertures')
+    .upsert({ ...lu.data, id: nouveau.data, organisation_id: session.organisationId, piece_id: pieceId.data }, { onConflict: 'id', ignoreDuplicates: true });
   if (error) return { message: messageErreur(error.code), valeurs: valeursTexte(formData) };
   const chemin = await cheminPiece(pieceId.data);
   if (chemin) revalidatePath(chemin);
@@ -188,8 +208,11 @@ export async function ajouterElement(_: EtatFormulaire, formData: FormData): Pro
   if (!pieceId.success) return { message: 'Pièce introuvable.' };
   const lu = schemaElement.safeParse(lireChamps(formData));
   if (!lu.success) return { erreurs: erreursParChamp(lu.error), valeurs: valeursTexte(formData) };
+  const nouveau = idNouveau(formData);
+  if (!nouveau.success) return { message: FORMULAIRE_INCOMPLET };
   const supabase = await clientServeur();
-  const { error } = await supabase.from('elements').insert({ ...lu.data, organisation_id: session.organisationId, piece_id: pieceId.data });
+  const { error } = await supabase.from('elements')
+    .upsert({ ...lu.data, id: nouveau.data, organisation_id: session.organisationId, piece_id: pieceId.data }, { onConflict: 'id', ignoreDuplicates: true });
   if (error) return { message: messageErreur(error.code), valeurs: valeursTexte(formData) };
   const chemin = await cheminPiece(pieceId.data);
   if (chemin) revalidatePath(chemin);
@@ -245,11 +268,20 @@ export async function enregistrerPoste(_: EtatFormulaire, formData: FormData): P
     if (!el) return { erreurs: { element_id: 'Cet élément n’appartient pas à la pièce choisie.' }, valeurs: saisie() };
   }
 
+  // Un poste existant (modification, ou renvoi d'une création) doit être dans CE chantier :
+  // un identifiant trafiqué ne déplace pas le poste d'un autre chantier.
+  const appartientAuChantier = async (posteId: string) => {
+    const { data: existant } = await supabase.from('postes_travaux').select('piece_id').eq('id', posteId).maybeSingle();
+    if (!existant) return null;
+    const { data: sa } = await supabase.from('pieces').select('id').eq('id', existant.piece_id).eq('chantier_id', chantierId.data).maybeSingle();
+    return Boolean(sa);
+  };
+
   const idSaisi = formData.get('id');
   let id: string;
   if (idSaisi) {
     const idLu = identifiant.safeParse(idSaisi);
-    if (!idLu.success) return { message: 'Poste introuvable.' };
+    if (!idLu.success || !(await appartientAuChantier(idLu.data))) return { message: 'Poste introuvable.' };
     const { data, error } = await supabase.from('postes_travaux').update(poste).eq('id', idLu.data).select('id').maybeSingle();
     if (error) return { message: messageErreur(error.code), valeurs: saisie() };
     if (!data) return { message: 'Poste introuvable.' };
@@ -259,7 +291,8 @@ export async function enregistrerPoste(_: EtatFormulaire, formData: FormData): P
     // l'enregistrement, double toucher) met à jour le même poste au lieu d'en
     // créer un second, qui doublerait la peinture comptée.
     const idNouveau = identifiant.safeParse(formData.get('id_nouveau'));
-    if (!idNouveau.success) return { message: 'Formulaire incomplet : rechargez la page.' };
+    if (!idNouveau.success) return { message: FORMULAIRE_INCOMPLET };
+    if ((await appartientAuChantier(idNouveau.data)) === false) return { message: 'Poste introuvable.' };
     const { data, error } = await supabase.from('postes_travaux')
       .upsert({ ...poste, id: idNouveau.data, organisation_id: session.organisationId }, { onConflict: 'id' }).select('id').single();
     if (error) return { message: messageErreur(error.code), valeurs: saisie() };
@@ -267,13 +300,15 @@ export async function enregistrerPoste(_: EtatFormulaire, formData: FormData): P
   }
   const { error: ePrep } = await supabase.rpc('definir_preparations', { p_poste_id: id, p_etapes: etapes });
   if (ePrep) return { message: 'Poste enregistré, mais pas ses étapes de préparation : réessayez.', valeurs: saisie() };
+  let copies = '';
   if (piecesCopie.length) {
     // Copies à identifiant dérivé : un nouvel envoi ne les double pas.
-    const { error: eCopie } = await supabase.rpc('copier_poste', { p_poste_id: id, p_pieces: piecesCopie });
+    const { data: n, error: eCopie } = await supabase.rpc('copier_poste', { p_poste_id: id, p_pieces: piecesCopie });
     if (eCopie) return { message: 'Poste enregistré, mais pas sa copie vers les autres pièces : réessayez.', valeurs: saisie() };
+    copies = `&copies=${n}&demandees=${piecesCopie.length}`;
   }
   revalidatePath(`/chantiers/${chantierId.data}`, 'layout');
-  redirect(`/chantiers/${chantierId.data}/peinture?enregistre=1#poste-${id}`);
+  redirect(`/chantiers/${chantierId.data}/peinture?enregistre=1${copies}#poste-${id}`);
 }
 
 export async function supprimerPoste(_: EtatFormulaire, formData: FormData): Promise<EtatFormulaire> {

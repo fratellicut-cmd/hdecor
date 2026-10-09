@@ -14,6 +14,10 @@ export function texteListeAchat(titre: string, liste: ListeAchat): string {
     lignes.push('', `ATTENTION, liste incomplète : ${liste.nonChiffres.length} poste(s) non chiffré(s) :`);
     for (const n of liste.nonChiffres) lignes.push(`• ${n.libelle} : ${n.raison}`);
   }
+  if (liste.doublons.length) {
+    lignes.push('', 'ATTENTION, comptés plusieurs fois :');
+    for (const d of liste.doublons) lignes.push(`• ${d}`);
+  }
   if (liste.consommables.length) {
     lignes.push('', 'Consommables :');
     for (const k of liste.consommables) lignes.push(`• ${k.libelle}`);

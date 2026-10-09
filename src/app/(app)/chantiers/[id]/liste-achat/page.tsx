@@ -41,8 +41,15 @@ export default async function PageListeAchat({ params }: PageProps<'/chantiers/[
         <div className="flex flex-col gap-1 rounded-xl border-2 border-danger bg-danger-fond p-3 text-danger">
           <p className="font-bold">Liste incomplète : {liste.nonChiffres.length} poste{liste.nonChiffres.length > 1 ? 's' : ''} non chiffré{liste.nonChiffres.length > 1 ? 's' : ''}</p>
           <ul className="flex list-disc flex-col gap-1 pl-5 text-sm font-semibold">
-            {liste.nonChiffres.map((n) => <li key={n.libelle}>{n.libelle} : {n.raison}</li>)}
+            {liste.nonChiffres.map((n) => <li key={n.id}>{n.libelle} : {n.raison}</li>)}
           </ul>
+        </div>
+      ) : null}
+
+      {liste.doublons.length ? (
+        <div className="flex flex-col gap-1 rounded-xl border-2 border-alerte bg-alerte-fond p-3 text-alerte">
+          <p className="font-bold">Comptés plusieurs fois</p>
+          <ul className="flex list-disc flex-col gap-1 pl-5 text-sm font-semibold">{liste.doublons.map((d) => <li key={d}>{d}</li>)}</ul>
         </div>
       ) : null}
 
@@ -55,12 +62,14 @@ export default async function PageListeAchat({ params }: PageProps<'/chantiers/[
                 {[l.reference ? `Réf. ${l.reference}` : null, l.finition ? `Finition : ${l.finition}` : null, l.teinte ? `Teinte : ${l.teinte}` : null].filter(Boolean).join(' · ')}
               </p>
             ) : null}
-            {!l.finition && !l.reference ? <p className="text-sm font-semibold text-alerte">Finition non précisée sur le poste.</p> : null}
+            {l.depuisPoste && !l.finition && !l.reference ? <p className="text-sm font-semibold text-alerte">Finition non précisée sur le poste.</p> : null}
             <p className="tabular-nums">Besoin : <strong>{formaterQuantiteCourte(l.quantite)} {l.unite}</strong></p>
             {l.pots ? (
               <p className="text-lg font-bold tabular-nums">{texteCombinaison(l.pots.retenue, l.unite)}</p>
             ) : <p className="font-semibold text-danger">{l.probleme}</p>}
-            <p className="tabular-nums">{l.coutCents === null ? 'Prix à renseigner' : `Coût HT : ${formaterEuros(l.coutCents)}`}</p>
+            <p className="tabular-nums">
+              {l.coutCents === null ? 'Prix à renseigner' : `Coût HT : ${formaterEuros(l.coutCents)}${l.coutIndicatif ? ' (indicatif : prix de certains formats inconnus)' : ''}`}
+            </p>
             <p className="text-sm text-encre-douce">Pour : {l.postes.join(' ; ')}</p>
           </div>
         </Carte>

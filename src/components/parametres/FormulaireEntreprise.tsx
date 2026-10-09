@@ -13,11 +13,11 @@ type P = Pick<Ligne<'parametres_entreprise'>, 'raison_sociale' | 'forme_juridiqu
   | 'adresse_ligne1' | 'adresse_ligne2' | 'code_postal' | 'ville' | 'telephone' | 'email' | 'iban' | 'bic'>;
 
 export function FormulaireEntreprise({ p }: { p: P }) {
-  const { etat, action, enCours, formRef, garde } = useFormulaire('parametres:entreprise', enregistrerEntreprise);
+  const { etat, action, enCours, formRef, garde, surEnvoi } = useFormulaire('parametres:entreprise', enregistrerEntreprise);
   const e = etat.erreurs ?? {};
   const v = (cle: keyof P) => (etat.valeurs?.[cle] ?? p[cle] ?? '') as string;
   return (
-    <form ref={formRef} action={action} onSubmit={garde.surEnvoi} className="flex flex-col gap-4" noValidate>
+    <form ref={formRef} action={action} onSubmit={surEnvoi} className="flex flex-col gap-4" noValidate>
       <RetourFormulaire etat={etat} />
       <MessagesGarde garde={garde} />
       <Champ libelle="Raison sociale" nom="raison_sociale" defaultValue={v('raison_sociale')} required erreur={e.raison_sociale} />

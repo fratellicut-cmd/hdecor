@@ -48,7 +48,7 @@ function apercu(form: HTMLFormElement): Apercu {
 }
 
 export function FormulairePiece({ chantierId, piece }: { chantierId: string; piece: PieceSaisie }) {
-  const { etat, action, enCours, formRef, garde } = useFormulaire(`piece:${piece.id ?? `nouvelle:${chantierId}`}`, enregistrerPiece,
+  const { etat, action, enCours, formRef, garde, surEnvoi } = useFormulaire(`piece:${piece.id ?? `nouvelle:${chantierId}`}`, enregistrerPiece,
     { version: piece.id ? (piece.updated_at ?? null) : undefined });
   const e = etat.erreurs ?? {};
   const v = (cle: string, defaut: string) => etat.valeurs?.[cle] ?? defaut;
@@ -61,7 +61,7 @@ export function FormulairePiece({ chantierId, piece }: { chantierId: string; pie
   useEffect(() => { recalculer(); }, [recalculer, mode, nbMurs]);
 
   return (
-    <form ref={formRef} action={action} onSubmit={garde.surEnvoi} onInput={recalculer} className="flex flex-col gap-4" noValidate>
+    <form ref={formRef} action={action} onSubmit={surEnvoi} onInput={recalculer} className="flex flex-col gap-4" noValidate>
       <input type="hidden" name="chantier_id" value={chantierId} />
       {piece.id ? <input type="hidden" name="id" value={piece.id} /> : null}
       <RetourFormulaire etat={etat} />

@@ -17,6 +17,15 @@ import { Message } from '@/components/ui/Message';
 
 export const metadata: Metadata = { title: 'Calcul peinture' };
 
+/** « copié dans 2 pièces ; 1 avait déjà ce poste (non modifié) ». */
+function texteCopies(copies: unknown, demandees: unknown): string {
+  const n = Number(copies);
+  const d = Number(demandees);
+  if (!Number.isInteger(n) || !Number.isInteger(d) || d <= 0 || n < 0 || n > d) return '';
+  const deja = d - n;
+  return ` Copié dans ${n} pièce${n > 1 ? 's' : ''}${deja ? ` ; ${deja} avai${deja > 1 ? 'ent' : 't'} déjà ce poste (copie existante non modifiée)` : ''}.`;
+}
+
 /** Dixièmes -> « 1,5 ». */
 const dixiemesTexte = (d: bigint) => `${d / 10n}${d % 10n ? `,${d % 10n}` : ''}`;
 
@@ -31,9 +40,14 @@ export default async function PagePeinture({ params, searchParams }: PageProps<'
   const jours = dixiemesDeJour(liste.tempsMinutes, minutesParJour);
   const heuresParJour = dixiemesTexte(arrondi(minutesParJour * 10n, 60n));
   // Un même manque sur plusieurs postes (taux horaire, temps de pose…) : dit une fois, en haut.
-  const occurrences = new Map<string, number>();
-  for (const { resultat } of postes) for (const m of new Set(resultat.manques)) occurrences.set(m, (occurrences.get(m) ?? 0) + 1);
-  const communs = new Set([...occurrences].filter(([, n]) => n > 1).map(([m]) => m));
+  // Idem pour les rappels (séchage non renseigné, accrochage…) : moins de bruit sur chaque carte.
+  const repetes = (listes: string[][]) => {
+    const occurrences = new Map<string, number>();
+    for (const l of listes) for (const m of new Set(l)) occurrences.set(m, (occurrences.get(m) ?? 0) + 1);
+    return new Set([...occurrences].filter(([, n]) => n > 1).map(([m]) => m));
+  };
+  const communs = repetes(postes.map(({ resultat }) => resultat.manques));
+  const rappelsCommuns = repetes(postes.map(({ resultat }) => [...resultat.avertissements, ...(resultat.sechage ? [resultat.sechage] : [])]));
   const tempsInconnu = liste.tempsMinutes === 0n && !liste.tempsComplet;
 
   return (
@@ -44,7 +58,19 @@ export default async function PagePeinture({ params, searchParams }: PageProps<'
         <h1 className="text-2xl font-bold">Calcul peinture</h1>
       </div>
       <Message type="alerte">{AVERTISSEMENT_RENDEMENT}</Message>
-      {sp.enregistre === '1' ? <Message type="succes">Poste enregistré.</Message> : null}
+      {sp.enregistre === '1' ? <Message type="succes">Poste enregistré.{texteCopies(sp.copies, sp.demandees)}</Message> : null}
+      {liste.doublons.length ? (
+        <div className="flex flex-col gap-1 rounded-xl bg-alerte-fond p-3 text-alerte">
+          <p className="font-semibold">Comptés plusieurs fois :</p>
+          <ul className="flex list-disc flex-col gap-1 pl-5 text-sm font-semibold">{liste.doublons.map((d) => <li key={d}>{d}</li>)}</ul>
+        </div>
+      ) : null}
+      {rappelsCommuns.size ? (
+        <div className="flex flex-col gap-1 rounded-xl bg-alerte-fond p-3 text-alerte">
+          <p className="font-semibold">Rappels (plusieurs postes concernés) :</p>
+          <ul className="flex list-disc flex-col gap-1 pl-5 text-sm font-semibold">{[...rappelsCommuns].map((m) => <li key={m}>{m}</li>)}</ul>
+        </div>
+      ) : null}
       {communs.size ? (
         <div className="flex flex-col gap-1 rounded-xl bg-danger-fond p-3 text-danger">
           <p className="font-semibold">À compléter (plusieurs postes concernés) :</p>
@@ -68,7 +94,7 @@ export default async function PagePeinture({ params, searchParams }: PageProps<'
                 `${poste.couches} couche${poste.couches > 1 ? 's' : ''}`,
                 poste.etapes.length ? `préparation : ${poste.etapes.map((e) => e.libelle.toLowerCase()).join(', ')}` : null].filter(Boolean).join(' · ')}
             </p>
-            <ResultatPosteVue r={resultat} communs={communs} />
+            <ResultatPosteVue r={resultat} communs={new Set([...communs, ...rappelsCommuns])} />
             <div className="mt-2">
               <ActionConfirmee action={supprimerPoste} champs={{ id: poste.id, chantier_id: chantier.id! }} libelle="Retirer ce poste" variante="discret"
                 confirmation="Je confirme le retrait de ce poste." />
@@ -109,7 +135,7 @@ export default async function PagePeinture({ params, searchParams }: PageProps<'
           {liste.nonChiffres.length ? (
             <div className="mt-2 text-sm font-semibold text-danger">
               <p>Non chiffré ({liste.nonChiffres.length}) : absent des totaux et de la liste d’achat.</p>
-              <ul className="list-disc pl-5">{liste.nonChiffres.map((n) => <li key={n.libelle}>{n.libelle}</li>)}</ul>
+              <ul className="list-disc pl-5">{liste.nonChiffres.map((n) => <li key={n.id}>{n.libelle}</li>)}</ul>
             </div>
           ) : null}
           {!liste.coutComplet && !liste.nonChiffres.length ? <p className="mt-2 text-sm font-semibold text-danger">Des prix d’achat manquent : renseignez les produits du catalogue pour un coût complet.</p> : null}

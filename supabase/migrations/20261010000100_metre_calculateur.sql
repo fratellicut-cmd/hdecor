@@ -65,7 +65,7 @@ as $$
          (p_organisation_id, 'acrylique', 10, 12), (p_organisation_id, 'glycero', 12, 14),
          (p_organisation_id, 'laque', 12, 14), (p_organisation_id, 'lasure', 10, 14),
          (p_organisation_id, 'vernis', 10, 14),
-         -- Enduit : environ 1 kg/m² par mm d'épaisseur (1 m²/kg, une « couche » = 1 mm).
+         -- Enduit : valeur de départ du cahier des charges (1 m²/kg par passe), À VÉRIFIER sur la fiche du produit utilisé.
          (p_organisation_id, 'enduit', 1, 1)
   on conflict do nothing;
   insert into public.coefficients_support (organisation_id, support)

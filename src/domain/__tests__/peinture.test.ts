@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { additionner, calculerQuantite, ErreurCalcul, formaterContenance, formaterQuantite, quantiteDepuisFraction } from '../peinture';
+import { additionner, calculerQuantite, ErreurCalcul, formaterContenance, formaterQuantite, formaterQuantiteCourte, quantiteDepuisFraction } from '../peinture';
 
 const base = { rendementCentiemes: 1000, coefSupportBp: 10_000, couches: 2, margePerteBp: 1000 };
 
@@ -9,7 +9,10 @@ describe('litres (R2) : cas de référence', () => {
   it('7,0239 L (4 décimales, demi supérieur)', () => {
     expect(q.dixMilliemes).toBe(70_239n);
     expect(formaterQuantite(q.dixMilliemes, 4)).toBe('7,0239');
-    expect(formaterQuantite(q.dixMilliemes)).toBe('7,02');
+    expect(formaterQuantiteCourte(q)).toBe('7,02');
+    // Pas de second arrondi d'une valeur déjà arrondie.
+    expect(() => formaterQuantite(q.dixMilliemes, 2)).toThrow(ErreurCalcul);
+    expect(formaterQuantite(100_000n, 2)).toBe('10,00');
   });
   it('7 024 ml à couvrir (arrondi au ml SUPÉRIEUR)', () => expect(q.aCouvrirMl).toBe(7_024n));
 });

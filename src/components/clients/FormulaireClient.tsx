@@ -24,7 +24,7 @@ const VIDE: C = {
 
 export function FormulaireClient({ id, client = VIDE }: { id?: string; client?: C }) {
   // Version de la fiche : un brouillon plus ancien qu'une modification n'est pas remis d'office.
-  const { etat, action, enCours, formRef, garde } = useFormulaire(cleBrouillonClient(id), enregistrerClient,
+  const { etat, action, enCours, formRef, garde, surEnvoi } = useFormulaire(cleBrouillonClient(id), enregistrerClient,
     { version: id ? (client.updated_at ?? null) : undefined });
   const e = etat.erreurs ?? {};
   const v = (cle: keyof C) => (etat.valeurs?.[cle] ?? client[cle] ?? '') as string;
@@ -32,7 +32,7 @@ export function FormulaireClient({ id, client = VIDE }: { id?: string; client?: 
   const pro = type === 'professionnel';
 
   return (
-    <form ref={formRef} action={action} onSubmit={garde.surEnvoi} className="flex flex-col gap-4" noValidate>
+    <form ref={formRef} action={action} onSubmit={surEnvoi} className="flex flex-col gap-4" noValidate>
       {id ? <input type="hidden" name="id" value={id} /> : null}
       <MessagesGarde garde={garde} />
       <RetourFormulaire etat={etat} />

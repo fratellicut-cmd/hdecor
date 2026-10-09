@@ -9,11 +9,11 @@ import { Selection } from '@/components/ui/Autres';
 import { RetourFormulaire } from './RetourFormulaire';
 
 export function FormulaireAssurance() {
-  const { etat, action, enCours, formRef, garde } = useFormulaire('parametres:assurance', ajouterAssurance);
+  const { etat, action, enCours, formRef, garde, surEnvoi } = useFormulaire('parametres:assurance', ajouterAssurance);
   const e = etat.erreurs ?? {};
   const v = etat.valeurs ?? {};
   return (
-    <form ref={formRef} action={action} onSubmit={garde.surEnvoi} className="flex flex-col gap-4" noValidate key={etat.succes ?? 'saisie'}>
+    <form ref={formRef} action={action} onSubmit={surEnvoi} className="flex flex-col gap-4" noValidate key={etat.succes ?? 'saisie'}>
       <RetourFormulaire etat={etat} />
       <MessagesGarde garde={garde} />
       <Selection libelle="Type" nom="type" defaultValue={v.type ?? 'decennale'} erreur={e.type}>

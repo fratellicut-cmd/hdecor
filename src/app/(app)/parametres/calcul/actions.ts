@@ -124,8 +124,12 @@ export async function ajouterConsommable(_: EtatFormulaire, formData: FormData):
   const session = await verifierSession();
   const lu = schemaConsommable.safeParse(Object.fromEntries(formData));
   if (!lu.success) return { erreurs: erreursParChamp(lu.error), valeurs: valeursTexte(formData) };
+  // Identifiant fixé par le formulaire : un nouvel envoi (réponse perdue) ne compte pas le consommable deux fois.
+  const id = z.uuid().safeParse(formData.get('id_nouveau'));
+  if (!id.success) return { message: 'Formulaire incomplet : rechargez la page.' };
   const supabase = await clientServeur();
-  const { error } = await supabase.from('consommables').insert({ ...lu.data, organisation_id: session.organisationId });
+  const { error } = await supabase.from('consommables')
+    .upsert({ ...lu.data, id: id.data, organisation_id: session.organisationId }, { onConflict: 'id', ignoreDuplicates: true });
   if (error) return { message: ECHEC, valeurs: valeursTexte(formData) };
   revalidatePath('/parametres', 'layout');
   return { succes: 'Consommable ajouté.' };
@@ -160,10 +164,10 @@ const schemaMetre = z.object({
   formats_pots_ml: formats('Pots'),
   formats_sacs_g: formats('Sacs'),
   hauteur_alerte_mm: z.preprocess((v) => lireLongueurMm(String(v ?? ''), 'm') ?? Number.NaN,
-    z.number().int().min(2000, { error: 'Alerte de hauteur : 2 m minimum.' }).max(20_000, { error: 'Alerte de hauteur : 20 m maximum.' })),
+    z.number({ error: 'Alerte de hauteur : nombre invalide (exemple : 3 ou 3,5).' }).int().min(2000, { error: 'Alerte de hauteur : 2 m minimum.' }).max(20_000, { error: 'Alerte de hauteur : 20 m maximum.' })),
   // Heures (une décimale) -> minutes : 7,5 h -> 450.
   minutes_par_jour: z.preprocess((v) => { const d = lireDecimal(String(v ?? '').trim(), 1); return d === null ? Number.NaN : Number(d) * 6; },
-    z.number().int().min(60, { error: 'Journée : 1 h minimum.' }).max(1440, { error: 'Journée : 24 h maximum.' })),
+    z.number({ error: 'Journée : nombre d’heures invalide, une décimale au plus (exemple : 7,5).' }).int().min(60, { error: 'Journée : 1 h minimum.' }).max(1440, { error: 'Journée : 24 h maximum.' })),
 });
 
 export async function enregistrerMetre(_: EtatFormulaire, formData: FormData): Promise<EtatFormulaire> {

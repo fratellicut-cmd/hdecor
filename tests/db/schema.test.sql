@@ -1435,6 +1435,13 @@ select tests.egal(public.copier_poste('aaaaaaaa-0000-0000-0000-0000000d1e04', ar
   1, 'copie de poste : une pièce copiée (la pièce d''origine est ignorée)');
 select tests.egal(public.copier_poste('aaaaaaaa-0000-0000-0000-0000000d1e04', array[current_setting('tests.copie')::uuid]),
   0, 'copie de poste : un second envoi ne crée pas de doublon');
+select tests.egal((select bool_and(id::text ~ '^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') from public.postes_travaux
+  where piece_id = current_setting('tests.copie')::uuid and cible = 'murs'), true, 'copie de poste : identifiant au format UUID (version 5, variante RFC)');
+select tests.egal(public.dupliquer_piece('aaaaaaaa-0000-0000-0000-0000000d1e01', 'Chambre 3', 'aaaaaaaa-0000-4000-8000-0000000d1e09'),
+  'aaaaaaaa-0000-4000-8000-0000000d1e09'::uuid, 'duplication : identifiant fixé par le formulaire');
+select tests.egal(public.dupliquer_piece('aaaaaaaa-0000-0000-0000-0000000d1e01', 'Chambre 3', 'aaaaaaaa-0000-4000-8000-0000000d1e09'),
+  'aaaaaaaa-0000-4000-8000-0000000d1e09'::uuid, 'duplication : un second envoi renvoie la même copie');
+select tests.egal((select count(*) from public.pieces where nom = 'Chambre 3'), 1::bigint, 'duplication : pas de doublon au second envoi');
 select tests.egal((select count(*) from public.postes_travaux t join public.postes_preparations x on x.poste_id = t.id
   where t.piece_id = current_setting('tests.copie')::uuid and t.cible = 'murs' and t.finition = 'velours'
     and t.teinte_libre = 'Blanc RAL 9010' and t.exterieur), 1::bigint, 'copie de poste : finition, teinte libre, extérieur et préparation recopiés');

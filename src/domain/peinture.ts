@@ -83,9 +83,14 @@ export function formaterQuantiteCourte(q: Quantite): string {
   return `${q.centiemes / 100n},${(q.centiemes % 100n).toString().padStart(2, '0')}`;
 }
 
-/** « 7,0239 » (4 décimales) à partir des dix-millièmes ; 2 décimales : voir formaterQuantiteCourte. */
-export function formaterQuantite(dixMilliemes: bigint, decimales: 2 | 4 = 2): string {
-  const v = decimales === 4 ? dixMilliemes : (dixMilliemes + 50n) / 100n;
+/**
+ * « 7,0239 » (4 décimales) à partir des dix-millièmes. À 2 décimales, la valeur
+ * doit être EXACTE (rendement saisi au centième…) : jamais de second arrondi
+ * d'une valeur déjà arrondie ; pour une quantité calculée, voir formaterQuantiteCourte.
+ */
+export function formaterQuantite(dixMilliemes: bigint, decimales: 2 | 4): string {
+  if (decimales === 2 && dixMilliemes % 100n !== 0n) throw new ErreurCalcul('Valeur non exacte à 2 décimales : utilisez formaterQuantiteCourte.');
+  const v = decimales === 4 ? dixMilliemes : dixMilliemes / 100n;
   const facteur = decimales === 4 ? 10_000n : 100n;
   return `${v / facteur},${(v % facteur).toString().padStart(decimales, '0')}`;
 }

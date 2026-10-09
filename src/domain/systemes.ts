@@ -71,9 +71,16 @@ export function avertissementsSysteme(e: EntreeSysteme): string[] {
     a.push('Taches (eau, fumée, nicotine) : prévoir une sous-couche bloquante, sinon elles ressortent.');
   }
   if (e.exterieur) {
-    const exterieurOk = e.usagesProduit.includes('exterieur')
-      || (e.typeProduit !== null && ['facade', 'lasure', 'vernis', 'glycero', 'laque', 'anti_rouille'].includes(e.typeProduit));
-    if (!exterieurOk) a.push('Extérieur : le produit doit être prévu pour l’extérieur (peinture façade, ou usage « extérieur » au catalogue).');
+    // Produit du catalogue : seuls ses usages déclarés comptent (beaucoup de
+    // laques et glycéros sont réservés à l'intérieur). Sans produit : le type
+    // ne suffit pas à le garantir, on le rappelle.
+    if (e.usagesProduit.length) {
+      if (!e.usagesProduit.includes('exterieur')) a.push('Extérieur : ce produit n’est pas déclaré pour l’extérieur au catalogue.');
+    } else if (e.typeProduit === null || !['facade', 'lasure', 'vernis', 'glycero', 'laque', 'anti_rouille'].includes(e.typeProduit)) {
+      a.push('Extérieur : le produit doit être prévu pour l’extérieur (peinture façade, ou usage « extérieur » au catalogue).');
+    } else if (e.typeProduit !== 'facade') {
+      a.push('Extérieur : vérifiez sur la fiche technique que le produit choisi est prévu pour l’extérieur.');
+    }
     a.push('Extérieur : respecter les conditions d’application de la fiche technique (température, pluie, humidité, plein soleil).');
   } else if (e.typeProduit === 'facade') {
     a.push('Peinture façade utilisée en intérieur : vérifiez que c’est voulu.');

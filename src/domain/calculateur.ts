@@ -140,6 +140,13 @@ const LIBELLES_TYPE: Record<TypeProduit, string> = {
 export const libelleType = (t: TypeProduit) => LIBELLES_TYPE[t];
 export const uniteDuType = (t: TypeProduit | null): 'L' | 'kg' => (t === 'enduit' ? 'kg' : 'L');
 
+/**
+ * Clé d'une ligne d'achat : produit (ou type) + teinte + finition. La même
+ * forme pour un poste et pour la matière d'une étape : une impression posée
+ * en poste et une impression cochée en préparation font UNE ligne.
+ */
+const cleAchat = (produit: string, teinte: string | null, finition: string | null) => `${produit}|${teinte ?? ''}|${finition ?? ''}`;
+
 const formatsDefaut = (p: ParametresCalcul, unite: 'L' | 'kg'): Format[] =>
   (unite === 'kg' ? p.formatsDefautG : p.formatsDefautMl).map((c) => ({ contenanceMl: c, prixCents: null }));
 
@@ -156,8 +163,10 @@ export function calculerPoste(poste: PosteCalc, p: ParametresCalcul): ResultatPo
   if (!coef) manques.push('Coefficient du support non paramétré (1,00 appliqué).');
   else if (coef.aVerifier) aVerifier.push('coefficient du support');
 
-  const surfaceMm2 = 'mm2' in poste.surface ? poste.surface.mm2 : null;
+  // Surface nulle (ouvertures ≥ murs…) : rien à acheter, le métré est à vérifier.
+  const surfaceMm2 = 'mm2' in poste.surface && poste.surface.mm2 > 0n ? poste.surface.mm2 : null;
   if (!('mm2' in poste.surface)) { manques.push(poste.surface.manque); incomplet.quantite = true; incomplet.temps = true; }
+  else if (surfaceMm2 === null) { manques.push('Surface nulle : vérifiez le métré.'); incomplet.quantite = true; incomplet.temps = true; }
 
   // Rendement : forcé sur le poste > produit du catalogue > bas de la fourchette du référentiel (prudent).
   let rendement: number | null = null;
@@ -214,7 +223,7 @@ export function calculerPoste(poste: PosteCalc, p: ParametresCalcul): ResultatPo
       if (e.produit && e.consommationE4) {
         // S/1e6 m² × conso/1e4 (L ou kg par m², pertes comprises).
         matierePreparation.push({
-          cle: `p:${e.produit.id}|`, libelle: e.produit.libelle, reference: e.produit.reference, unite: e.produit.unite,
+          cle: cleAchat(`p:${e.produit.id}`, null, null), libelle: e.produit.libelle, reference: e.produit.reference, unite: e.produit.unite,
           formats: e.produit.formats.length ? e.produit.formats : formatsDefaut(p, e.produit.unite),
           quantite: { num: surfaceMm2 * BigInt(e.consommationE4), den: 10_000_000_000n }, aVerifier: e.produit.aVerifier || e.aVerifier,
         });
@@ -223,7 +232,7 @@ export function calculerPoste(poste: PosteCalc, p: ParametresCalcul): ResultatPo
         if (r?.rendementMinCentiemes) {
           const u = uniteDuType(e.typeProduit);
           matierePreparation.push({
-            cle: `t:${e.typeProduit}|`, libelle: `${LIBELLES_TYPE[e.typeProduit]} (produit à choisir)`, reference: null, unite: u,
+            cle: cleAchat(`t:${e.typeProduit}`, null, null), libelle: `${LIBELLES_TYPE[e.typeProduit]} (produit à choisir)`, reference: null, unite: u,
             formats: formatsDefaut(p, u), aVerifier: true,
             quantite: calculerQuantite({ surfaceMm2, rendementCentiemes: r.rendementMinCentiemes, coefSupportBp, couches: e.couches, margePerteBp: marge }).exacte,
           });
@@ -279,11 +288,15 @@ export type LigneAchat = {
   reference: string | null;
   teinte: string | null;
   finition: string | null;
+  /** Ligne issue d'au moins un poste (et pas seulement d'une préparation) : sa finition est attendue. */
+  depuisPoste: boolean;
   unite: 'L' | 'kg';
   quantite: Quantite;
   pots: ChoixPots | null;
   probleme: string | null;
   coutCents: bigint | null;
+  /** Prix connus mais pas tous les formats : combinaison au moins de pots, coût non optimisé. */
+  coutIndicatif: boolean;
   aVerifier: boolean;
   /** Postes qui consomment ce produit (traçabilité). */
   postes: string[];
@@ -294,7 +307,12 @@ export type Consommable = { id: string; libelle: string; mode: 'par_chantier' | 
 export type ListeAchat = {
   lignes: LigneAchat[];
   /** Postes ou matières NON chiffrés (absents des lignes) : à compléter avant d'acheter. */
-  nonChiffres: { libelle: string; raison: string }[];
+  nonChiffres: { id: string; libelle: string; raison: string }[];
+  /**
+   * Comptés plusieurs fois sur une même surface : même produit (ou type) sur
+   * deux postes, ou même étape cochée sur deux postes. Signalés, jamais retirés d'office.
+   */
+  doublons: string[];
   consommables: { id: string; libelle: string; coutCents: bigint; aVerifier: boolean }[];
   coutMatiereCents: bigint;
   /** Faux si une ligne n'a pas de prix ou si un poste / une matière n'est pas chiffré. */
@@ -309,12 +327,13 @@ export type ListeAchat = {
   prixVenteHtCents: bigint | null;
 };
 
-type Cumul = Omit<MatiereCalc, 'cle'> & { teinte: string | null; finition: string | null; postes: string[] };
+type Cumul = Omit<MatiereCalc, 'cle'> & { teinte: string | null; finition: string | null; depuisPoste: boolean; postes: string[] };
 
 export function listeAchat(postes: { poste: PosteCalc; resultat: ResultatPoste }[], consommables: Consommable[], p: ParametresCalcul): ListeAchat {
   const cumuls = new Map<string, Cumul>();
-  const ajouter = (cle: string, m: Omit<MatiereCalc, 'cle'>, teinte: string | null, finition: string | null, poste: string) => {
-    const c = cumuls.get(cle) ?? { ...m, quantite: FRACTION_NULLE, teinte, finition, postes: [] };
+  const ajouter = (cle: string, m: Omit<MatiereCalc, 'cle'>, teinte: string | null, finition: string | null, poste: string, depuisPoste: boolean) => {
+    const c = cumuls.get(cle) ?? { ...m, quantite: FRACTION_NULLE, teinte, finition, depuisPoste, postes: [] };
+    c.depuisPoste = c.depuisPoste || depuisPoste;
     c.quantite = additionner(c.quantite, m.quantite);
     c.aVerifier = c.aVerifier || m.aVerifier;
     if (!c.postes.includes(poste)) c.postes.push(poste);
@@ -327,27 +346,40 @@ export function listeAchat(postes: { poste: PosteCalc; resultat: ResultatPoste }
   let tempsComplet = true;
   let matiereComplete = true;
   let attente: number | null = null;
+  const etapesParSurface = new Map<string, { libelle: string; postes: number; surface: string }>();
+  const produitsParSurface = new Map<string, { libelle: string; postes: number; surface: string }>();
   for (const { poste, resultat } of postes) {
+    const produit = poste.produit ? `p:${poste.produit.id}` : poste.typeProduit ? `t:${poste.typeProduit}` : null;
+    if (produit) {
+      const k = `${poste.cleSurface}#${produit}`;
+      const vu = produitsParSurface.get(k);
+      produitsParSurface.set(k, { libelle: poste.produit?.libelle ?? LIBELLES_TYPE[poste.typeProduit!], postes: (vu?.postes ?? 0) + 1, surface: poste.libelle });
+    }
+    for (const e of poste.etapes) {
+      const k = `${poste.cleSurface}#${e.id}`;
+      const vu = etapesParSurface.get(k);
+      etapesParSurface.set(k, { libelle: e.libelle, postes: (vu?.postes ?? 0) + 1, surface: poste.libelle });
+    }
     if (resultat.surfaceMm2 !== null) surfaces.set(poste.cleSurface, resultat.surfaceMm2);
     if (resultat.temps) temps += resultat.temps.minutes;
     if (!resultat.temps || resultat.incomplet.temps) tempsComplet = false;
     if (resultat.incomplet.matiere) {
       matiereComplete = false;
-      nonChiffres.push({ libelle: `${poste.libelle} : préparation`, raison: resultat.manques.find((m) => m.startsWith('Matière')) ?? 'Matière de préparation non comptée.' });
+      nonChiffres.push({ id: `${poste.id}:preparation`, libelle: `${poste.libelle} : préparation`, raison: resultat.manques.find((m) => m.startsWith('Matière')) ?? 'Matière de préparation non comptée.' });
     }
     if (resultat.attenteSechageDixiemesH !== null) attente = Math.max(attente ?? 0, resultat.attenteSechageDixiemesH);
     if (resultat.quantite) {
       const pr = poste.produit;
       const type = pr?.type ?? poste.typeProduit!;
-      ajouter(`${pr ? `p:${pr.id}` : `t:${type}`}|${poste.teinte?.id ?? ''}|${poste.finition ?? ''}`, {
+      ajouter(cleAchat(pr ? `p:${pr.id}` : `t:${type}`, poste.teinte?.id ?? null, poste.finition), {
         libelle: pr?.libelle ?? `${LIBELLES_TYPE[type]} (produit à choisir)`, reference: pr?.reference ?? null, unite: resultat.unite,
         formats: pr?.formats.length ? pr.formats : formatsDefaut(p, resultat.unite), aVerifier: pr ? pr.aVerifier : true,
         quantite: resultat.quantite.exacte,
-      }, poste.teinte?.nom ?? null, poste.finition ? LIBELLES_FINITION[poste.finition] : null, poste.libelle);
+      }, poste.teinte?.nom ?? null, poste.finition ? LIBELLES_FINITION[poste.finition] : null, poste.libelle, true);
     } else {
-      nonChiffres.push({ libelle: poste.libelle, raison: resultat.manques[0] ?? 'Quantité non calculée.' });
+      nonChiffres.push({ id: poste.id, libelle: poste.libelle, raison: resultat.manques[0] ?? 'Quantité non calculée.' });
     }
-    for (const m of resultat.matierePreparation) ajouter(m.cle, m, null, null, `${poste.libelle} (préparation)`);
+    for (const m of resultat.matierePreparation) ajouter(m.cle, m, null, null, `${poste.libelle} (préparation)`, false);
   }
 
   let cout = 0n;
@@ -363,8 +395,8 @@ export function listeAchat(postes: { poste: PosteCalc; resultat: ResultatPoste }
     const coutLigne = pots?.retenue.coutCents ?? null;
     if (coutLigne === null) prixComplets = false; else cout += coutLigne;
     return {
-      cle, libelle: c.libelle, reference: c.reference, teinte: c.teinte, finition: c.finition, unite: c.unite, quantite, pots, probleme,
-      coutCents: coutLigne, aVerifier: c.aVerifier, postes: c.postes,
+      cle, libelle: c.libelle, reference: c.reference, teinte: c.teinte, finition: c.finition, depuisPoste: c.depuisPoste, unite: c.unite,
+      quantite, pots, probleme, coutCents: coutLigne, coutIndicatif: coutLigne !== null && !pots!.choixAuCout, aVerifier: c.aVerifier, postes: c.postes,
     };
   }).sort((a, b) => a.libelle.localeCompare(b.libelle, 'fr') || (a.finition ?? '').localeCompare(b.finition ?? '', 'fr')
     || (a.teinte ?? '').localeCompare(b.teinte ?? '', 'fr'));
@@ -374,17 +406,23 @@ export function listeAchat(postes: { poste: PosteCalc; resultat: ResultatPoste }
   const lignesConso = consommables.map((k) => ({ id: k.id, libelle: k.libelle, coutCents: coutConsommable(k.mode, k.prixCents, surfaceTraitee), aVerifier: k.aVerifier }));
   for (const k of lignesConso) cout += k.coutCents;
 
+  const doublons = [
+    ...[...produitsParSurface.values()].filter((v) => v.postes > 1)
+      .map((v) => `« ${v.libelle} » prévu sur ${v.postes} postes de la même surface (${v.surface}) : peinture et temps comptés ${v.postes} fois. Retirez le poste en trop.`),
+    ...[...etapesParSurface.values()].filter((v) => v.postes > 1)
+      .map((v) => `Étape « ${v.libelle} » cochée sur ${v.postes} postes de la même surface (${v.surface}) : son temps et sa matière sont comptés ${v.postes} fois. Décochez-la sur l’un d’eux.`),
+  ];
   const coutComplet = prixComplets && matiereComplete && !nonChiffres.length;
   const mo = p.tauxHoraireCents === null ? null : coutMainOeuvre(temps, p.tauxHoraireCents);
   const vente = coutComplet && tempsComplet && mo !== null ? prixVenteMatiere(cout, p.coefMargeBp) + mo : null;
   return {
-    lignes, nonChiffres, consommables: lignesConso, coutMatiereCents: cout, coutComplet, tempsMinutes: temps, tempsComplet,
+    lignes, nonChiffres, doublons, consommables: lignesConso, coutMatiereCents: cout, coutComplet, tempsMinutes: temps, tempsComplet,
     attenteSechageDixiemesH: attente, coutMainOeuvreCents: mo, prixVenteHtCents: vente,
   };
 }
 
 /**
- * Durée estimée en DIXIÈMES de jour de travail (journée de 7 h par défaut),
- * séchage non compris : 630 min -> 15 (1,5 jour).
+ * Durée estimée en DIXIÈMES de jour de travail (durée d'une journée : paramètre
+ * de l'entreprise), séchage non compris : 630 min, journée de 420 min -> 15 (1,5 jour).
  */
-export const dixiemesDeJour = (minutes: bigint, minutesParJour = 420n) => arrondi(minutes * 10n, minutesParJour);
+export const dixiemesDeJour = (minutes: bigint, minutesParJour: bigint) => arrondi(minutes * 10n, minutesParJour);

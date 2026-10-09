@@ -28,10 +28,8 @@ type Options = {
 };
 
 export function FormulairePoste({ chantierId, poste, options }: { chantierId: string; poste: PosteSaisi; options: Options }) {
-  const { etat, action, enCours, formRef, garde } = useFormulaire(`poste:${poste.id ?? `nouveau:${chantierId}`}`, enregistrerPoste,
+  const { etat, action, enCours, formRef, garde, surEnvoi } = useFormulaire(`poste:${poste.id ?? `nouveau:${chantierId}`}`, enregistrerPoste,
     { version: poste.id ? (poste.updated_at ?? null) : undefined });
-  // Identifiant du futur poste, fixé à l'ouverture : un nouvel envoi ne crée pas de doublon.
-  const [idNouveau] = useState(() => crypto.randomUUID());
   const e = etat.erreurs ?? {};
   const sv = etat.valeurs;
   const v = (cle: string, defaut: string) => sv?.[cle] ?? defaut;
@@ -46,9 +44,10 @@ export function FormulairePoste({ chantierId, poste, options }: { chantierId: st
   const autresPieces = options.pieces.filter((p) => p.id !== pieceId);
 
   return (
-    <form ref={formRef} action={action} onSubmit={garde.surEnvoi} className="flex flex-col gap-4" noValidate>
+    <form ref={formRef} action={action} onSubmit={surEnvoi} className="flex flex-col gap-4" noValidate>
       <input type="hidden" name="chantier_id" value={chantierId} />
-      {poste.id ? <input type="hidden" name="id" value={poste.id} /> : <input type="hidden" name="id_nouveau" value={idNouveau} />}
+      {/* Création : identifiant fixé ajouté à l'envoi par useFormulaire (pas de doublon au renvoi). */}
+      {poste.id ? <input type="hidden" name="id" value={poste.id} /> : null}
       <RetourFormulaire etat={etat} />
       <MessagesGarde garde={garde} />
 
@@ -129,7 +128,7 @@ export function FormulairePoste({ chantierId, poste, options }: { chantierId: st
         </Selection>
       </div>
       <Champ libelle="Nombre de couches" nom="couches" inputMode="numeric" defaultValue={v('couches', String(poste.couches))} erreur={e.couches}
-        aide="Pour un enduit : nombre de passes (environ 1 mm chacune)." />
+        aide="Pour un enduit : nombre de passes (consommation par passe : voir la fiche technique du produit)." />
 
       <details>
         <summary className="inline-flex min-h-12 cursor-pointer items-center font-semibold underline underline-offset-4">Réglages avancés</summary>

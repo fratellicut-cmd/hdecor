@@ -149,7 +149,7 @@ describe('liste d’achat', () => {
     expect(ligne.unite).toBe('kg');
     expect(ligne.pots?.retenue.pots).toEqual([expect.objectContaining({ contenanceMl: 5000, nombre: 1 })]);
   });
-  it('durée : 630 min = 1,5 jour (journées de 7 h)', () => expect(dixiemesDeJour(630n)).toBe(15n));
+  it('durée : 630 min = 1,5 jour (journées de 7 h)', () => expect(dixiemesDeJour(630n, 420n)).toBe(15n));
 });
 
 describe('totaux honnêtes (audit qa-calculs et métier)', () => {
@@ -160,7 +160,7 @@ describe('totaux honnêtes (audit qa-calculs et métier)', () => {
     const l = listeAchat([res(posteMurs), res(facade)], [], params);
     expect(l.coutComplet).toBe(false);
     expect(l.prixVenteHtCents).toBeNull();
-    expect(l.nonChiffres).toEqual([{ libelle: 'Façade', raison: expect.stringMatching(/Rendement inconnu/) }]);
+    expect(l.nonChiffres).toEqual([{ id: 'f', libelle: 'Façade', raison: expect.stringMatching(/Rendement inconnu/) }]);
   });
   it('surface manquante : non chiffré, total partiel', () => {
     const plinthe = { ...posteMurs, id: 'x', libelle: 'Plinthes', surface: { manque: 'Renseignez la largeur développée.' }, cleSurface: 'x' };
@@ -210,5 +210,46 @@ describe('totaux honnêtes (audit qa-calculs et métier)', () => {
   });
   it('affichage à 2 décimales arrondi une seule fois : 7,02495 L -> 7,02 (pas 7,03)', () => {
     expect(formaterQuantiteCourte(quantiteDepuisFraction({ num: 702_495n, den: 100_000n }))).toBe('7,02');
+  });
+});
+
+describe('audits de la boucle 2', () => {
+  const res = (p: PosteCalc) => ({ poste: p, resultat: calculerPoste(p, params) });
+  const murImpression: PosteCalc = {
+    ...posteMurs, id: 'i', libelle: 'Salon : murs', cleSurface: 'salon|murs|', surface: { mm2: 10_000_000n }, etapes: [],
+    produit: null, typeProduit: 'impression', teinte: null, finition: null, couches: 1,
+  };
+  const murAvecEtape: PosteCalc = {
+    ...posteMurs, id: 'a', libelle: 'Bureau : murs', cleSurface: 'bureau|murs|', surface: { mm2: 10_000_000n },
+    etapes: [etape('impression', 'Impression', 5, { typeProduit: 'impression', avecMatiere: true })],
+    produit: null, typeProduit: 'acrylique', teinte: null, finition: null,
+  };
+
+  it('impression en poste ET en étape : UNE ligne, quantités additionnées (10 ÷ 8 × 1,1 = 1,375 L, deux fois)', () => {
+    const l = listeAchat([res(murImpression), res(murAvecEtape)], [], params);
+    const impr = l.lignes.filter((x) => x.libelle.startsWith('Impression'));
+    expect(impr).toHaveLength(1);
+    expect(formaterQuantiteCourte(impr[0]!.quantite)).toBe('2,75');
+    expect(impr[0]!.depuisPoste).toBe(true);
+  });
+  it('surface nulle : aucune ligne à 0 L, poste signalé non chiffré', () => {
+    const r = calculerPoste({ ...posteMurs, surface: { mm2: 0n } }, params);
+    expect(r.quantite).toBeNull();
+    expect(r.manques).toContain('Surface nulle : vérifiez le métré.');
+    const l = listeAchat([{ poste: { ...posteMurs, surface: { mm2: 0n } }, resultat: r }], [], params);
+    expect(l.lignes).toEqual([]);
+    expect(l.coutComplet).toBe(false);
+  });
+  it('deux postes du même produit sur la même surface, ou la même étape cochée deux fois : signalés', () => {
+    const l = listeAchat([res(posteMurs), res({ ...posteMurs, id: 'm2' })], [], params);
+    expect(l.doublons).toHaveLength(2);
+    expect(l.doublons[0]).toMatch(/prévu sur 2 postes de la même surface/);
+    expect(l.doublons[1]).toMatch(/Étape « Lessivage » cochée sur 2 postes/);
+    expect(listeAchat([res(posteMurs), res({ ...posteMurs, id: 'p', cible: 'plafond', cleSurface: 'chambre|plafond|' })], [], params).doublons).toEqual([]);
+  });
+  it('extérieur : un produit du catalogue sans usage « exterieur » est signalé, même de type laque', () => {
+    const laqueInterieur: ProduitCalc = { ...acryliqueCatalogue, id: 'l', type: 'laque', usages: ['boiserie'] };
+    const r = calculerPoste({ ...posteMurs, exterieur: true, produit: laqueInterieur }, params);
+    expect(r.avertissements).toContain('Extérieur : ce produit n’est pas déclaré pour l’extérieur au catalogue.');
   });
 });

@@ -73,6 +73,11 @@ export async function pdfListeAchat(entete: { entreprise: string; chantier: stri
     for (const n of liste.nonChiffres) ecrire(c, `- ${n.libelle} : ${n.raison}`, { couleur: ALERTE });
     c.y -= 6;
   }
+  if (liste.doublons.length) {
+    ecrire(c, 'ATTENTION : comptés plusieurs fois', { taille: 11, gras: true, couleur: ALERTE });
+    for (const d of liste.doublons) ecrire(c, `- ${d}`, { couleur: ALERTE });
+    c.y -= 6;
+  }
   if (!liste.lignes.length) ecrire(c, 'Aucun produit chiffré : complétez les postes de peinture du chantier.');
   for (const l of liste.lignes) {
     if (c.y < MARGE + 70) nouvellePage(c);
@@ -86,7 +91,7 @@ export async function pdfListeAchat(entete: { entreprise: string; chantier: stri
       const pots = l.pots.retenue.pots.map((p) => `${p.nombre} × ${formaterContenance(p.contenanceMl, l.unite)}`).join(' + ');
       ecrire(c, `À acheter : ${pots}   (reste ${formaterContenance(Number(l.pots.retenue.resteMl), l.unite)})`, { gras: true });
     } else ecrire(c, l.probleme ?? 'Pots à déterminer', { couleur: ALERTE });
-    ecrire(c, `Coût HT : ${l.coutCents === null ? 'prix à renseigner' : formaterEuros(l.coutCents)}`);
+    ecrire(c, `Coût HT : ${l.coutCents === null ? 'prix à renseigner' : `${formaterEuros(l.coutCents)}${l.coutIndicatif ? ' (indicatif : prix de certains formats inconnus)' : ''}`}`);
     c.y -= 4;
   }
 

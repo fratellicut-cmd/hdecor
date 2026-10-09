@@ -59,7 +59,7 @@ test('métré de référence : 31,93 m² de murs, 12,00 m² de plafond, détail 
   expect(erreurs).toEqual([]);
 });
 
-test('calcul peinture : 7,02 L, pots 5 + 2,5 L, avertissements, puis coût avec un produit chiffré', async ({ page }) => {
+test('calcul peinture : 7,02 L, 1 pot de 10 L sans prix, avertissements, puis coût avec un produit chiffré', async ({ page }) => {
   const nom = `Peinture-${unique()}`;
   const chantier = await nouveauChantier(page, nom);
   await pieceReference(page, chantier);
@@ -70,7 +70,8 @@ test('calcul peinture : 7,02 L, pots 5 + 2,5 L, avertissements, puis coût avec 
   await expect(page.getByRole('heading', { level: 1, name: 'Calcul peinture' })).toBeVisible();
   const carte = page.locator('section').filter({ hasText: 'Chambre : murs' });
   await expect(carte.getByText('7,02 L')).toBeVisible();
-  await expect(carte.getByText('1 × 5 L + 1 × 2,5 L')).toBeVisible();
+  // Prix inconnus (R3 révisée) : le moins de pots -> 1 × 10 L.
+  await expect(carte.getByText(/^1 × 10\s*L/)).toBeVisible();
   await expect(carte.getByText('prix inconnus : le moins de pots (indicatif)')).toBeVisible();
   await expect(carte.getByText(/Ancienne peinture : prévoir un lessivage/)).toBeVisible();
   await expect(carte.getByText('À VÉRIFIER')).toBeVisible();
@@ -229,7 +230,7 @@ test('ouverture : coupure réseau sans perte, type remis à « Porte » après u
   // 4G « menteuse » : réseau annoncé, envoi perdu -> message clair, saisie conservée, pas de page d'erreur.
   await page.route('**/*', (r) => (r.request().method() === 'POST' ? r.abort() : r.continue()));
   await page.getByRole('button', { name: 'Ajouter l’ouverture' }).click();
-  await expect(page.getByText(/Le réseau ne répond pas : rien n’a été enregistré/).first()).toBeVisible();
+  await expect(page.getByText(/Le réseau ne répond pas : l’enregistrement n’est pas confirmé/).first()).toBeVisible();
   await expect(page.getByLabel('Type')).toHaveValue('fenetre');
   await expect(page.getByLabel('Largeur (cm)')).toHaveValue('60');
   await page.unroute('**/*');
@@ -295,5 +296,83 @@ test('réglages : les 10 coefficients de support s’affichent et se confirment'
   expect(coef).toEqual({ coef_rendement_bp: 8000, statut_verification: 'verifie' });
   await admin.from('coefficients_support').update({ coef_rendement_bp: 10000, statut_verification: 'a_verifier' })
     .eq('organisation_id', org!.organisation_id).eq('support', 'beton');
+});
+
+test('erreur puis nouvel essai : pièce, support et nombre de murs conservés (pas de retour aux valeurs de départ)', async ({ page }) => {
+  const chantier = await nouveauChantier(page, `Retour-${unique()}`);
+  await pieceReference(page, chantier);
+  await page.goto(`${chantier}/pieces/nouvelle`);
+  await page.getByLabel('Nom de la pièce').fill('Bureau');
+  await page.getByText('Mur par mur').click();
+  await page.getByLabel('Nombre de murs').selectOption('5');
+  for (const [i, m] of ['1,5', '2,5', '3,5', '4,5', '5,5'].entries()) await page.getByLabel(`Mur ${i + 1} (m)`).fill(m);
+  // Hauteur oubliée : erreur, puis correction.
+  await page.getByLabel('Hauteur sous plafond (m)').fill('');
+  await page.getByRole('button', { name: 'Enregistrer la pièce' }).click();
+  await expect(page.getByText('Corrigez les champs signalés en rouge.')).toBeVisible();
+  await expect(page.getByLabel('Nombre de murs')).toHaveValue('5');
+  await page.getByLabel('Hauteur sous plafond (m)').fill('2,5');
+  await page.getByRole('button', { name: 'Enregistrer la pièce' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Bureau' })).toBeVisible();
+  await expect(page.getByRole('definition').filter({ hasText: /^43,75\s*m²$/ })).toBeVisible(); // 17,50 m × 2,50 m
+
+  await page.goto(`${chantier}/peinture/nouveau`);
+  await page.getByLabel('Pièce', { exact: true }).selectOption({ label: 'Bureau' });
+  await page.getByLabel('Support').selectOption('platre_neuf');
+  await page.getByLabel('Finition').selectOption('satin');
+  await page.getByLabel('Nombre de couches').fill('0');
+  await page.getByRole('button', { name: 'Enregistrer et calculer' }).click();
+  await expect(page.getByText('Corrigez les champs signalés en rouge.')).toBeVisible();
+  await expect(page.getByLabel('Pièce', { exact: true })).toHaveValue(/.+/);
+  await expect(page.getByLabel('Pièce', { exact: true }).locator('option:checked')).toHaveText('Bureau');
+  await expect(page.getByLabel('Support')).toHaveValue('platre_neuf');
+  await expect(page.getByLabel('Finition')).toHaveValue('satin');
+  await page.getByLabel('Nombre de couches').fill('2');
+  await page.getByRole('button', { name: 'Enregistrer et calculer' }).click();
+  await expect(page.locator('section[id^="poste-"]').filter({ hasText: 'Bureau : murs' })).toBeVisible();
+});
+
+test('réponse perdue APRÈS l’enregistrement : le nouvel envoi ne crée pas de doublon', async ({ page }) => {
+  const chantier = await nouveauChantier(page, `Perdue-${unique()}`);
+  await pieceReference(page, chantier);
+  await page.getByLabel('Type').selectOption('fenetre');
+  await page.getByLabel('Largeur (cm)').fill('70');
+  await page.getByLabel('Hauteur (cm)').fill('70');
+  // Le serveur reçoit et enregistre, mais la réponse n'arrive pas.
+  await page.route('**/*', async (r) => {
+    if (r.request().method() !== 'POST') return r.continue();
+    await r.fetch();
+    return r.abort();
+  });
+  await page.getByRole('button', { name: 'Ajouter l’ouverture' }).click();
+  await expect(page.getByText(/l’enregistrement n’est pas confirmé/).first()).toBeVisible();
+  await page.unroute('**/*');
+  await page.getByRole('button', { name: 'Ajouter l’ouverture' }).click();
+  await expect(page.getByText('Ouverture ajoutée.')).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('Fenêtre : 70 × 70 cm')).toHaveCount(1);
+});
+
+test('poste copié : la copie se modifie et se retire', async ({ page }) => {
+  const chantier = await nouveauChantier(page, `Copie-${unique()}`);
+  await pieceReference(page, chantier);
+  await page.getByText('Dupliquer la pièce…').click();
+  await page.getByRole('button', { name: 'Dupliquer la pièce' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Chambre (copie)' })).toBeVisible();
+  await page.goto(`${chantier}/peinture/nouveau`);
+  await page.getByLabel('Pièce', { exact: true }).selectOption({ label: 'Chambre' });
+  await page.getByRole('checkbox', { name: 'Chambre (copie)' }).check();
+  await page.getByRole('button', { name: 'Enregistrer et calculer' }).click();
+  await expect(page.getByText('Copié dans 1 pièce.')).toBeVisible();
+  const copie = page.locator('section[id^="poste-"]').filter({ hasText: 'Chambre (copie) : murs' });
+  await copie.getByRole('link', { name: 'Modifier' }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await page.getByLabel('Nombre de couches').fill('3');
+  await page.getByRole('button', { name: 'Enregistrer et calculer' }).click();
+  await expect(copie.getByText(/3 couches/)).toBeVisible();
+  await copie.getByText('Retirer ce poste…').click();
+  await copie.getByLabel('Je confirme le retrait de ce poste.').check();
+  await copie.getByRole('button', { name: 'Retirer ce poste' }).click();
+  await expect(page.locator('section[id^="poste-"]').filter({ hasText: 'Chambre (copie) : murs' })).toHaveCount(0);
 });
 

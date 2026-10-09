@@ -38,22 +38,25 @@ describe('pots : départage (R3)', () => {
     expect(resume(c.retenue)).toBe('1×5000 + 1×2500');
     expect(c.retenue.nombrePots).toBe(2);
   });
-  it('un prix manquant : choix au moindre reste puis au moins de pots, coût inconnu', () => {
+  it('un prix manquant : le moins de pots (R3 sans prix), coût inconnu', () => {
+    // 7,024 L avec un format sans prix : 1 × 10 L (1 pot) plutôt que 5 + 2,5 L (2 pots).
     const c = choisirPots(7_024n, formats([1500, null, 5000, 9000, 13000]));
     expect(c.choixAuCout).toBe(false);
-    expect(resume(c.retenue)).toBe('1×5000 + 1×2500');
-    expect(c.retenue.coutCents).toBeNull();
+    expect(resume(c.retenue)).toBe('1×10000');
+    expect(c.retenue.coutCents).toBe(9000n); // prix connu des pots retenus, mais combinaison non optimisée au coût
   });
-  it('sans prix : le moins de pots, reste inférieur au plus petit format (audit métier)', () => {
-    // 9,2 L -> 10 L (reste 0,8 < 1 L) ; 14,2 L -> 15 L ; 2,64 L -> 2,5 + 1 L (3,5 L, 2 pots) ;
-    // 6,42 L -> 5 + 1 + 1 L (7 L, 3 pots ; 7,5 L dépasserait le reste toléré de 1 L).
+  it('sans prix : le moins de pots parmi TOUTES les combinaisons qui couvrent, puis le moins de reste (audit métier, boucle 2)', () => {
     const sans = formats([null, null, null, null, null]);
     expect(resume(choisirPots(9_200n, sans).retenue)).toBe('1×10000');
     expect(resume(choisirPots(14_200n, sans).retenue)).toBe('1×15000');
-    expect(resume(choisirPots(2_640n, sans).retenue)).toBe('1×2500 + 1×1000');
-    const c = choisirPots(6_420n, sans);
-    expect(resume(c.retenue)).toBe('1×5000 + 2×1000');
-    expect(c.retenue.resteMl).toBe(580n);
+    // 13,86 L -> 1 × 15 L (et non 10 + 2,5 + 1 + 1 L) ; 44 L -> 3 × 15 L ; 3,74 L -> 1 × 5 L.
+    expect(resume(choisirPots(13_860n, sans).retenue)).toBe('1×15000');
+    expect(resume(choisirPots(44_000n, sans).retenue)).toBe('3×15000');
+    expect(resume(choisirPots(3_740n, sans).retenue)).toBe('1×5000');
+    // À nombre de pots égal, le moins de reste : 16 L -> 15 + 1 L (reste 0) plutôt que 10 + 10 L.
+    const c = choisirPots(16_000n, sans);
+    expect(resume(c.retenue)).toBe('1×15000 + 1×1000');
+    expect(c.retenue.resteMl).toBe(0n);
   });
   it('besoin pile sur un format : 5 000 ml -> 1 pot de 5 L, reste 0', () => {
     const c = choisirPots(5_000n, formats([null, null, null, null, null]));

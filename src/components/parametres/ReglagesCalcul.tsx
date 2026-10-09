@@ -17,9 +17,9 @@ type Action = (e: EtatFormulaire, f: FormData) => Promise<EtatFormulaire>;
 function Ligne({ action, titre, aVerifier, caches, children }: {
   action: Action; titre: string; aVerifier: boolean; caches: Record<string, string>; children: (e: Record<string, string>, v: Record<string, string>) => ReactNode;
 }) {
-  const { etat, action: envoyer, enCours, formRef, garde } = useFormulaire(null, action);
+  const { etat, action: envoyer, enCours, formRef, garde, surEnvoi } = useFormulaire(null, action);
   return (
-    <form ref={formRef} action={envoyer} onSubmit={garde.surEnvoi} className="flex flex-col gap-2 border-t border-trait py-3 first:border-t-0" noValidate>
+    <form ref={formRef} action={envoyer} onSubmit={surEnvoi} className="flex flex-col gap-2 border-t border-trait py-3 first:border-t-0" noValidate>
       {Object.entries(caches).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
       <p className="flex flex-wrap items-center gap-2 font-semibold">{titre}{aVerifier ? <BadgeAVerifier /> : null}</p>
       <RetourFormulaire etat={etat} />
@@ -35,7 +35,8 @@ function Ligne({ action, titre, aVerifier, caches, children }: {
 export function LigneReferentiel({ type, libelle, min, max, minutes, sechage, aVerifier }: {
   type: string; libelle: string; min: string; max: string; minutes: string; sechage: string; aVerifier: boolean;
 }) {
-  const u = type === 'enduit' ? 'kg' : 'L';
+  // Enduit : au kg et par passe (la consommation dépend du produit : lissage, rebouchage…).
+  const u = type === 'enduit' ? 'kg par passe' : 'L';
   return (
     <Ligne action={enregistrerReferentiel} titre={libelle} aVerifier={aVerifier} caches={{ type_produit: type }}>
       {(e, v) => (
@@ -47,7 +48,7 @@ export function LigneReferentiel({ type, libelle, min, max, minutes, sechage, aV
           {min === '' && max === '' && !v.rendement_min ? <p className="text-sm text-encre-douce">Pas de valeur de départ : renseignez-la d’après la fiche technique. Vides : quantité non calculée (signalé).</p> : null}
           <div className="grid grid-cols-2 gap-3">
             <Champ libelle="Temps de pose (min/m²/couche)" nom="minutes_par_m2_couche" inputMode="decimal" defaultValue={v.minutes_par_m2_couche ?? minutes}
-              erreur={e.minutes_par_m2_couche} aide="Ex. 0,10 min/m² ≈ 600 m²/h. Vide : non compté (signalé)." />
+              erreur={e.minutes_par_m2_couche} aide="Conversion : 60 ÷ m² posés par heure (15 m²/h -> 4). Vide : non compté (signalé)." />
             <Champ libelle="Séchage avant recouvrement (h)" nom="sechage_recouvrable_h" inputMode="decimal" defaultValue={v.sechage_recouvrable_h ?? sechage}
               erreur={e.sechage_recouvrable_h} aide="Vide : non compté (signalé)." />
           </div>
@@ -91,11 +92,11 @@ export function LigneEtape({ id, libelle, minutes, typeProduit, couches, avecMat
 }
 
 export function FormulaireConsommable() {
-  const { etat, action: envoyer, enCours, formRef, garde } = useFormulaire('consommable:nouveau', ajouterConsommable);
+  const { etat, action: envoyer, enCours, formRef, garde, surEnvoi } = useFormulaire('consommable:nouveau', ajouterConsommable, { viderApresSucces: true });
   const e = etat.erreurs ?? {};
   const v = etat.valeurs ?? {};
   return (
-    <form ref={formRef} action={envoyer} onSubmit={garde.surEnvoi} className="flex flex-col gap-3" noValidate>
+    <form ref={formRef} action={envoyer} onSubmit={surEnvoi} className="flex flex-col gap-3" noValidate>
       <RetourFormulaire etat={etat} />
       <Champ libelle="Libellé" nom="libelle" defaultValue={v.libelle} erreur={e.libelle} placeholder="Bâches et adhésif, rouleaux…" />
       <div className="grid grid-cols-2 gap-3">
@@ -114,11 +115,11 @@ export function FormulaireConsommable() {
 export function FormulaireMetre({ porteLargeur, porteHauteur, formats, sacs, hauteurAlerte, heuresParJour }: {
   porteLargeur: string; porteHauteur: string; formats: string; sacs: string; hauteurAlerte: string; heuresParJour: string;
 }) {
-  const { etat, action: envoyer, enCours, formRef, garde } = useFormulaire(null, enregistrerMetre);
+  const { etat, action: envoyer, enCours, formRef, garde, surEnvoi } = useFormulaire(null, enregistrerMetre);
   const e = etat.erreurs ?? {};
   const v = etat.valeurs ?? {};
   return (
-    <form ref={formRef} action={envoyer} onSubmit={garde.surEnvoi} className="flex flex-col gap-3" noValidate>
+    <form ref={formRef} action={envoyer} onSubmit={surEnvoi} className="flex flex-col gap-3" noValidate>
       <RetourFormulaire etat={etat} />
       <div className="grid grid-cols-2 gap-3">
         <Champ libelle="Porte : largeur (cm)" nom="porte_largeur_mm" inputMode="decimal" defaultValue={v.porte_largeur_mm ?? porteLargeur} erreur={e.porte_largeur_mm} />

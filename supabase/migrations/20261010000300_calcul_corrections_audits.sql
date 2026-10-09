@@ -152,14 +152,17 @@ alter table public.postes_travaux
   add column teinte_libre text check (teinte_libre is null or length(trim(teinte_libre)) between 1 and 80);
 
 -- Duplication d'une pièce : recopie aussi « extérieur » et la teinte libre.
-create or replace function public.dupliquer_piece(p_piece_id uuid, p_nom text)
+-- p_nouvelle : identifiant fixé par le formulaire ; un nouvel envoi (réponse
+-- perdue) renvoie la copie déjà faite au lieu d'en créer une seconde.
+drop function public.dupliquer_piece(uuid, text);
+create function public.dupliquer_piece(p_piece_id uuid, p_nom text, p_nouvelle uuid default null)
 returns uuid
 language plpgsql
 security invoker
 set search_path = ''
 as $$
 declare
-  v_nouvelle uuid := gen_random_uuid();
+  v_nouvelle uuid := coalesce(p_nouvelle, gen_random_uuid());
   v_correspondance jsonb := '{}';
   v_element record;
   v_poste record;
@@ -169,12 +172,19 @@ begin
   if p_nom is null or length(trim(p_nom)) not between 1 and 100 then
     raise exception 'Nom de pièce invalide.' using errcode = 'P0001';
   end if;
+  if not exists (select 1 from public.pieces where id = p_piece_id) then
+    raise exception 'Pièce introuvable.' using errcode = 'P0002';
+  end if;
+  -- Copie déjà faite par un premier envoi (même chantier) : rien à refaire.
+  if exists (select 1 from public.pieces n join public.pieces o on o.chantier_id = n.chantier_id
+             where n.id = v_nouvelle and o.id = p_piece_id) then
+    return v_nouvelle;
+  end if;
   insert into public.pieces (id, organisation_id, chantier_id, nom, etage, mode_saisie, longueur_mm, largeur_mm, murs_mm,
     surface_sol_mm2, hauteur_mm, etat_support, multiplicateur, teinte_id, notes, ordre)
   select v_nouvelle, organisation_id, chantier_id, trim(p_nom), etage, mode_saisie, longueur_mm, largeur_mm, murs_mm,
     surface_sol_mm2, hauteur_mm, etat_support, multiplicateur, teinte_id, notes, ordre + 1
   from public.pieces where id = p_piece_id;
-  if not found then raise exception 'Pièce introuvable.' using errcode = 'P0002'; end if;
 
   insert into public.ouvertures (organisation_id, piece_id, type, largeur_mm, hauteur_mm, surface_directe_mm2, quantite)
   select organisation_id, v_nouvelle, type, largeur_mm, hauteur_mm, surface_directe_mm2, quantite
@@ -202,6 +212,8 @@ begin
   return v_nouvelle;
 end;
 $$;
+revoke execute on function public.dupliquer_piece(uuid, text, uuid) from public, anon;
+grant execute on function public.dupliquer_piece(uuid, text, uuid) to authenticated;
 
 -- Même poste (murs ou plafond) sur d'autres pièces du chantier, en une fois.
 -- Identifiant de chaque copie dérivé du poste et de la pièce : un nouvel envoi
@@ -229,7 +241,9 @@ begin
     if not exists (select 1 from public.pieces where id = v_piece and chantier_id = v_chantier) then
       raise exception 'Pièce introuvable dans ce chantier.' using errcode = 'P0002';
     end if;
-    v_copie := md5(p_poste_id::text || ':' || v_piece::text)::uuid;
+    -- md5 mis en forme d'UUID valide (version 5, variante RFC 4122) : l'application
+    -- refuse tout identifiant qui n'en est pas un (Modifier, Retirer).
+    v_copie := overlay(overlay(md5(p_poste_id::text || ':' || v_piece::text) placing '5' from 13 for 1) placing '8' from 17 for 1)::uuid;
     insert into public.postes_travaux (id, organisation_id, piece_id, cible, element_id, support, zone_humide, taches, exterieur, produit_id,
       teinte_id, teinte_libre, finition, couches, rendement_force, marge_perte_bp, type_produit, majoration_temps_bp, ordre)
     values (v_copie, v_poste.organisation_id, v_piece, v_poste.cible, null, v_poste.support, v_poste.zone_humide, v_poste.taches,

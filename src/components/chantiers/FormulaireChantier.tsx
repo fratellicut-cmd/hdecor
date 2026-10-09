@@ -17,12 +17,12 @@ export type ChantierSaisi = {
 export const LIBELLES_STATUT_CHANTIER = { a_planifier: 'À planifier', en_cours: 'En cours', termine: 'Terminé' } as const;
 
 export function FormulaireChantier({ chantier, clients }: { chantier: ChantierSaisi; clients: { id: string; nom: string }[] }) {
-  const { etat, action, enCours, formRef, garde } = useFormulaire(`chantier:${chantier.id ?? 'nouveau'}`, enregistrerChantier,
+  const { etat, action, enCours, formRef, garde, surEnvoi } = useFormulaire(`chantier:${chantier.id ?? 'nouveau'}`, enregistrerChantier,
     { version: chantier.id ? (chantier.updated_at ?? null) : undefined });
   const e = etat.erreurs ?? {};
   const v = (cle: keyof ChantierSaisi) => (etat.valeurs?.[cle] ?? chantier[cle] ?? '') as string;
   return (
-    <form ref={formRef} action={action} onSubmit={garde.surEnvoi} className="flex flex-col gap-4" noValidate>
+    <form ref={formRef} action={action} onSubmit={surEnvoi} className="flex flex-col gap-4" noValidate>
       {chantier.id ? <input type="hidden" name="id" value={chantier.id} /> : null}
       <RetourFormulaire etat={etat} />
       <MessagesGarde garde={garde} />

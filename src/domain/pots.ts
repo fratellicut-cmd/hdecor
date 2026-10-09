@@ -111,10 +111,10 @@ export function choisirPots(besoinMl: bigint, formatsBruts: Format[]): ChoixPots
       if (plusCher < 0n || (plusCher === 0n && (t < meilleur || (t === meilleur && nb[t]! < nb[meilleur]!)))) meilleur = t;
     }
   } else {
-    // Sans prix : reste < plus petit format (toujours atteignable avec ce seul
-    // format), puis le moins de pots, puis le moins de reste.
-    const plusPetit = formats[0]!.contenanceMl / pas;
-    for (let t = besoinPas; t < besoinPas + plusPetit && t <= borne; t += 1) {
+    // Sans prix (R3 révisée, boucle 2) : parmi TOUTES les combinaisons qui
+    // couvrent le besoin, le moins de pots, puis le moins de reste. 13,86 L
+    // -> 1 × 15 L et non 10 + 2,5 + 1 + 1 L. Choix indicatif (prix inconnus).
+    for (let t = besoinPas; t <= borne; t += 1) {
       if (cout[t] === null) continue;
       if (meilleur < 0 || nb[t]! < nb[meilleur]!) meilleur = t;
     }

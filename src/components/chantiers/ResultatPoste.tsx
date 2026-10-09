@@ -1,6 +1,6 @@
 import type { ResultatPoste } from '@/domain/calculateur';
 import { formaterDuree } from '@/domain/chiffrage';
-import { formaterEuros } from '@/domain/formats';
+import { formaterEuros, pourcentageVersSaisie } from '@/domain/formats';
 import { formaterSurface } from '@/domain/metre';
 import { formaterContenance, formaterQuantite, formaterQuantiteCourte, quantiteDepuisFraction } from '@/domain/peinture';
 import type { Combinaison } from '@/domain/pots';
@@ -15,8 +15,11 @@ export function texteCombinaison(c: Combinaison, unite: 'L' | 'kg') {
 /** Résultat d'un poste : chaque valeur avec sa provenance ; rien n'est caché. */
 export function ResultatPosteVue({ r, communs }: { r: ResultatPoste; communs?: Set<string> }) {
   const u = r.unite;
-  // Messages communs à plusieurs postes : affichés une seule fois en haut de la page.
-  const manques = communs ? r.manques.filter((m) => !communs.has(m)) : r.manques;
+  // Messages et rappels communs à plusieurs postes : affichés une seule fois en haut de la page.
+  const propre = (m: string) => !communs?.has(m);
+  const manques = r.manques.filter(propre);
+  const avertissements = r.avertissements.filter(propre);
+  const sechage = r.sechage && propre(r.sechage) ? r.sechage : null;
   const tempsInconnu = r.temps !== null && r.incomplet.temps && r.temps.minutes === 0n;
   return (
     <div className="flex flex-col gap-2">
@@ -40,7 +43,7 @@ export function ResultatPosteVue({ r, communs }: { r: ResultatPoste; communs?: S
             ) : '—'}
           </dd>
         </div>
-        <div><dt className="text-sm text-encre-douce">Coût matière HT</dt><dd className="font-semibold">{r.coutMatiereCents === null ? 'prix à renseigner' : formaterEuros(r.coutMatiereCents)}</dd></div>
+        <div><dt className="text-sm text-encre-douce">Coût matière HT{r.matierePreparation.length ? ' (hors préparation)' : ''}</dt><dd className="font-semibold">{r.coutMatiereCents === null ? 'prix à renseigner' : formaterEuros(r.coutMatiereCents)}</dd></div>
         <div><dt className="text-sm text-encre-douce">Temps{r.incomplet.temps && !tempsInconnu ? ' (partiel)' : ''}</dt><dd className="font-semibold">
           {r.temps === null ? '—' : tempsInconnu ? 'non renseigné' : formaterDuree(r.temps.minutes)}
           {r.coutMainOeuvreCents !== null && !tempsInconnu ? ` · ${formaterEuros(r.coutMainOeuvreCents)}` : ''}
@@ -52,8 +55,8 @@ export function ResultatPosteVue({ r, communs }: { r: ResultatPoste; communs?: S
           {r.matierePreparation.map((m) => `${m.libelle} ${formaterQuantiteCourte(quantiteDepuisFraction(m.quantite))} ${m.unite}`).join(' ; ')}
         </p>
       ) : null}
-      {r.avertissements.map((a) => <p key={a} className="rounded-lg bg-alerte-fond px-3 py-2 text-sm font-semibold text-alerte">⚠ {a}</p>)}
-      {r.sechage ? <p className="text-sm">{r.sechage}</p> : null}
+      {avertissements.map((a) => <p key={a} className="rounded-lg bg-alerte-fond px-3 py-2 text-sm font-semibold text-alerte">⚠ {a}</p>)}
+      {sechage ? <p className="text-sm">{sechage}</p> : null}
       {r.aVerifier.length ? (
         <p className="flex flex-wrap items-center gap-2 text-sm"><BadgeAVerifier /> {r.aVerifier.join(', ')}</p>
       ) : null}
@@ -61,9 +64,9 @@ export function ResultatPosteVue({ r, communs }: { r: ResultatPoste; communs?: S
         <summary className="inline-flex min-h-11 cursor-pointer items-center font-semibold">Détail du calcul</summary>
         <ul className="mt-1 flex flex-col gap-1 text-encre-douce">
           {r.rendementCentiemes !== null && r.sourceRendement ? (
-            <li>Rendement : {formaterQuantite(BigInt(r.rendementCentiemes) * 100n)} m²/{u} par couche ({SOURCES[r.sourceRendement]}).</li>
+            <li>Rendement : {formaterQuantite(BigInt(r.rendementCentiemes) * 100n, 2)} m²/{u} par {u === 'kg' ? 'passe' : 'couche'} ({SOURCES[r.sourceRendement]}).</li>
           ) : null}
-          <li>Coefficient du support : {formaterQuantite(BigInt(r.coefSupportBp))}.</li>
+          <li>Rendement retenu pour ce support : {pourcentageVersSaisie(r.coefSupportBp)} % du rendement indiqué.</li>
           {r.quantite ? <li>Quantité exacte : {formaterQuantite(r.quantite.dixMilliemes, 4)} {u} ; à couvrir : {formaterContenance(Number(r.quantite.aCouvrirMl), u)} (arrondi au ml supérieur).</li> : null}
           {r.pots?.alternatives.length ? (
             <li>

@@ -13,9 +13,8 @@ import { Selection } from '@/components/ui/Autres';
 /**
  * Suit les retours de l'action pendant le rendu (sans effet) : après un ajout
  * réussi, l'état qui pilote l'affichage revient au départ ; après une erreur,
- * il reprend la saisie renvoyée. React réinitialise le formulaire après chaque
- * envoi : les listes, non contrôlées, sont remontées (clé « tour ») avec la
- * bonne valeur par défaut, sinon elles reviendraient à leur première valeur.
+ * il reprend la saisie renvoyée. Les listes, non contrôlées, sont remontées
+ * (clé « tour ») avec cette valeur par défaut, qui sert aussi au vidage après un ajout.
  */
 function useSuiviEtat(etat: EtatFormulaire, surSucces: () => void, surValeurs: (v: Record<string, string>) => void) {
   const [vu, setVu] = useState(etat);
@@ -31,7 +30,7 @@ function useSuiviEtat(etat: EtatFormulaire, surSucces: () => void, surValeurs: (
 
 /** Ajout d'une ouverture : porte pré-remplie aux dimensions par défaut (paramètres). */
 export function FormulaireOuverture({ pieceId, porte }: { pieceId: string; porte: { largeurCm: string; hauteurCm: string } }) {
-  const { etat, action, enCours, formRef, garde } = useFormulaire(`ouverture:${pieceId}`, ajouterOuverture);
+  const { etat, action, enCours, formRef, garde, surEnvoi } = useFormulaire(`ouverture:${pieceId}`, ajouterOuverture, { viderApresSucces: true });
   const [type, setType] = useState('porte');
   const [parSurface, setParSurface] = useState(false);
   const tour = useSuiviEtat(etat, () => { setType('porte'); setParSurface(false); }, (v) => {
@@ -41,8 +40,8 @@ export function FormulaireOuverture({ pieceId, porte }: { pieceId: string; porte
   const e = etat.erreurs ?? {};
   const v = etat.succes ? {} : (etat.valeurs ?? {});
   return (
-    // React vide le formulaire après un envoi réussi : prêt pour l'ouverture suivante.
-    <form ref={formRef} action={action} onSubmit={garde.surEnvoi} className="flex flex-col gap-3" noValidate>
+    // Vidé après un ajout réussi (viderApresSucces) : prêt pour l'ouverture suivante.
+    <form ref={formRef} action={action} onSubmit={surEnvoi} className="flex flex-col gap-3" noValidate>
       <input type="hidden" name="piece_id" value={pieceId} />
       <RetourFormulaire etat={etat} />
       <MessagesGarde garde={garde} />
@@ -78,7 +77,7 @@ const UNITE_PAR_TYPE: Record<string, string> = {
 };
 
 export function FormulaireElement({ pieceId }: { pieceId: string }) {
-  const { etat, action, enCours, formRef, garde } = useFormulaire(`element:${pieceId}`, ajouterElement);
+  const { etat, action, enCours, formRef, garde, surEnvoi } = useFormulaire(`element:${pieceId}`, ajouterElement, { viderApresSucces: true });
   const [type, setType] = useState('plinthe');
   const [unite, setUnite] = useState('ml');
   const tour = useSuiviEtat(etat, () => { setType('plinthe'); setUnite('ml'); }, (v) => {
@@ -88,7 +87,7 @@ export function FormulaireElement({ pieceId }: { pieceId: string }) {
   const e = etat.erreurs ?? {};
   const v = etat.succes ? {} : (etat.valeurs ?? {});
   return (
-    <form ref={formRef} action={action} onSubmit={garde.surEnvoi} className="flex flex-col gap-3" noValidate>
+    <form ref={formRef} action={action} onSubmit={surEnvoi} className="flex flex-col gap-3" noValidate>
       <input type="hidden" name="piece_id" value={pieceId} />
       <RetourFormulaire etat={etat} />
       <MessagesGarde garde={garde} />
@@ -133,9 +132,9 @@ export function FormulaireElement({ pieceId }: { pieceId: string }) {
 }
 
 export function FormulaireDuplication({ pieceId, chantierId, nom }: { pieceId: string; chantierId: string; nom: string }) {
-  const { etat, action, enCours, formRef, garde } = useFormulaire(null, dupliquerPiece);
+  const { etat, action, enCours, formRef, garde, surEnvoi } = useFormulaire(null, dupliquerPiece);
   return (
-    <form ref={formRef} action={action} onSubmit={garde.surEnvoi} className="flex flex-col gap-3">
+    <form ref={formRef} action={action} onSubmit={surEnvoi} className="flex flex-col gap-3">
       <input type="hidden" name="id" value={pieceId} />
       <input type="hidden" name="chantier_id" value={chantierId} />
       <RetourFormulaire etat={etat} />

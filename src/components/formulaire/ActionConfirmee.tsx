@@ -20,9 +20,9 @@ type Props = {
 /** Petite action serveur (retrait, suppression, changement d'état) avec retour affiché. */
 export function ActionConfirmee({ action, champs, libelle, confirmation, variante = 'secondaire', explication }: Props) {
   // Coupure réseau : envoi bloqué ou message clair, jamais la page d'erreur.
-  const { etat, action: envoyer, enCours, formRef, garde } = useFormulaire(null, action);
+  const { etat, action: envoyer, enCours, formRef, garde, surEnvoi } = useFormulaire(null, action);
   const formulaire = (
-    <form ref={formRef} action={envoyer} onSubmit={garde.surEnvoi} className="flex flex-col gap-2">
+    <form ref={formRef} action={envoyer} onSubmit={surEnvoi} className="flex flex-col gap-2">
       {Object.entries(champs).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
       <RetourFormulaire etat={etat} />
       {garde.horsLigne ? <AlerteHorsLigne sansBrouillon /> : null}

@@ -169,8 +169,8 @@ export async function calculerChantier(id: string) {
       produit: poste.produit_id ? produitsCalc.get(poste.produit_id) ?? null : null,
       typeProduit: poste.type_produit as TypeProduit | null,
       teinte: poste.teinte_id ? { id: poste.teinte_id, nom: lesTeintes.find((t) => t.id === poste.teinte_id)?.nom ?? 'Teinte' }
-        // Saisie libre : « Blanc » et « blanc » désignent la même teinte.
-        : poste.teinte_libre ? { id: `libre:${poste.teinte_libre.trim().toLocaleLowerCase('fr')}`, nom: poste.teinte_libre.trim() } : null,
+        // Saisie libre : « Blanc », « blanc », « RAL 9010 » et « RAL9010 » désignent la même teinte.
+        : poste.teinte_libre ? { id: `libre:${cleTeinte(poste.teinte_libre)}`, nom: poste.teinte_libre.trim().replace(/\s+/g, ' ') } : null,
       finition: poste.finition as Finition | null,
       couches: poste.couches,
       rendementForceCentiemes: centiemes(poste.rendement_force),
@@ -189,6 +189,9 @@ export async function calculerChantier(id: string) {
     ...base, postes: calcules, liste, parametres: p, produits: lesProduits, teintes: lesTeintes, etapes: lesEtapes,
   } satisfies Record<string, unknown> & { postes: { poste: PosteCalc; resultat: ResultatPoste }[] };
 }
+
+/** Teinte tapée -> clé de regroupement : forme Unicode unique, sans casse ni espaces. */
+export const cleTeinte = (t: string) => t.normalize('NFC').toLocaleLowerCase('fr').replace(/\s+/g, '');
 
 /** numeric(5,1) en heures -> dixièmes d'heure entiers (6,5 h -> 65), lu sans calcul flottant. */
 function dixiemes(v: number | null): number | null {

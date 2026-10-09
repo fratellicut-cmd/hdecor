@@ -13,7 +13,7 @@ import { RetourFormulaire } from './RetourFormulaire';
 type P = Ligne<'parametres_entreprise'>;
 
 export function FormulaireConditions({ p }: { p: P }) {
-  const { etat, action, enCours, formRef, garde } = useFormulaire('parametres:conditions', enregistrerConditions);
+  const { etat, action, enCours, formRef, garde, surEnvoi } = useFormulaire('parametres:conditions', enregistrerConditions);
   const e = etat.erreurs ?? {};
   const sv = etat.valeurs;
   const val = (cle: string, defaut: string) => sv?.[cle] ?? defaut;
@@ -21,7 +21,7 @@ export function FormulaireConditions({ p }: { p: P }) {
   const confirmer = (cle: string) =>
     aVerifier(cle) ? <CaseACocher nom="confirmes" valeur={cle} libelle="Valeur confirmée (par moi ou le comptable)" /> : null;
   return (
-    <form ref={formRef} action={action} onSubmit={garde.surEnvoi} className="flex flex-col gap-4" noValidate>
+    <form ref={formRef} action={action} onSubmit={surEnvoi} className="flex flex-col gap-4" noValidate>
       <RetourFormulaire etat={etat} />
       <MessagesGarde garde={garde} />
       <h3 className="text-lg font-bold">Paiement</h3>

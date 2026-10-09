@@ -1473,7 +1473,7 @@ isOneToOne: false
 { Args: { "p_jeton": string }; Returns: Json
                            },
 "dupliquer_piece":
-{ Args: { "p_nom": string,"p_piece_id": string }; Returns: string
+{ Args: { "p_nom": string,"p_nouvelle"?: string,"p_piece_id": string }; Returns: string
                            },
 "effacer_client":
 { Args: { "p_client_id": string }; Returns: number
