@@ -426,12 +426,15 @@ export async function emettreDevis(_: EtatFormulaire, fd: FormData): Promise<Eta
     }
     if (!refusCertain(error.code)) {
       // Réponse perdue : l'émission a peut-être été validée. On relit AVANT de toucher au fichier.
-      const { data: apres } = await sb.from('devis').select('statut, pdf_chemin').eq('id', id.data).maybeSingle();
-      if (apres?.statut !== 'brouillon') {
+      const { data: apres, error: eRelecture } = await sb.from('devis').select('statut, pdf_chemin').eq('id', id.data).maybeSingle();
+      // Statut inconnu : le fichier est gardé (jamais d'effacement à l'aveugle) et on le dit.
+      if (eRelecture || !apres) return { message: 'Le réseau ne répond pas : l’émission n’est pas confirmée. Rechargez la page pour voir le statut du devis.' };
+      if (apres.statut !== 'brouillon') {
+        // Une autre émission l'a emporté : notre PDF n'est référencé nulle part.
+        if (apres.pdf_chemin !== chemin) await retirer('documents', session.organisationId, chemin).catch(() => undefined);
         revalider(id.data);
-        redirect(`/devis/${id.data}${apres?.pdf_chemin === chemin ? '?emis=1' : ''}`);
+        redirect(`/devis/${id.data}${apres.pdf_chemin === chemin ? '?emis=1' : ''}`);
       }
-      if (!apres) return { message: ECHEC };   // statut inconnu : le fichier est gardé (jamais d'effacement à l'aveugle)
     }
     // Refus certain, ou devis resté brouillon : ce PDF n'est référencé nulle part.
     await retirer('documents', session.organisationId, chemin).catch(() => undefined);
@@ -460,9 +463,10 @@ export async function envoyerDevis(_: EtatFormulaire, fd: FormData): Promise<Eta
   const sb = await clientServeur();
   const { data: deja } = await sb.from('envois').select('canal, destinataire, statut').eq('id', envoiId.data).maybeSingle();
   if (deja) {
-    return deja.statut === 'envoye' && deja.canal === 'email'
+    if (deja.statut === 'echec') return { message: 'L’email précédent n’est pas parti : rechargez la page pour réessayer (aucun email en double).' };
+    return deja.canal === 'email'
       ? { succes: `Email déjà envoyé à ${deja.destinataire} : rien n’a été renvoyé.` }
-      : { message: 'Cet envoi a déjà été traité : rechargez la page avant de recommencer.' };
+      : { message: 'Ce lien a déjà été créé : rechargez la page pour en créer un nouveau.' };
   }
   const c = await chargerDevis(id.data, sb);
   if (!c) return { message: 'Devis introuvable.' };
@@ -559,8 +563,10 @@ export async function dupliquerDevis(_: EtatFormulaire, fd: FormData): Promise<E
   const { data, error } = await sb.rpc('dupliquer_devis', { p_devis_id: id.data });
   if (error || !data) return { message: ECHEC };
   const { data: copie } = await sb.from('devis').select('regime_tva').eq('id', data).maybeSingle();
-  await recalculerTotaux(sb, data);
+  const recalcul = await recalculerTotaux(sb, data);
   revalidatePath('/devis');
+  // Copie créée, totaux non recalculés : la page du brouillon le dit (ils le seront à la prochaine modification et à l'émission).
+  if (recalcul === 'echec') redirect(`/devis/${data}?duplique=1&reprise=totaux`);
   // Régime de TVA changé depuis le devis copié : les taux des lignes sont à revoir (signalé sur le brouillon).
   redirect(`/devis/${data}?duplique=1${source && copie && source.regime_tva !== copie.regime_tva ? '&regime=1' : ''}`);
 }
@@ -595,6 +601,8 @@ export async function signerSurPlace(_: EtatFormulaire, fd: FormData): Promise<E
     }
     // Réponse perdue : la signature a peut-être été enregistrée ; le tracé est gardé.
     const { data: apres } = await sb.from('devis').select('statut').eq('id', id.data).maybeSingle();
+    // Devis toujours à signer : la signature n'a pas été enregistrée, le tracé n'est référencé nulle part.
+    if (apres?.statut === 'envoye') await retirer('signatures', session.organisationId, image).catch(() => undefined);
     if (apres?.statut !== 'accepte') return { message: ECHEC, valeurs: valeursTexte(fd, ['image']) };
   }
   const archive = await archiverPdfSigne(session.organisationId, id.data).catch(() => false);

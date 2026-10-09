@@ -106,15 +106,17 @@ function PadSignature({ erreur }: { erreur?: string }) {
   return (
     <div className="flex flex-col gap-1">
       <p id="libelle-signature" className="font-semibold">Signature</p>
-      <canvas ref={canvas} aria-labelledby="libelle-signature" role="img"
-        className={`h-44 w-full touch-none rounded-xl border-2 bg-white ${erreur ? 'border-danger' : 'border-anthracite'}`}
-        onPointerDown={debut} onPointerMove={trace} onPointerUp={fin} onPointerCancel={fin} onPointerLeave={fin} />
-      <input ref={champ} type="hidden" name="image" aria-invalid={erreur ? true : undefined} />
+      {/* Au-dessus du cadre : reste visible en paysage, quand le cadre occupe l'écran. */}
       <div className="flex items-center justify-between gap-2">
         <p role="status" className={`text-sm ${etatTrace === 'court' || etatTrace === 'tourne' ? 'font-semibold text-alerte' : 'text-encre-douce'}`}>{MESSAGES[etatTrace]}</p>
         <Bouton type="button" variante="discret" onClick={effacer}>Effacer</Bouton>
       </div>
-      {erreur ? <p className="text-sm font-semibold text-danger">{erreur}</p> : null}
+      <canvas ref={canvas} aria-labelledby="libelle-signature" role="img"
+        className={`h-44 w-full touch-none rounded-xl border-2 bg-white ${erreur ? 'border-danger' : 'border-anthracite'}`}
+        onPointerDown={debut} onPointerMove={trace} onPointerUp={fin} onPointerCancel={fin} onPointerLeave={fin} />
+      <input ref={champ} type="hidden" name="image" aria-invalid={erreur ? true : undefined} />
+      {/* Erreur du dernier envoi : masquée dès qu'une nouvelle signature est tracée. */}
+      {erreur && etatTrace !== 'ok' ? <p className="text-sm font-semibold text-danger">{erreur}</p> : null}
     </div>
   );
 }

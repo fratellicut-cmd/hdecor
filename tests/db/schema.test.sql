@@ -1631,6 +1631,18 @@ update public.devis set regime_tva = 'franchise', total_tva_cents = 0, total_ttc
 select tests.echoue($$select public.emettre_devis('aaaaaaaa-0000-0000-0000-0000000d4002', '{}', '{}', '{}',
   'aaaaaaaa-0000-0000-0000-00000000000a/d4002.pdf', repeat('5', 64))$$, 'toutes les lignes doivent être à 0', 'émission : ligne taxée en franchise refusée');
 
+-- Échéancier : les échéances « à la signature » doivent être en tête.
+update public.devis set regime_tva = 'franchise' where id = 'aaaaaaaa-0000-0000-0000-0000000d4002';
+update public.devis_lignes set taux_tva_bp = 0 where id = 'aaaaaaaa-0000-0000-0000-0000000d4021';
+update public.devis set total_tva_cents = 0, total_ttc_cents = 10000, ventilation_tva = '[{"taux_bp":0,"base_ht_cents":10000,"tva_cents":0}]', acompte_pct_bp = 5000
+where id = 'aaaaaaaa-0000-0000-0000-0000000d4002';
+insert into public.devis_echeances (organisation_id, devis_id, ordre, libelle, pourcentage_bp, declencheur) values
+  ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000d4002', 1, 'Début', 5000, 'debut_travaux'),
+  ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000d4002', 2, 'Acompte', 5000, 'signature');
+select tests.echoue($$select public.emettre_devis('aaaaaaaa-0000-0000-0000-0000000d4002', '{}', '{}', '{}',
+  'aaaaaaaa-0000-0000-0000-00000000000a/d4002.pdf', repeat('5', 64))$$, 'à la signature doivent venir en premier',
+  'émission : échéance « à la signature » après une autre refusée');
+
 -- Nouvelle version : les liens de l'ancienne sont désactivés dans la même transaction.
 insert into public.liens_publics (organisation_id, devis_id, finalite, jeton_sha256, expire_le)
 values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000d4001', 'signature', repeat('6', 64), now() + interval '10 days');

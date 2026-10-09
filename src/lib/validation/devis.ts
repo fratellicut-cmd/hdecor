@@ -76,9 +76,11 @@ export const schemaEcheance = z.object({
 /** Mention « Bon pour accord » exigée (casse et espaces libres). */
 export const MENTION_ACCORD = 'Bon pour accord';
 // Casse, espaces et ponctuation finale (« Bon pour accord. ») tolérés : le clavier du téléphone l'ajoute souvent.
-const mention = z.preprocess((v) => (typeof v === 'string' ? v.trim().replace(/\s+/g, ' ').replace(/\s*[.!,;]+$/, '') : v),
-  z.string({ error: 'Écrivez « Bon pour accord ».' })
-    .refine((s) => s.toLowerCase() === MENTION_ACCORD.toLowerCase(), { error: 'Écrivez exactement « Bon pour accord ».' }));
+// La mention est CONSERVÉE telle que saisie (espaces superflus retirés) : la preuve reste fidèle au geste du client.
+const normaliserMention = (v: string) => v.trim().replace(/\s+/g, ' ').replace(/\s*[.!,;]+$/, '').toLowerCase();
+const mention = z.preprocess((v) => (typeof v === 'string' ? v.trim().replace(/\s+/g, ' ') : v),
+  z.string({ error: 'Écrivez « Bon pour accord ».' }).max(100)
+    .refine((s) => normaliserMention(s) === MENTION_ACCORD.toLowerCase(), { error: 'Écrivez exactement « Bon pour accord ».' }));
 
 export const TAILLE_MAX_SIGNATURE = 400_000;
 const signatureImage = z.string({ error: 'Signez dans le cadre.' })
@@ -119,7 +121,8 @@ export function lirePngSignature(dataUrl: string): ResultatPng {
   if (octets.toString('ascii', 12, 16) !== 'IHDR') return { erreur: 'illisible' };
   const largeur = octets.readUInt32BE(16);
   const hauteur = octets.readUInt32BE(20);
-  if (largeur < 50 || hauteur < 20 || largeur > 2000 || hauteur > 1000) return { erreur: 'illisible' };
+  // Bornes du cadre réel (h-44 = 176 px, densité ≤ 2, téléphone en paysage) : limite aussi le coût du décodage.
+  if (largeur < 50 || hauteur < 20 || largeur > 1800 || hauteur > 500) return { erreur: 'illisible' };
   const encre = mesurerEncre(octets, largeur, hauteur);
   if (encre === null) return { erreur: 'illisible' };
   if (encre.pixels < ENCRE_MIN_PIXELS || Math.max(encre.largeur, encre.hauteur) < ENCRE_MIN_ETENDUE) return { erreur: 'vide' };

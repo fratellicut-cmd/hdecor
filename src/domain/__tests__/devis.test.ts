@@ -162,6 +162,18 @@ describe('échéancier', () => {
     expect(controlerEcheancier([{ libelle: 'A', pourcentageBp: 1_000, declencheur: 'signature', datePrevue: '2026-11-01' }]).erreurs).toHaveLength(1);
     expect(controlerEcheancier([{ libelle: 'A', pourcentageBp: 1_000, declencheur: 'date', datePrevue: '2026-11-01' }]).erreurs).toEqual([]);
   });
+  it('échéance « à la signature » après une autre : refusée (montant de l’acompte exact)', () => {
+    const r = controlerEcheancier([
+      { libelle: 'Début', pourcentageBp: 5_000, declencheur: 'debut_travaux', datePrevue: null },
+      { libelle: 'Acompte', pourcentageBp: 5_000, declencheur: 'signature', datePrevue: null },
+    ]);
+    expect(r.erreurs.join()).toMatch(/viennent en premier/);
+    expect(controlerEcheancier([
+      { libelle: 'A1', pourcentageBp: 2_000, declencheur: 'signature', datePrevue: null },
+      { libelle: 'A2', pourcentageBp: 1_000, declencheur: 'signature', datePrevue: null },
+      { libelle: 'Solde', pourcentageBp: 7_000, declencheur: 'fin_travaux', datePrevue: null },
+    ]).erreurs).toEqual([]);
+  });
   it('échéance à 0 % refusée', () => {
     expect(controlerEcheancier([{ libelle: 'A', pourcentageBp: 0, declencheur: 'signature', datePrevue: null }]).erreurs).toHaveLength(1);
   });

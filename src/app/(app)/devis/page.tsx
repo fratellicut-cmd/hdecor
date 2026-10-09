@@ -28,6 +28,13 @@ export default async function PageDevis({ searchParams }: PageProps<'/devis'>) {
   const { data: clients } = idsClients.length
     ? await supabase.from('clients').select('id, type, nom, prenom, raison_sociale').in('id', idsClients)
     : { data: [] };
+  // « Envoyé » seulement si le devis a vraiment été transmis (envoi tracé ou lien créé).
+  const idsEnvoyes = (data ?? []).filter((d) => d.statut === 'envoye').map((d) => d.id!);
+  const { data: transmis } = idsEnvoyes.length
+    ? await supabase.from('envois').select('document_id').eq('document_type', 'devis').in('document_id', idsEnvoyes)
+    : { data: [] };
+  const statut = (d: NonNullable<typeof data>[number]) =>
+    d.statut_affiche === 'envoye' && !transmis?.some((e) => e.document_id === d.id) ? 'Émis, à envoyer' : libelleStatut(d.statut_affiche);
   const nomClient = (d: NonNullable<typeof data>[number]) => (d.copie_client as { nom_affiche?: string } | null)?.nom_affiche
     ?? (() => { const c = clients?.find((x) => x.id === d.client_id); return c ? (c.type === 'professionnel' && c.raison_sociale) || [c.prenom, c.nom].filter(Boolean).join(' ') : ''; })();
 
@@ -53,11 +60,11 @@ export default async function PageDevis({ searchParams }: PageProps<'/devis'>) {
           <li key={d.id}>
             <Link href={`/devis/${d.id}`} className="flex min-h-16 flex-col justify-center rounded-xl border border-trait bg-white px-4 py-2">
               <span className="flex flex-wrap items-baseline justify-between gap-2">
-                <span className="font-semibold">{d.numero ? `${d.numero}${d.version! > 1 ? ` v${d.version}` : ''}` : 'Brouillon'} · {nomClient(d)}</span>
+                <span className="font-semibold">{d.numero ?? 'Brouillon'}{d.version! > 1 ? ` v${d.version}` : ''} · {nomClient(d)}</span>
                 <span className="font-semibold">{formaterEuros(d.total_ttc_cents!)}</span>
               </span>
               <span className="text-sm text-encre-douce">
-                {[libelleStatut(d.statut_affiche), d.objet, d.date_emission ? `émis le ${formaterDate(d.date_emission)}` : null,
+                {[statut(d), d.objet, d.date_emission ? `émis le ${formaterDate(d.date_emission)}` : null,
                   d.statut === 'envoye' && d.valide_jusqu_au ? `valable jusqu’au ${formaterDate(d.valide_jusqu_au)}` : null].filter(Boolean).join(' · ')}
               </span>
             </Link>

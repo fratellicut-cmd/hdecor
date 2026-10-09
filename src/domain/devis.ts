@@ -177,6 +177,12 @@ export function controlerEcheancier(echeances: Echeance[]): { acompteBp: number;
   const erreurs: string[] = [];
   const total = echeances.reduce((a, e) => a + e.pourcentageBp, 0);
   if (total > 10_000) erreurs.push('L’échéancier dépasse 100 % du devis.');
+  // Montants calculés en cumulé dans l'ordre : l'acompte (échéances « à la signature ») doit venir en tête
+  // pour que son montant soit exactement celui de l'acompte du devis (R9).
+  const premiereAutre = echeances.findIndex((e) => e.declencheur !== 'signature');
+  if (premiereAutre >= 0 && echeances.slice(premiereAutre).some((e) => e.declencheur === 'signature')) {
+    erreurs.push('Les échéances « à la signature » viennent en premier : retirez les autres, ajoutez celle-ci, puis remettez-les.');
+  }
   for (const e of echeances) {
     if (e.pourcentageBp < 1 || e.pourcentageBp > 10_000) erreurs.push(`Échéance « ${e.libelle} » : de 0,01 à 100 %.`);
     if ((e.declencheur === 'date') !== (e.datePrevue !== null)) erreurs.push(`Échéance « ${e.libelle} » : une date seulement pour le déclencheur « à date ».`);

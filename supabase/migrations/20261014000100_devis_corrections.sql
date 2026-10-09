@@ -11,8 +11,16 @@ set search_path = ''
 as $$
 begin
   if old.statut = 'brouillon' and new.statut = 'envoye' then
-    if new.total_ht_cents <= 0 then
+    if coalesce(new.total_ht_cents, 0) <= 0 then
       raise exception 'Un devis à 0 € HT ne peut pas être émis.' using errcode = 'P0001';
+    end if;
+    -- Échéancier : les échéances « à la signature » en tête (montants calculés en cumulé, acompte exact).
+    if exists (
+         select 1 from public.devis_echeances s
+         where s.devis_id = new.id and s.declencheur = 'signature'
+           and exists (select 1 from public.devis_echeances a
+                       where a.devis_id = new.id and a.declencheur <> 'signature' and a.ordre < s.ordre)) then
+      raise exception 'Échéancier : les échéances à la signature doivent venir en premier.' using errcode = 'P0001';
     end if;
     if new.regime_tva = 'franchise' and exists (
          select 1 from public.devis_lignes l

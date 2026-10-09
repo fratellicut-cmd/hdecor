@@ -122,9 +122,17 @@ export async function signerParJeton(jeton: string, s: {
     p_options: s.options, p_ip: s.ip as unknown as string, p_user_agent: s.userAgent as unknown as string,
   });
   if (error) {
-    const certain = error.code === 'P0001' || error.code === 'P0002';
-    // Refus certain : le tracé n'est référencé nulle part. Sinon (réponse perdue) il est gardé.
-    if (certain) await retirer('signatures', d.organisationId, image).catch(() => undefined);
+    const certain = error.code === 'P0001' || error.code === 'P0002' || !!error.code?.startsWith('23');
+    if (!certain) {
+      // Réponse perdue : la signature a peut-être été enregistrée. On relit avant de répondre.
+      const { data: apres } = await clientAdmin().from('devis').select('statut')
+        .eq('id', d.devisId).eq('organisation_id', d.organisationId).maybeSingle();
+      if (apres?.statut === 'accepte') return { ok: true, devisId: d.devisId, organisationId: d.organisationId };
+      if (apres?.statut === 'envoye') await retirer('signatures', d.organisationId, image).catch(() => undefined);
+      return { ok: false, message: 'La signature n’a pas pu être enregistrée. Réessayez.' };
+    }
+    // Refus certain : le tracé n'est référencé nulle part.
+    await retirer('signatures', d.organisationId, image).catch(() => undefined);
     if (error.code === 'P0002') return { ok: false, message: 'Ce lien ne permet plus de signer (déjà utilisé, expiré ou révoqué).' };
     if (error.code === 'P0001') return { ok: false, message: messageSignature(error.message) };
     return { ok: false, message: 'La signature n’a pas pu être enregistrée. Réessayez.' };

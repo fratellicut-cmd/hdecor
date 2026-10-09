@@ -72,12 +72,17 @@ export default async function PageDevis({ params, searchParams }: PageProps<'/de
   const titre = d.numero ? `${d.numero}${d.version! > 1 ? ` (version ${d.version})` : ''}` : `Brouillon${d.version! > 1 ? ` de la version ${d.version}` : ''}`;
   const { data: alertes } = await sb.from('v_alertes_prix').select('marque, designation, contenance, unite_mesure, prix_achat_retenu_cents, prix_actuel_cents').eq('devis_id', d.id);
 
+  // « Envoyé » seulement quand le devis a vraiment été transmis (envoi tracé ou lien créé).
+  const { count: transmissions } = d.statut === 'envoye'
+    ? await sb.from('envois').select('id', { count: 'exact', head: true }).eq('document_type', 'devis').eq('document_id', d.id)
+    : { count: null };
+  const statutAffiche = d.statut_affiche === 'envoye' && !transmissions ? 'Émis, à envoyer' : LIBELLES_STATUT_DEVIS[d.statut_affiche!] ?? d.statut_affiche;
   const entete = (
     <div className="flex flex-col gap-1">
       <Link href="/devis" className="inline-flex min-h-12 items-center underline underline-offset-4">← Devis</Link>
       <h1 className="text-2xl font-bold">{titre}</h1>
       <p className="text-encre-douce">
-        {LIBELLES_STATUT_DEVIS[d.statut_affiche!] ?? d.statut_affiche} · {nomClient}
+        {statutAffiche} · {nomClient}
         {chantier ? <> · <Link href={`/chantiers/${chantier.id}`} className="inline-flex min-h-11 items-center underline underline-offset-4">{chantier.nom}</Link></> : null}
       </p>
     </div>
@@ -104,7 +109,7 @@ export default async function PageDevis({ params, searchParams }: PageProps<'/de
     });
     const nbACompleter = lignes.filter(aCompleter).length;
     const totalEcheances = echeances.reduce((a, e) => a + e.pourcentage_bp, 0);
-    const montants = totalEcheances <= 10_000 ? montantsEcheances(totaux.ventilation, echeances.map((e) => e.pourcentage_bp), d.regime_tva) : [];
+    const montants = totalEcheances <= 10_000 && !erreurTotaux ? montantsEcheances(totaux.ventilation, echeances.map((e) => e.pourcentage_bp), d.regime_tva) : [];
     return (
       <div className="flex flex-col gap-4">
         {sp.cree === '1' ? <EffacerBrouillon cles={['devis:nouveau']} /> : null}
@@ -182,7 +187,7 @@ export default async function PageDevis({ params, searchParams }: PageProps<'/de
                 <li key={e.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-trait p-3">
                   <span>
                     <strong>{e.libelle}</strong> : {formaterTaux(e.pourcentage_bp)} {e.declencheur === 'date' && e.date_prevue ? `le ${formaterDate(e.date_prevue)}` : DECLENCHEURS[e.declencheur]}
-                    {' '}({formaterEuros(montants[i]?.ttcCents ?? 0n)}{franchise ? '' : ' TTC'})
+                    {' '}({montants[i] ? `${formaterEuros(montants[i].ttcCents)}${franchise ? '' : ' TTC'}` : '— (échéancier à corriger)'})
                   </span>
                   <ActionConfirmee action={supprimerEcheance} champs={{ devis_id: d.id, id: e.id }} libelle="Retirer" variante="discret" />
                 </li>
