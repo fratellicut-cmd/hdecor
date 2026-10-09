@@ -14,6 +14,9 @@ describe('modèle de message', () => {
   it('valide : champs connus, lien présent', () => expect(s.safeParse(ok).success).toBe(true));
   it('champ inconnu refusé', () => expect(s.safeParse({ ...ok, sujet: 'Rappel {inconnu}' }).success).toBe(false));
   it('sans {lien} refusé', () => expect(s.safeParse({ ...ok, corps: 'Bonjour' }).success).toBe(false));
+  it('envoi de facture sans délai ni case « actif » (champs absents du formulaire) : accepté', () => {
+    expect(schemaModeleMessage('envoi_facture').safeParse({ sujet: 'Facture {numero}', corps: '{lien}' }).success).toBe(true);
+  });
   it('devis : pas de délai lu (réglé dans Conditions)', () => {
     const r = schemaModeleMessage('envoi_devis').safeParse({ sujet: 'Devis {numero}', corps: '{lien}', delai_jours: '3' });
     expect(r.success).toBe(true);

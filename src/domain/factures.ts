@@ -191,7 +191,7 @@ export function lignesAvoirMontant(netParTaux: Ventilation, montantTtcCents: big
     while (ttcDe(base, t) < cible) base += 1n;
     while (base > 0n && ttcDe(base, t) > cible) base -= 1n;
     if (ttcDe(base, t) !== cible) {
-      throw new ErreurFacture(`Avoir : ${formaterEuros(cible)} TTC n’est pas atteignable au centime près au taux de ${formaterTaux(t)} (arrondi de la TVA). Établissez-le en deux fois : un avoir de ${formaterEuros(montantTtcCents - 1n)}, puis un de 0,01 €.`);
+      throw new ErreurFacture(`Avoir : ${formaterEuros(cible)} TTC n’est pas atteignable au centime près au taux de ${formaterTaux(t)} (arrondi de la TVA). ${parts.length > 1 ? 'Essayez un montant voisin d’un centime, ou établissez-le en deux avoirs.' : `Établissez-le en deux fois : un avoir de ${formaterEuros(montantTtcCents - 1n)}, puis un de 0,01 €.`}`);
     }
     if (base > v.base_ht_cents) throw new ErreurFacture('Avoir : supérieur au net de la facture pour ce taux.');
     lignes.push({

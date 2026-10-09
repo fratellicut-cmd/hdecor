@@ -191,8 +191,10 @@ export async function pdfFacture(d: DonneesPdfFacture): Promise<Uint8Array> {
   if (avoirNet) {
     let detail = `dont HT ${formaterEuros(totaux.totalHtCents - d.deductions.reduce((a, x) => a + x.ht, 0n))}`;
     if (!sansTva) {
+      // Sans la ventilation des acomptes, la TVA nette serait fausse : jamais imprimée par défaut.
+      if ((d.ventilationsDeduites ?? []).length !== d.deductions.length) throw new Error('PDF d’avoir : ventilation des acomptes déduits manquante.');
       try {
-        const nets = netParTaux(totaux.ventilation, d.ventilationsDeduites ?? []);
+        const nets = netParTaux(totaux.ventilation, d.ventilationsDeduites!);
         detail += `, TVA ${nets.map((v) => `${formaterTaux(v.taux_bp)} : ${formaterEuros(v.tva_cents)}`).join(' ; ')}`;
       } catch {
         detail += `, TVA ${formaterEuros(totaux.totalTvaCents - d.deductions.reduce((a, x) => a + x.tva, 0n))}`;

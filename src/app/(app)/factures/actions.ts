@@ -658,6 +658,13 @@ export async function noterRelancePartagee(_: EtatFormulaire, fd: FormData): Pro
   const niveau = z.enum(NIVEAUX_RELANCE).safeParse(fd.get('niveau'));
   if (!id.success || !envoiId.success || !niveau.success) return { message: INCOMPLET };
   const sb = await clientServeur();
+  // Seul le rappel suivant (le premier niveau pas encore fait) peut être noté : jamais un 3e sans les précédents.
+  const { data: faits, error: eFaits } = await sb.from('envois').select('nature').eq('document_type', 'facture').eq('document_id', id.data).neq('statut', 'echec');
+  if (eFaits) return { message: 'Le rappel n’a pas pu être noté dans l’historique : réessayez.' };
+  const suivant = NIVEAUX_RELANCE.find((n) => !(faits ?? []).some((e) => e.nature === n));
+  if (niveau.data !== suivant) {
+    return (faits ?? []).some((e) => e.nature === niveau.data) ? { succes: `Rappel ${niveau.data.slice(-1)} déjà noté.` } : { message: 'Rappel hors ordre : rechargez la page.' };
+  }
   const { error } = await sb.from('envois').insert({
     id: envoiId.data, organisation_id: session.organisationId, document_type: 'facture', document_id: id.data, nature: niveau.data, canal: 'manuel',
   });
