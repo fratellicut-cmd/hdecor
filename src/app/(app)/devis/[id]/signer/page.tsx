@@ -4,7 +4,7 @@ import { notFound, redirect } from 'next/navigation';
 import { z } from 'zod';
 import { chargerDevis } from '@/lib/devis';
 import { signerSurPlace } from '../../actions';
-import { FormulaireSignature } from '@/components/devis/Signature';
+import { FormulaireSignature, NoticeSignature } from '@/components/devis/Signature';
 import { totalLigne } from '@/domain/devis';
 import { formaterEuros } from '@/domain/formats';
 
@@ -29,6 +29,7 @@ export default async function PageSigner({ params }: PageProps<'/devis/[id]/sign
       <p>Montant : <strong>{formaterEuros(d.total_ttc_cents!)}{d.regime_tva === 'franchise' ? '' : ' TTC'}</strong> (hors options). Tendez le téléphone au client.</p>
       <FormulaireSignature action={signerSurPlace} champs={{ id: id.data }} documentSha256={d.pdf_sha256!} options={options}
         nomParDefaut={client?.type === 'particulier' ? client.nom_affiche ?? '' : ''} lienPdf={`/devis/${id.data}/pdf`} />
+      <NoticeSignature entreprise={(d.copie_emetteur as { raison_sociale?: string } | null)?.raison_sociale ?? ''} />
     </div>
   );
 }

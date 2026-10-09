@@ -86,7 +86,7 @@ describe('devis en PDF : franchise, particulier, hors établissement (PDF réel)
     ['total ligne R4 (399,125)', '399,13 €'], ['remise de ligne', 'Remise 10 % incluse'], ['ligne remisée 20 × 15 × 0,9', '270,00 €'],
     ['sous-total', 'Sous-total séjour HT : 669,13 €'], ['total HT', 'Total HT 669,13 €'], ['net à payer', 'Net à payer 669,13 €'],
     ['mention de franchise', 'TVA non applicable, art. 293 B du CGI'], ['option', 'OPTION : Boiseries laquées'],
-    ['option hors total', 'non comprises dans le total'], ['début', 'Début des travaux : à partir du 02/11/2026.'],
+    ['option hors total', 'non comprises dans le total'], ['acompte hors options', 'calculé hors options'], ['début', 'Début des travaux : à partir du 02/11/2026.'],
     ['durée', 'Durée estimée des travaux : 3 jours.'], ['acompte : 30 % de 669,13 = 200,739 -> 200,74', 'Acompte : 30 % à la signature, soit 200,74 €'],
     ['solde', 'Solde : 70 % à la fin des travaux, soit 468,39 €'], ['conditions', 'Solde à réception de facture, par virement.'],
     ['décennale', 'Assurance décennale : Assureur fictif, contrat n° D-123, du 01/01/2026 au 31/12/2026, couverture : France métropolitaine'],
@@ -138,6 +138,24 @@ describe('devis en PDF : assujetti, professionnel, en établissement', async () 
   });
 });
 
+describe('échéancier : somme exacte du devis (en cumulé)', async () => {
+  const t = texteDuPdf(await pdfDevis({
+    ...base, regime: 'assujetti', emetteur: copieEmetteur({ ...params, regime_tva: 'assujetti', numero_tva_intra: 'FR00123456789' }, assurances, '2026-10-09'),
+    lignes: [l('Peinture', 10_000n, 100_001n, 1_000)],
+    echeances: [
+      { libelle: 'Acompte', pourcentageBp: 5_000, declencheur: 'signature', datePrevue: null },
+      { libelle: 'Solde', pourcentageBp: 5_000, declencheur: 'fin_travaux', datePrevue: null },
+    ],
+    acomptePctBp: 5_000, urlConfidentialite: 'https://exemple.test/confidentialite',
+  }));
+  it('1 100,01 € TTC = 550,01 + 550,00', () => {
+    expect(t).toContain('Total TTC 1 100,01 €');
+    expect(t).toContain('Acompte : 50 % à la signature, soit 550,01 € TTC');
+    expect(t).toContain('Solde : 50 % à la fin des travaux, soit 550,00 € TTC');
+  });
+  it('lien vers les données personnelles', () => expect(t).toContain('Données personnelles (utilisation, durée de conservation, droits) : https://exemple.test/confidentialite'));
+});
+
 describe('aperçu d’un brouillon', async () => {
   const t = texteDuPdf(await pdfDevis({ ...base, numero: null, brouillon: true }));
   it('sans numéro, avec filigrane', () => {
@@ -171,6 +189,7 @@ describe('PDF signé', async () => {
     expect(t).toContain('Certificat de signature électronique');
   });
   it.each([
+    ['libellé de l’empreinte', 'Empreinte SHA-256 du devis présenté au signataire'],
     ['signataire', 'Alice Martin'], ['horodatage (Paris)', '10/10/2026 à 10:30'], ['IP', '203.0.113.7'], ['méthode', 'à distance, par lien personnel'],
     ['empreinte', sha], ['options', 'Boiseries laquées'], ['montant', '769,13 € (TVA non applicable)'],
   ])('%s', (_, attendu) => expect(t).toContain(attendu));

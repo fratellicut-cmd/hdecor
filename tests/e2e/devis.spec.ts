@@ -81,7 +81,7 @@ async function completerEtEmettre(page: Page): Promise<string> {
   await page.getByLabel('Ou délai de début (texte)').fill('Sous 3 semaines après signature');
   await page.getByRole('button', { name: 'Enregistrer l’en-tête' }).click();
   await expect(page.getByText('En-tête enregistré.')).toBeVisible();
-  await page.getByRole('link', { name: 'Émettre le devis…' }).click();
+  await page.getByRole('link', { name: 'Émettre…' }).click();
   await expect(page.getByText('Toutes les mentions obligatoires sont renseignées.')).toBeVisible();
   await page.getByLabel(/J’émets ce devis avec ces textes/).check();
   await page.getByRole('button', { name: 'Émettre le devis' }).click();
@@ -171,7 +171,7 @@ test('devis : émission bloquée sans adresse client, signature sur place, nouve
   await page.getByLabel('Durée (jours)').fill('1');
   await page.getByRole('button', { name: 'Enregistrer l’en-tête' }).click();
   await expect(page.getByText('En-tête enregistré.')).toBeVisible();
-  await page.getByRole('link', { name: 'Émettre le devis…' }).click();
+  await page.getByRole('link', { name: 'Émettre…' }).click();
   await expect(page.getByText('Adresse du client incomplète.')).toBeVisible();
   await expect(page.getByText('Adresse du chantier incomplète.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Émettre le devis' })).toBeDisabled();
@@ -212,9 +212,23 @@ test('devis : émission bloquée sans adresse client, signature sur place, nouve
   // Signature sur place.
   await page.getByRole('link', { name: 'Faire signer sur place' }).click();
   await page.getByLabel('Nom et prénom du signataire').fill('Client Sur Place');
-  await page.getByLabel('Écrivez « Bon pour accord »').fill('Bon pour accord');
-  await signerDansLeCadre(page);
+  await page.getByLabel('Écrivez « Bon pour accord »').fill('Bon pour accord.');   // point final du clavier : accepté
+  // Un simple tapotement n'est pas une signature.
+  const cadre = page.getByRole('img', { name: 'Signature' });
+  await cadre.scrollIntoViewIfNeeded();
+  const b = (await cadre.boundingBox())!;
+  await page.mouse.click(b.x + 50, b.y + 50);
+  await expect(page.getByText('Signature trop courte : signez en entier dans le cadre.')).toBeVisible();
   await page.getByLabel('J’ai lu le devis et je l’accepte').check();
+  await page.getByRole('button', { name: 'Signer le devis' }).click();
+  await expect(page.getByText('Signez dans le cadre.').first()).toBeVisible();
+  // Téléphone tourné après avoir signé : cadre vidé, nouvelle signature demandée.
+  await signerDansLeCadre(page);
+  const taille = page.viewportSize()!;
+  await page.setViewportSize({ width: taille.height, height: taille.width });
+  await expect(page.getByText('Le téléphone a tourné : le cadre a été vidé, signez à nouveau.')).toBeVisible();
+  await page.setViewportSize(taille);
+  await signerDansLeCadre(page);
   await page.getByRole('button', { name: 'Signer le devis' }).click();
   await expect(page.getByText('Devis signé.')).toBeVisible();
   await expect(page.getByText(/Signé par Client Sur Place .*sur place/)).toBeVisible();

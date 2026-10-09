@@ -53,8 +53,6 @@ export type CopieClient = {
   raison_sociale: string | null;
   siret: string | null;
   tva_intra: string | null;
-  email: string | null;
-  telephone: string | null;
   adresse: Adresse;
 };
 
@@ -103,7 +101,8 @@ export type ClientSaisi = {
 export function copieClient(c: ClientSaisi): CopieClient {
   return {
     type: c.type, nom_affiche: nomAffiche(c), civilite: net(c.civilite), nom: c.nom, prenom: net(c.prenom), raison_sociale: net(c.raison_sociale),
-    siret: net(c.siret), tva_intra: net(c.tva_intra), email: net(c.email), telephone: net(c.telephone),
+    // Email et téléphone : non imprimés, donc non figés (minimisation).
+    siret: net(c.siret), tva_intra: net(c.tva_intra),
     adresse: { ligne1: net(c.fact_ligne1), ligne2: net(c.fact_ligne2), code_postal: net(c.fact_code_postal), ville: net(c.fact_ville), pays: net(c.fact_pays) },
   };
 }
@@ -188,6 +187,59 @@ export function controlerMentions(e: CopieEmetteur, c: CopieClient, ch: CopieCha
   return m;
 }
 
+export type TauxActif = { taux_bp: number; attestation_requise: boolean };
+export type LigneAControler = { designation: string; tauxTvaBp: number | null };
+
+/**
+ * Taux des lignes chiffrées : en franchise tout à 0 % ; assujetti, chaque taux
+ * doit être actif dans les Paramètres, et une ligne à 0 % sans mention qui la
+ * justifie (exonération, autoliquidation : À VÉRIFIER) bloque l'émission.
+ * Un taux réduit avec « attestation requise » est signalé : l'attestation du
+ * client n'est pas encore produite par l'application.
+ */
+export function controlerTaux(lignes: LigneAControler[], regime: Regime, actifs: TauxActif[]): Manque[] {
+  const m: Manque[] = [];
+  const noms = (f: (l: LigneAControler) => boolean) => lignes.filter(f).map((l) => `« ${l.designation} »`).join(', ');
+  if (regime === 'franchise') {
+    const avecTva = noms((l) => (l.tauxTvaBp ?? 0) !== 0);
+    if (avecTva) m.push({ cle: 'taux_franchise', message: `Franchise en base de TVA : lignes avec un taux de TVA à remettre à 0 % : ${avecTva}.`, ou: 'devis', bloquant: true });
+    return m;
+  }
+  const aZero = noms((l) => l.tauxTvaBp === 0);
+  if (aZero) {
+    m.push({ cle: 'taux_zero', message: `Lignes à 0 % sur un devis soumis à la TVA, sans mention qui le justifie (exonération, autoliquidation : À VÉRIFIER avec le comptable) : ${aZero}. Choisissez leur taux.`, ou: 'devis', bloquant: true });
+  }
+  const inactifs = noms((l) => l.tauxTvaBp !== 0 && !actifs.some((t) => t.taux_bp === l.tauxTvaBp));
+  if (inactifs) m.push({ cle: 'taux_inactif', message: `Taux de TVA absent des Paramètres (Taux de TVA) : ${inactifs}.`, ou: 'devis', bloquant: true });
+  const attestations = [...new Set(lignes.filter((l) => actifs.some((t) => t.taux_bp === l.tauxTvaBp && t.attestation_requise)).map((l) => l.tauxTvaBp!))];
+  if (attestations.length) {
+    m.push({ cle: 'attestation_tva', message: `Taux réduit ${attestations.map((t) => `${t / 100} %`.replace('.', ',')).join(' et ')} : une attestation du client est requise. L’application ne la produit pas encore (phase Documents) : faites-la remplir à part (conditions À VÉRIFIER).`, ou: 'devis', bloquant: false });
+  }
+  return m;
+}
+
+/**
+ * Contrat hors établissement avec un particulier : situations liées au délai
+ * de rétractation, SIGNALÉES (non bloquantes) tant que le comptable n'a pas
+ * confirmé la règle (cadrage §10, point 3) : paiement demandé à la signature,
+ * début des travaux pendant les 14 jours (demande expresse du client).
+ */
+export function signauxRetractation(o: {
+  retractation: boolean; dateEmission: string; dateDebutTravaux: string | null; acompteSignatureBp: number;
+}): Manque[] {
+  if (!o.retractation) return [];
+  const m: Manque[] = [];
+  if (o.acompteSignatureBp > 0) {
+    m.push({ cle: 'acompte_retractation', ou: 'devis', bloquant: false,
+      message: 'Paiement demandé à la signature d’un contrat signé chez le client : un encaissement pendant les premiers jours peut être interdit (À VÉRIFIER avec le comptable). Envisagez une échéance « début des travaux ».' });
+  }
+  if (o.dateDebutTravaux !== null && o.dateDebutTravaux < ajouterJours(o.dateEmission, 14)) {
+    m.push({ cle: 'debut_retractation', ou: 'devis', bloquant: false,
+      message: 'Début des travaux pendant le délai de rétractation de 14 jours : il faut la demande expresse et écrite du client (À VÉRIFIER avec le comptable).' });
+  }
+  return m;
+}
+
 /** Le formulaire de rétractation est joint : hors établissement ET client particulier. */
 export const avecRetractation = (horsEtablissement: boolean, client: CopieClient) => horsEtablissement && client.type === 'particulier';
 
@@ -196,6 +248,7 @@ export const avecRetractation = (horsEtablissement: boolean, client: CopieClient
 // --------------------------------------------------------------------------
 
 export const TEXTES_A_VERIFIER = {
+  mediateur: 'Phrase sur le recours au médiateur de la consommation',
   retractation: 'Information sur le droit de rétractation et formulaire type',
   devis_recu: 'Mention « Devis reçu avant l’exécution des travaux »',
   execution_anticipee: 'Demande de début des travaux pendant le délai de rétractation',

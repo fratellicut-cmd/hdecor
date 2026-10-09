@@ -52,3 +52,18 @@ Points relevés par les agents de contrôle, acceptés pour la phase en cours ma
 | Phase 3 (audits, boucle 1) | Formats usuels par type : choix d'achat, sans effet sur le statut « À VÉRIFIER » du référentiel (ce ne sont pas des données techniques). | Décision |
 | Phase 3 (audits, boucle 1) | Matière d'étape portée par un produit : consommation saisie « pertes comprises », sans marge de perte ajoutée (la marge s'applique au chemin « type de produit »). | Décision, à confirmer par Yorick |
 
+
+## Phase 4 (devis) : points reportés et questions ouvertes
+
+| Origine | Point | Phase / décideur |
+|---|---|---|
+| Phase 4 (audit légal, boucle 1) | Attestation de TVA à taux réduit (taux marqués « attestation requise ») : signalée à l'émission, PAS encore produite par l'application (formulaire et conditions À VÉRIFIER, point 12 du comptable). | 7 (documents) |
+| Phase 4 (audit légal, boucle 1) | Hors établissement : paiement demandé à la signature et début des travaux dans les 14 jours sont SIGNALÉS à l'émission (non bloquants) en attendant la règle confirmée (point 3 du comptable). Si l'interdiction d'encaisser s'applique, bloquer la facture d'acompte. | Comptable, puis 5 (factures) |
+| Phase 4 (audit légal, boucle 1) | À faire valider : coordonnées de l'assureur sur le devis ; RC Pro obligatoire ou non sur le devis d'un peintre ; point de départ du délai de rétractation (« à compter de la signature ») ; libellé « Net à payer » en franchise ; formulaire de rétractation conforme au modèle en vigueur ; mention de la version (« annule et remplace la version 1 ») ; prix des options en TTC pour un particulier. | Comptable |
+| Phase 4 (audit légal, boucle 1) | Textes légaux types (rétractation, exécution anticipée, « devis reçu avant l'exécution des travaux », médiateur) dans le code, marqués À VÉRIFIER et confirmés à chaque émission : les rendre modifiables dans les Paramètres après validation du comptable. | 7 (documents) |
+| Phase 4 (calculs, boucle 1) | Acompte et échéancier imprimés calculés hors options (précisé sur le PDF) ; la facture d'acompte devra partir du montant ACCEPTÉ (options retenues). | 5 (factures) |
+| Phase 4 (calculs, boucle 1) | Reprise d'un poste : PU arrondi au centime, écart de ±0,5 centime par m² avec le prix de vente interne. Jugé acceptable ; afficher l'écart à la reprise. | 8 (recette, confort) |
+| Phase 4 (sécurité, boucle 1) | Limitation du débit des pages publiques /d (par jeton et par IP) : à mettre en place côté hébergeur (Vercel Firewall) avant l'ouverture au public. Les envois refusés ne déposent plus de fichier. | Avant mise en production |
+| Phase 4 (sécurité, boucle 1) | Statut « consulté » : un antivirus de messagerie qui ouvre le lien le déclenche aussi. | Connu, sans action |
+| Phase 4 (test terrain, boucle 1) | Recherche dans la liste des devis ; versions remplacées masquées du filtre « Tous ». | 8 (recette) |
+| Phase 4 (relecture, boucle 1) | Taux de TVA proposé à la reprise des postes : le premier taux actif (souvent 20 %) ; à rendre paramétrable (taux par défaut des travaux). | 6 |

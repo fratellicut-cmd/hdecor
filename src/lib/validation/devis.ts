@@ -1,3 +1,4 @@
+import { inflateSync } from 'node:zlib';
 import { z } from 'zod';
 import { lireDecimal, lireQuantiteE4 } from '@/domain/saisie';
 import { caseACocher, dateFacultative, entier, montantObligatoire, pourcentage, texteFacultatif, texteObligatoire } from './champs';
@@ -74,7 +75,8 @@ export const schemaEcheance = z.object({
 
 /** Mention « Bon pour accord » exigée (casse et espaces libres). */
 export const MENTION_ACCORD = 'Bon pour accord';
-const mention = z.preprocess((v) => (typeof v === 'string' ? v.trim().replace(/\s+/g, ' ') : v),
+// Casse, espaces et ponctuation finale (« Bon pour accord. ») tolérés : le clavier du téléphone l'ajoute souvent.
+const mention = z.preprocess((v) => (typeof v === 'string' ? v.trim().replace(/\s+/g, ' ').replace(/\s*[.!,;]+$/, '') : v),
   z.string({ error: 'Écrivez « Bon pour accord ».' })
     .refine((s) => s.toLowerCase() === MENTION_ACCORD.toLowerCase(), { error: 'Écrivez exactement « Bon pour accord ».' }));
 
@@ -92,15 +94,89 @@ export const schemaSignature = z.object({
   options: z.array(z.uuid()).max(200).default([]),
 });
 
-/** PNG valide (signature binaire et en-tête IHDR), taille et dimensions bornées. */
-export function lirePngSignature(dataUrl: string): Uint8Array | null {
+/** Encre minimale d'une signature : assez de pixels tracés, sur une largeur ou une hauteur suffisante. */
+export const ENCRE_MIN_PIXELS = 300;
+export const ENCRE_MIN_ETENDUE = 40;
+
+export const MESSAGES_TRACE = {
+  illisible: 'Signature illisible : effacez et recommencez.',
+  vide: 'Signature vide ou trop courte : signez dans le cadre.',
+} as const;
+
+export type ResultatPng = { octets: Uint8Array } | { erreur: 'illisible' | 'vide' };
+
+/**
+ * Tracé de signature : PNG valide (signature binaire, IHDR, 8 bits, sans
+ * entrelacement), taille et dimensions bornées, et ENCRE réelle (un cadre
+ * blanc ou un simple point n'est pas une signature). Le PNG est décodé ici
+ * (zlib + filtres de lignes) : rien n'est confié au navigateur.
+ */
+export function lirePngSignature(dataUrl: string): ResultatPng {
   const octets = Buffer.from(dataUrl.slice('data:image/png;base64,'.length), 'base64');
   const SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-  if (octets.length < 33 || octets.length > TAILLE_MAX_SIGNATURE) return null;
-  if (!SIGNATURE.every((b, i) => octets[i] === b)) return null;
-  if (octets.toString('ascii', 12, 16) !== 'IHDR') return null;
+  if (octets.length < 33 || octets.length > TAILLE_MAX_SIGNATURE) return { erreur: 'illisible' };
+  if (!SIGNATURE.every((b, i) => octets[i] === b)) return { erreur: 'illisible' };
+  if (octets.toString('ascii', 12, 16) !== 'IHDR') return { erreur: 'illisible' };
   const largeur = octets.readUInt32BE(16);
   const hauteur = octets.readUInt32BE(20);
-  if (largeur < 50 || hauteur < 20 || largeur > 2000 || hauteur > 1000) return null;
-  return new Uint8Array(octets);
+  if (largeur < 50 || hauteur < 20 || largeur > 2000 || hauteur > 1000) return { erreur: 'illisible' };
+  const encre = mesurerEncre(octets, largeur, hauteur);
+  if (encre === null) return { erreur: 'illisible' };
+  if (encre.pixels < ENCRE_MIN_PIXELS || Math.max(encre.largeur, encre.hauteur) < ENCRE_MIN_ETENDUE) return { erreur: 'vide' };
+  return { octets: new Uint8Array(octets) };
+}
+
+const OCTETS_PAR_PIXEL: Record<number, number> = { 0: 1, 2: 3, 4: 2, 6: 4 };
+
+/** Pixels « encrés » (opaques et foncés) et étendue du tracé ; null si le PNG n'est pas décodable. */
+function mesurerEncre(png: Buffer, largeur: number, hauteur: number): { pixels: number; largeur: number; hauteur: number } | null {
+  const profondeur = png[24];
+  const couleur = png[25]!;
+  const entrelace = png[28];
+  const bpp = OCTETS_PAR_PIXEL[couleur];
+  if (profondeur !== 8 || entrelace !== 0 || !bpp) return null;
+  const morceaux: Buffer[] = [];
+  for (let i = 8; i + 8 <= png.length;) {
+    const n = png.readUInt32BE(i);
+    const type = png.toString('ascii', i + 4, i + 8);
+    if (i + 12 + n > png.length) return null;
+    if (type === 'IDAT') morceaux.push(png.subarray(i + 8, i + 8 + n));
+    if (type === 'IEND') break;
+    i += 12 + n;
+  }
+  let brut: Buffer;
+  try { brut = inflateSync(Buffer.concat(morceaux), { maxOutputLength: (largeur * bpp + 1) * hauteur }); } catch { return null; }
+  const ligne = largeur * bpp;
+  if (brut.length !== (ligne + 1) * hauteur) return null;
+  const courante = Buffer.alloc(ligne);
+  let precedente = Buffer.alloc(ligne);
+  let pixels = 0;
+  let xMin = largeur, xMax = -1, yMin = hauteur, yMax = -1;
+  for (let y = 0; y < hauteur; y++) {
+    const filtre = brut[y * (ligne + 1)];
+    const src = brut.subarray(y * (ligne + 1) + 1, (y + 1) * (ligne + 1));
+    for (let x = 0; x < ligne; x++) {
+      const a = x >= bpp ? courante[x - bpp]! : 0;
+      const b = precedente[x]!;
+      const c = x >= bpp ? precedente[x - bpp]! : 0;
+      let pred = 0;
+      if (filtre === 1) pred = a;
+      else if (filtre === 2) pred = b;
+      else if (filtre === 3) pred = (a + b) >> 1;
+      else if (filtre === 4) { const p = a + b - c; const pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c); pred = pa <= pb && pa <= pc ? a : pb <= pc ? b : c; }
+      else if (filtre !== 0) return null;
+      courante[x] = (src[x]! + pred) & 0xff;
+    }
+    for (let x = 0; x < largeur; x++) {
+      const o = x * bpp;
+      const gris = couleur === 0 || couleur === 4 ? courante[o]! : (courante[o]! + courante[o + 1]! + courante[o + 2]!) / 3;
+      const alpha = couleur === 4 ? courante[o + 1]! : couleur === 6 ? courante[o + 3]! : 255;
+      if (alpha > 64 && gris < 160) {
+        pixels++;
+        if (x < xMin) xMin = x; if (x > xMax) xMax = x; if (y < yMin) yMin = y; if (y > yMax) yMax = y;
+      }
+    }
+    precedente = Buffer.from(courante);
+  }
+  return { pixels, largeur: xMax < 0 ? 0 : xMax - xMin + 1, hauteur: yMax < 0 ? 0 : yMax - yMin + 1 };
 }

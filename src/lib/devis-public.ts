@@ -3,7 +3,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { clientAdmin } from '@/lib/supabase/admin';
 import { deposer, lire } from '@/lib/stockage';
 import { pdfDevisSigne, titreDevis } from '@/lib/pdf/devis';
-import { ajouterJours } from '@/domain/devis-document';
+import { ajouterJours, avecRetractation, type CopieClient } from '@/domain/devis-document';
+import { retirer } from '@/lib/stockage';
 import { totalLigne, type Regime } from '@/domain/devis';
 
 /**
@@ -31,7 +32,8 @@ export type DevisPublic = {
   totalTtcCents: bigint;
   totalHtCents: bigint;
   options: OptionPublique[];
-  horsEtablissement: boolean;
+  /** Rétractation applicable (hors établissement ET client particulier), comme sur le PDF. */
+  retractation: boolean;
   pdfSigneChemin: string | null;
 };
 
@@ -42,7 +44,7 @@ export async function devisParJeton(jeton: string): Promise<DevisPublic | null> 
   if (error || !data || typeof data !== 'object' || Array.isArray(data)) return null;
   const r = data as { devis_id: string; organisation_id: string; peut_signer: boolean };
   const [{ data: d }, { data: options }] = await Promise.all([
-    admin.from('devis').select('numero, version, statut, pdf_chemin, pdf_sha256, date_emission, validite_jours, regime_tva, total_ttc_cents, total_ht_cents, hors_etablissement, copie_emetteur, signature_id')
+    admin.from('devis').select('numero, version, statut, pdf_chemin, pdf_sha256, date_emission, validite_jours, regime_tva, total_ttc_cents, total_ht_cents, hors_etablissement, copie_emetteur, copie_client, signature_id')
       .eq('id', r.devis_id).eq('organisation_id', r.organisation_id).maybeSingle(),
     admin.from('devis_lignes').select('id, designation, description, quantite_e4, prix_unitaire_ht_cents, remise_bp')
       .eq('devis_id', r.devis_id).eq('organisation_id', r.organisation_id).eq('type', 'ligne').eq('optionnelle', true).order('ordre'),
@@ -60,7 +62,7 @@ export async function devisParJeton(jeton: string): Promise<DevisPublic | null> 
     entreprise: emetteur.raison_sociale ?? '', statut: d.statut, peutSigner: r.peut_signer,
     pdfChemin: d.pdf_chemin, pdfSha256: d.pdf_sha256, valideJusquAu: ajouterJours(d.date_emission, d.validite_jours),
     regime: d.regime_tva, totalTtcCents: BigInt(d.total_ttc_cents), totalHtCents: BigInt(d.total_ht_cents),
-    horsEtablissement: d.hors_etablissement, pdfSigneChemin,
+    retractation: avecRetractation(d.hors_etablissement, (d.copie_client ?? {}) as CopieClient), pdfSigneChemin,
     options: (options ?? []).map((o) => ({
       id: o.id, designation: o.designation, description: o.description,
       totalHtCents: totalLigne(BigInt(o.quantite_e4 ?? 0), BigInt(o.prix_unitaire_ht_cents ?? 0), o.remise_bp),
@@ -68,13 +70,34 @@ export async function devisParJeton(jeton: string): Promise<DevisPublic | null> 
   };
 }
 
-/** PDF (original, ou signé s'il existe et est demandé) d'un devis désigné par un jeton valide. */
+const sha256 = (o: Uint8Array) => createHash('sha256').update(o).digest('hex');
+
+/**
+ * PDF (original, ou signé s'il existe et est demandé) d'un devis désigné par
+ * un jeton valide. L'empreinte du fichier servi est RECALCULÉE et comparée à
+ * celle enregistrée : le client ne reçoit jamais un document différent de celui
+ * qu'il signe (sinon : refus, et l'incident est journalisé).
+ */
 export async function pdfParJeton(jeton: string, signe: boolean): Promise<{ octets: Uint8Array; nom: string } | null> {
   const d = await devisParJeton(jeton);
   if (!d) return null;
-  const chemin = signe && d.pdfSigneChemin ? d.pdfSigneChemin : d.pdfChemin;
-  const octets = await lire('documents', d.organisationId, chemin);
-  return octets ? { octets, nom: `${d.titre.replace(/[^A-Za-z0-9-]+/g, '-')}${signe && d.pdfSigneChemin ? '-signe' : ''}.pdf` } : null;
+  const versionSignee = signe && d.pdfSigneChemin;
+  const octets = await lire('documents', d.organisationId, versionSignee ? d.pdfSigneChemin! : d.pdfChemin);
+  if (!octets) return null;
+  const attendu = versionSignee ? await empreinteSignee(d.organisationId, d.devisId) : d.pdfSha256;
+  if (sha256(octets) !== attendu) {
+    console.error('Empreinte du PDF différente de celle enregistrée', d.devisId);
+    return null;
+  }
+  return { octets, nom: `${d.titre.replace(/[^A-Za-z0-9-]+/g, '-')}${versionSignee ? '-signe' : ''}.pdf` };
+}
+
+async function empreinteSignee(organisationId: string, devisId: string): Promise<string | null> {
+  const admin = clientAdmin();
+  const { data: d } = await admin.from('devis').select('signature_id').eq('id', devisId).eq('organisation_id', organisationId).maybeSingle();
+  if (!d?.signature_id) return null;
+  const { data: s } = await admin.from('signatures').select('pdf_signe_sha256').eq('id', d.signature_id).eq('organisation_id', organisationId).maybeSingle();
+  return s?.pdf_signe_sha256 ?? null;
 }
 
 /** Dépose le tracé de signature (PNG déjà contrôlé) ; renvoie son chemin. */
@@ -90,12 +113,18 @@ export async function signerParJeton(jeton: string, s: {
 }): Promise<{ ok: true; devisId: string; organisationId: string } | { ok: false; message: string }> {
   const d = await devisParJeton(jeton);
   if (!d || !d.peutSigner) return { ok: false, message: 'Ce lien ne permet plus de signer (déjà utilisé, expiré ou révoqué).' };
+  // Contrôles AVANT tout dépôt de fichier : un envoi refusé ne laisse rien dans le stockage.
+  if (s.documentSha256 !== d.pdfSha256) return { ok: false, message: messageSignature('ne correspond pas') };
+  if (s.options.some((o) => !d.options.some((x) => x.id === o))) return { ok: false, message: messageSignature('Option inconnue') };
   const image = await deposerTrace(d.organisationId, d.devisId, s.png);
   const { error } = await clientAdmin().rpc('signer_devis_par_jeton', {
     p_jeton: jeton, p_nom: s.nom, p_mention: s.mention, p_image_chemin: image, p_document_sha256: s.documentSha256,
     p_options: s.options, p_ip: s.ip as unknown as string, p_user_agent: s.userAgent as unknown as string,
   });
   if (error) {
+    const certain = error.code === 'P0001' || error.code === 'P0002';
+    // Refus certain : le tracé n'est référencé nulle part. Sinon (réponse perdue) il est gardé.
+    if (certain) await retirer('signatures', d.organisationId, image).catch(() => undefined);
     if (error.code === 'P0002') return { ok: false, message: 'Ce lien ne permet plus de signer (déjà utilisé, expiré ou révoqué).' };
     if (error.code === 'P0001') return { ok: false, message: messageSignature(error.message) };
     return { ok: false, message: 'La signature n’a pas pu être enregistrée. Réessayez.' };
@@ -142,6 +171,11 @@ export async function archiverPdfSigne(organisationId: string, devisId: string):
       : Promise.resolve({ data: [] as { id: string; designation: string }[] }),
   ]);
   if (!original || !trace) return false;
+  // Le devis archivé avec la signature est bien celui que le client a signé.
+  if (sha256(original) !== s.document_sha256) {
+    console.error('Archivage refusé : empreinte du PDF émis différente de celle signée', devisId);
+    return false;
+  }
   const octets = await pdfDevisSigne(original, titreDevis(d.numero, d.version), {
     methode: s.methode as 'sur_place' | 'lien', signataire: s.signataire_nom, mention: s.mention, signeLe: s.signe_le,
     ip: s.ip as string | null, userAgent: s.user_agent, documentSha256: s.document_sha256,
@@ -151,7 +185,7 @@ export async function archiverPdfSigne(organisationId: string, devisId: string):
   const chemin = `${organisationId}/devis/${devisId}/signe-${randomUUID()}.pdf`;
   await deposer('documents', organisationId, chemin, octets, 'application/pdf');
   const { data: maj, error } = await admin.from('signatures')
-    .update({ pdf_signe_chemin: chemin, pdf_signe_sha256: createHash('sha256').update(octets).digest('hex') })
+    .update({ pdf_signe_chemin: chemin, pdf_signe_sha256: sha256(octets) })
     .eq('id', s.id).eq('organisation_id', organisationId).is('pdf_signe_sha256', null).select('id');
   return !error && (maj?.length ?? 0) === 1;
 }

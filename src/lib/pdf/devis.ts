@@ -1,6 +1,6 @@
 import 'server-only';
 import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
-import { acompte, sousTotaux, totalLigne, totauxDevis, type Echeance, type LigneDevis, type Regime } from '@/domain/devis';
+import { acompte, montantsEcheances, sousTotaux, totalLigne, totauxDevis, type Echeance, type LigneDevis, type Regime } from '@/domain/devis';
 import {
   avecRetractation, EXECUTION_ANTICIPEE, formaterJours, formaterQuantiteE4, formulaireRetractation, identiteEmetteur, informationRetractation,
   lignesAdresse, MENTION_DEVIS_RECU, nomAvecForme, texteAssurance, UNITES, ajouterJours,
@@ -33,6 +33,8 @@ export type DonneesPdfDevis = {
   echeances: Echeance[];
   acomptePctBp: number;
   logo?: { octets: Uint8Array; type: 'png' | 'jpg' } | null;
+  /** Adresse de la page « données personnelles » (information des clients). */
+  urlConfidentialite?: string | null;
 };
 
 const DECLENCHEURS: Record<Echeance['declencheur'], string> = {
@@ -206,17 +208,19 @@ export async function pdfDevis(d: DonneesPdfDevis): Promise<Uint8Array> {
   const debut = d.dateDebutTravaux ? `à partir du ${formaterDate(d.dateDebutTravaux)}` : d.delaiDebutTexte;
   if (debut) ecrire(c, `Début des travaux : ${debut}.`, { taille: 9.5 });
   if (d.dureeEstimeeJours !== null) ecrire(c, `Durée estimée des travaux : ${formaterJours(d.dureeEstimeeJours)}.`, { taille: 9.5 });
+  const horsOptions = options.length ? ' (calculé hors options ; recalculé sur le montant accepté si des options sont retenues)' : '';
   if (d.echeances.length) {
-    ecrire(c, 'Échéancier de paiement :', { taille: 9.5 });
-    const parTaux = totaux.ventilation;
-    for (const e of d.echeances) {
-      const m = acompte(parTaux, e.pourcentageBp, d.regime);
+    ecrire(c, `Échéancier de paiement${horsOptions} :`, { taille: 9.5 });
+    // Montants en cumulé : à 100 %, la somme des échéances est exactement le total du devis.
+    const montants = montantsEcheances(totaux.ventilation, d.echeances.map((e) => e.pourcentageBp), d.regime);
+    for (const [i, e] of d.echeances.entries()) {
+      const m = montants[i]!;
       const quand = e.declencheur === 'date' && e.datePrevue ? `le ${formaterDate(e.datePrevue)}` : DECLENCHEURS[e.declencheur];
       ecrire(c, `- ${e.libelle} : ${formaterTaux(e.pourcentageBp)} ${quand}, soit ${formaterEuros(m.ttcCents)}${franchise ? '' : ' TTC'}`, { taille: 9.5, x: MARGE + 8 });
     }
   } else if (d.acomptePctBp > 0) {
     const m = acompte(totaux.ventilation, d.acomptePctBp, d.regime);
-    ecrire(c, `Acompte à la signature : ${formaterTaux(d.acomptePctBp)}, soit ${formaterEuros(m.ttcCents)}${franchise ? '' : ' TTC'}.`, { taille: 9.5 });
+    ecrire(c, `Acompte à la signature : ${formaterTaux(d.acomptePctBp)}, soit ${formaterEuros(m.ttcCents)}${franchise ? '' : ' TTC'}${horsOptions}.`, { taille: 9.5 });
   }
   if (d.conditionsPaiement) ecrire(c, `Conditions de paiement : ${d.conditionsPaiement}`, { taille: 9.5 });
   if (d.notesClient) { c.y -= 2; ecrire(c, d.notesClient, { taille: 9.5 }); }
@@ -238,6 +242,7 @@ export async function pdfDevis(d: DonneesPdfDevis): Promise<Uint8Array> {
     ecrire(c, EXECUTION_ANTICIPEE, { taille: 8.5 });
   }
   if (d.emetteur.mentions_pied) { c.y -= 4; ecrire(c, d.emetteur.mentions_pied, { taille: 8.5, couleur: GRIS }); }
+  if (d.urlConfidentialite) ecrire(c, `Données personnelles (utilisation, durée de conservation, droits) : ${d.urlConfidentialite}`, { taille: 8, couleur: GRIS });
   c.y -= 8;
 
   // ---- Bon pour accord
@@ -315,7 +320,7 @@ export async function pdfDevisSigne(original: Uint8Array, titre: string, s: Sign
     ['Options retenues', s.options.length ? s.options.join(', ') : 'aucune'],
     ['Montant accepté', s.regime === 'franchise' ? `${formaterEuros(s.totalAccepte.ttcCents)} (TVA non applicable)`
       : `${formaterEuros(s.totalAccepte.htCents)} HT, ${formaterEuros(s.totalAccepte.tvaCents)} de TVA, ${formaterEuros(s.totalAccepte.ttcCents)} TTC`],
-    ['Empreinte SHA-256 du devis signé', s.documentSha256],
+    ['Empreinte SHA-256 du devis présenté au signataire', s.documentSha256],
   ];
   for (const [k, v] of champs) {
     ecrire(c, k, { gras: true, taille: 9.5 });

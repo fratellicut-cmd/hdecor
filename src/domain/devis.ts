@@ -95,6 +95,12 @@ export type TotauxDevis = {
   optionsHtCents: bigint;
 };
 
+/**
+ * Plafond d'un devis (lignes fermes + options) : 10 000 000 € HT. Garde la
+ * ventilation en base (bigint) loin du débordement, quelle que soit la remise.
+ */
+export const TOTAL_MAX_CENTS = 1_000_000_000n;
+
 export function totauxDevis(lignes: LigneDevis[], remiseGlobaleBp: number, regime: Regime, options: Set<string> | 'aucune' = 'aucune'): TotauxDevis {
   if (regime === 'franchise' && lignes.some((l) => l.type === 'ligne' && l.tauxTvaBp !== null && l.tauxTvaBp !== 0)) {
     throw new ErreurDevis('Franchise en base de TVA : toutes les lignes sont à 0 %.');
@@ -106,6 +112,10 @@ export function totauxDevis(lignes: LigneDevis[], remiseGlobaleBp: number, regim
   const sommeLignes = comptees.reduce((a, l) => a + l.total, 0n);
   const optionsHt = lignes.filter((l) => l.type === 'ligne' && l.optionnelle && l.quantiteE4 !== null && l.prixUnitaireCents !== null)
     .reduce((a, l) => a + totalLigne(l.quantiteE4!, l.prixUnitaireCents!, l.remiseBp), 0n);
+  if (lignes.filter((l) => l.type === 'ligne' && !l.optionnelle).reduce((a, l) => a + (l.quantiteE4 !== null && l.prixUnitaireCents !== null
+    ? totalLigne(l.quantiteE4, l.prixUnitaireCents, l.remiseBp) : 0n), 0n) + optionsHt > TOTAL_MAX_CENTS) {
+    throw new ErreurDevis('Devis trop élevé : 10 000 000 € HT au plus (options comprises).');
+  }
   return {
     ventilation, totalHtCents: totalHt, totalTvaCents: totalTva, totalTtcCents: totalHt + totalTva,
     sommeLignesCents: sommeLignes, remiseGlobaleCents: sommeLignes - totalHt, optionsHtCents: optionsHt,
@@ -139,6 +149,25 @@ export function acompte(ventilation: Ventilation, pourcentageBp: number, regime:
     tva += regime === 'franchise' ? 0n : arrondi(base * BigInt(v.taux_bp), 10_000n);
   }
   return { htCents: ht, tvaCents: tva, ttcCents: ht + tva };
+}
+
+/**
+ * Montants de l'échéancier, calculés en CUMULÉ taux par taux : la première
+ * échéance suit R9 (comme l'acompte) et, à 100 %, la somme des échéances est
+ * exactement le HT, la TVA et le TTC du devis (aucun centime de trop).
+ * Échéance k = montant(cumul k) − montant(cumul k−1).
+ */
+export function montantsEcheances(ventilation: Ventilation, pourcentagesBp: number[], regime: Regime) {
+  let cumul = 0;
+  let precedent = { htCents: 0n, tvaCents: 0n, ttcCents: 0n };
+  return pourcentagesBp.map((p) => {
+    cumul += p;
+    if (cumul > 10_000) throw new ErreurDevis('L’échéancier dépasse 100 % du devis.');
+    const total = acompte(ventilation, cumul, regime);
+    const m = { htCents: total.htCents - precedent.htCents, tvaCents: total.tvaCents - precedent.tvaCents, ttcCents: total.ttcCents - precedent.ttcCents };
+    precedent = total;
+    return m;
+  });
 }
 
 export type Echeance = { libelle: string; pourcentageBp: number; declencheur: 'signature' | 'debut_travaux' | 'mi_chantier' | 'fin_travaux' | 'date'; datePrevue: string | null };

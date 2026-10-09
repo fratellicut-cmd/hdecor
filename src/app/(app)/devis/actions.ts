@@ -1,7 +1,7 @@
 'use server';
 
 import { createHash, randomUUID } from 'node:crypto';
-import { redirect } from 'next/navigation';
+import { redirect, unstable_rethrow } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { verifierSession } from '@/lib/dal';
@@ -9,17 +9,18 @@ import { clientServeur } from '@/lib/supabase/serveur';
 import type { Insertion } from '@/lib/supabase/types';
 import { erreursParChamp, valeursTexte, type EtatFormulaire } from '@/lib/etat-formulaire';
 import {
-  chargerDevis, donneesPdf, posteAReprendre, preparerEmission, recalculerTotaux,
+  chargerDevis, donneesPdf, ErreurPreparation, ligneDomaine, posteAReprendre, preparerEmission, recalculerTotaux, type ResultatRecalcul,
 } from '@/lib/devis';
 import { calculerChantier } from '@/lib/chantiers';
 import { tauxProposes } from '@/lib/taux';
 import { pdfDevis } from '@/lib/pdf/devis';
 import { deposer, retirer } from '@/lib/stockage';
 import { archiverPdfSigne, deposerTrace, messageSignature } from '@/lib/devis-public';
+import { MESSAGES_TRACE } from '@/lib/validation/devis';
 import { emailConfigure, envoyerEmail } from '@/lib/email';
 import { expirationLien, nouveauJeton, urlPublique } from '@/lib/liens';
 import { ipEtNavigateur } from '@/lib/requete';
-import { controlerEcheancier, remplirModele, repriseDePoste, totalLigne } from '@/domain/devis';
+import { controlerEcheancier, ErreurDevis, remplirModele, repriseDePoste, TOTAL_MAX_CENTS, totalLigne } from '@/domain/devis';
 import { formaterDate } from '@/domain/formats';
 import { lirePngSignature, schemaEcheance, schemaEntete, schemaLigne, schemaNouveauDevis, schemaSignature } from '@/lib/validation/devis';
 
@@ -85,11 +86,23 @@ async function lignesDesPostes(chantierId: string, devisId: string, organisation
   return { lignes, ignores: calcul.postes.length - lignes.length, achats };
 }
 
-/** Remplace les achats retenus du brouillon par ceux de la dernière reprise. */
-async function remplacerAchats(sb: Awaited<ReturnType<typeof clientServeur>>, devisId: string, achats: Insertion<'devis_achats'>[]) {
-  if (!achats.length) return;
-  await sb.from('devis_achats').delete().eq('devis_id', devisId);
-  await sb.from('devis_achats').insert(achats);
+/** Remplace les achats retenus du brouillon par ceux de la dernière reprise (une transaction, en base). */
+async function remplacerAchats(sb: Awaited<ReturnType<typeof clientServeur>>, devisId: string, achats: Insertion<'devis_achats'>[]): Promise<boolean> {
+  if (!achats.length) return true;
+  const { error } = await sb.rpc('remplacer_achats_devis', {
+    p_devis_id: devisId,
+    p_achats: achats.map((a) => ({ conditionnement_id: a.conditionnement_id, nombre: a.nombre, prix_achat_retenu_cents: a.prix_achat_retenu_cents ?? null })),
+  });
+  if (error) console.error('Achats retenus non enregistrés', error.code);
+  return !error;
+}
+
+/** Message de l'échec d'un recalcul des totaux (null : tout va bien ou lignes à corriger, signalées sur la page). */
+function messageRecalcul(r: ResultatRecalcul): string | null {
+  if (r === 'ok' || r === 'a_corriger') return null;
+  if (r === 'fige') return FIGE;
+  if (r === 'introuvable') return 'Devis introuvable.';
+  return 'Les totaux n’ont pas pu être recalculés. Rechargez la page et réessayez.';
 }
 
 export async function creerDevis(_: EtatFormulaire, fd: FormData): Promise<EtatFormulaire> {
@@ -121,7 +134,11 @@ export async function creerDevis(_: EtatFormulaire, fd: FormData): Promise<EtatF
     conditions_paiement: `Solde à réception de la facture, payable sous ${p.delai_paiement_jours} jours.`,
     hors_etablissement: true,
   });
-  if (error) return { message: messageErreur(error), valeurs: valeursTexte(fd) };
+  if (error) {
+    // Deux envois du même formulaire (réponse perdue) : le premier a créé le devis.
+    if (error.code === '23505') redirect(`/devis/${nouveau.data}`);
+    return { message: messageErreur(error), valeurs: valeursTexte(fd) };
+  }
 
   if (lu.data.importer_postes) {
     try {
@@ -129,12 +146,16 @@ export async function creerDevis(_: EtatFormulaire, fd: FormData): Promise<EtatF
       if (lignes.length) {
         const { error: e } = await sb.from('devis_lignes').insert(lignes);
         if (e) redirect(`/devis/${nouveau.data}?reprise=echec`);
-        await recalculerTotaux(sb, nouveau.data);
-        await remplacerAchats(sb, nouveau.data, achats);
+        const r = await recalculerTotaux(sb, nouveau.data);
+        if (r === 'echec') redirect(`/devis/${nouveau.data}?reprise=totaux`);
+        if (!(await remplacerAchats(sb, nouveau.data, achats))) redirect(`/devis/${nouveau.data}?cree=1&achats=echec`);
       }
     } catch (e) {
       if (e instanceof Error && e.message.startsWith('Aucun taux')) redirect(`/devis/${nouveau.data}?reprise=taux`);
-      throw e;
+      unstable_rethrow(e);
+      // Le brouillon existe : on y va, la reprise peut être relancée depuis le devis.
+      console.error('Reprise des postes', e instanceof Error ? e.message : e);
+      redirect(`/devis/${nouveau.data}?reprise=echec`);
     }
   }
   revalidatePath('/devis');
@@ -161,9 +182,11 @@ export async function importerPostes(_: EtatFormulaire, fd: FormData): Promise<E
   if (!res.lignes.length) return { succes: res.ignores ? 'Tous les postes du chantier sont déjà repris dans ce devis.' : 'Aucun poste de peinture sur ce chantier.' };
   const { error } = await sb.from('devis_lignes').insert(res.lignes);
   if (error) return { message: messageErreur(error) };
-  await recalculerTotaux(sb, id.data);
-  await remplacerAchats(sb, id.data, res.achats);
+  const recalcul = messageRecalcul(await recalculerTotaux(sb, id.data));
+  const achatsOk = await remplacerAchats(sb, id.data, res.achats);
   revalider(id.data);
+  if (recalcul) return { message: recalcul };
+  if (!achatsOk) return { message: 'Postes repris, mais les achats retenus (alerte de prix) n’ont pas été enregistrés : relancez la reprise.' };
   const n = res.lignes.length;
   return { succes: `${n} poste${n > 1 ? 's' : ''} repris${res.ignores ? ` (${res.ignores} déjà présent${res.ignores > 1 ? 's' : ''}, non dupliqué${res.ignores > 1 ? 's' : ''})` : ''}. Vérifiez chaque prix et le taux de TVA.` };
 }
@@ -188,9 +211,9 @@ export async function enregistrerEntete(_: EtatFormulaire, fd: FormData): Promis
     : lu.data;
   const { error } = await sb.from('devis').update(valeurs).eq('id', id.data);
   if (error) return { message: messageErreur(error), valeurs: valeursTexte(fd) };
-  if (!(await recalculerTotaux(sb, id.data))) return { message: ECHEC };
+  const recalcul = messageRecalcul(await recalculerTotaux(sb, id.data));
   revalider(id.data);
-  return { succes: 'En-tête enregistré.' };
+  return recalcul ? { message: recalcul } : { succes: 'En-tête enregistré.' };
 }
 
 export async function enregistrerLigne(_: EtatFormulaire, fd: FormData): Promise<EtatFormulaire> {
@@ -219,15 +242,25 @@ export async function enregistrerLigne(_: EtatFormulaire, fd: FormData): Promise
     remise_bp: 0, taux_tva_bp: null, optionnelle: false, total_ht_cents: null,
   };
 
+  // Plafond du devis (options comprises) vérifié AVANT d'enregistrer.
   const ligneId = fd.get('id');
+  if (l.type === 'ligne') {
+    const { data: autres } = await sb.from('devis_lignes').select('*').eq('devis_id', devisId.data);
+    const simulees = (autres ?? []).filter((x) => x.id !== ligneId).map(ligneDomaine);
+    simulees.push({ type: 'ligne', designation: l.designation, quantiteE4: BigInt(l.quantite_e4), unite: l.unite,
+      prixUnitaireCents: BigInt(l.prix_unitaire_ht_cents), remiseBp: l.remise_bp, tauxTvaBp: l.taux_tva_bp, optionnelle: l.optionnelle });
+    const limite = simulees.reduce((a, x) => a + (x.type === 'ligne' && x.quantiteE4 !== null && x.prixUnitaireCents !== null
+      ? totalLigne(x.quantiteE4, x.prixUnitaireCents, x.remiseBp) : 0n), 0n);
+    if (limite > TOTAL_MAX_CENTS) return { message: 'Devis trop élevé : 10 000 000 € HT au plus (options comprises).', valeurs: valeursTexte(fd) };
+  }
   if (ligneId) {
     const lid = identifiant.safeParse(ligneId);
     if (!lid.success) return { message: 'Ligne introuvable.' };
     const { data: avant } = await sb.from('devis_lignes').select('origine').eq('id', lid.data).eq('devis_id', devisId.data).maybeSingle();
     if (!avant) return { message: 'Ligne introuvable.' };
-    // Prix saisi à la main : la ligne reprise n'est plus « à compléter ».
+    // Prix saisi à la main (non nul) : la ligne reprise n'est plus « à compléter ».
     const origine = avant.origine && typeof avant.origine === 'object' && !Array.isArray(avant.origine)
-      ? { ...avant.origine, a_completer: false } : avant.origine;
+      ? { ...avant.origine, a_completer: l.type === 'ligne' && l.prix_unitaire_ht_cents === 0 && avant.origine.a_completer === true } : avant.origine;
     const { error } = await sb.from('devis_lignes').update({ ...colonnes, origine }).eq('id', lid.data).eq('devis_id', devisId.data);
     if (error) return { message: messageErreur(error), valeurs: valeursTexte(fd) };
   } else {
@@ -242,9 +275,9 @@ export async function enregistrerLigne(_: EtatFormulaire, fd: FormData): Promise
     }
     if (error) return { message: messageErreur(error), valeurs: valeursTexte(fd) };
   }
-  if (!(await recalculerTotaux(sb, devisId.data))) return { message: ECHEC };
+  const recalcul = messageRecalcul(await recalculerTotaux(sb, devisId.data));
   revalider(devisId.data);
-  return { succes: ligneId ? 'Ligne modifiée.' : 'Ligne ajoutée.' };
+  return recalcul ? { message: recalcul } : { succes: ligneId ? 'Ligne modifiée.' : 'Ligne ajoutée.' };
 }
 
 export async function supprimerLigne(_: EtatFormulaire, fd: FormData): Promise<EtatFormulaire> {
@@ -256,9 +289,9 @@ export async function supprimerLigne(_: EtatFormulaire, fd: FormData): Promise<E
   const { data, error } = await sb.from('devis_lignes').delete().eq('id', id.data).eq('devis_id', devisId.data).select('id');
   if (error) return { message: messageErreur(error) };
   if (!data?.length) return { message: 'Ligne déjà supprimée.' };
-  await recalculerTotaux(sb, devisId.data);
+  const recalcul = messageRecalcul(await recalculerTotaux(sb, devisId.data));
   revalider(devisId.data);
-  return { succes: 'Ligne supprimée.' };
+  return recalcul ? { message: recalcul } : { succes: 'Ligne supprimée.' };
 }
 
 export async function deplacerLigne(_: EtatFormulaire, fd: FormData): Promise<EtatFormulaire> {
@@ -274,10 +307,20 @@ export async function deplacerLigne(_: EtatFormulaire, fd: FormData): Promise<Et
   return {};
 }
 
-async function synchroniserAcompte(sb: Awaited<ReturnType<typeof clientServeur>>, devisId: string) {
-  const { data } = await sb.from('devis_echeances').select('pourcentage_bp, declencheur').eq('devis_id', devisId);
-  const acompte = (data ?? []).filter((e) => e.declencheur === 'signature').reduce((a, e) => a + e.pourcentage_bp, 0);
-  await sb.from('devis').update({ acompte_pct_bp: acompte }).eq('id', devisId);
+/**
+ * Acompte du devis = échéances « à la signature » (la base l'exige). Sans
+ * échéancier, retour à l'acompte par défaut des Paramètres. Renvoie un message
+ * en cas d'échec (sinon l'émission serait refusée sans explication).
+ */
+async function synchroniserAcompte(sb: Awaited<ReturnType<typeof clientServeur>>, devisId: string, organisationId: string): Promise<string | null> {
+  const [{ data, error }, { data: p }] = await Promise.all([
+    sb.from('devis_echeances').select('pourcentage_bp, declencheur').eq('devis_id', devisId),
+    sb.from('parametres_entreprise').select('acompte_pct_defaut_bp').eq('organisation_id', organisationId).single(),
+  ]);
+  if (error || !p) return 'L’acompte n’a pas pu être mis à jour : rechargez la page et réessayez.';
+  const acompte = data?.length ? data.filter((e) => e.declencheur === 'signature').reduce((a, e) => a + e.pourcentage_bp, 0) : p.acompte_pct_defaut_bp;
+  const { error: e2 } = await sb.from('devis').update({ acompte_pct_bp: acompte }).eq('id', devisId);
+  return e2 ? 'L’acompte n’a pas pu être mis à jour : rechargez la page et réessayez.' : null;
 }
 
 export async function ajouterEcheance(_: EtatFormulaire, fd: FormData): Promise<EtatFormulaire> {
@@ -301,22 +344,22 @@ export async function ajouterEcheance(_: EtatFormulaire, fd: FormData): Promise<
     ordre: (existantes?.at(-1)?.ordre ?? 0) + 1,
   });
   if (error) return { message: messageErreur(error), valeurs: valeursTexte(fd) };
-  await synchroniserAcompte(sb, devisId.data);
+  const probleme = await synchroniserAcompte(sb, devisId.data, session.organisationId);
   revalider(devisId.data);
-  return { succes: 'Échéance ajoutée.' };
+  return probleme ? { message: probleme } : { succes: 'Échéance ajoutée.' };
 }
 
 export async function supprimerEcheance(_: EtatFormulaire, fd: FormData): Promise<EtatFormulaire> {
-  await verifierSession();
+  const session = await verifierSession();
   const devisId = idDe(fd, 'devis_id');
   const id = idDe(fd, 'id');
   if (!devisId.success || !id.success) return { message: INCOMPLET };
   const sb = await clientServeur();
   const { error } = await sb.from('devis_echeances').delete().eq('id', id.data).eq('devis_id', devisId.data);
   if (error) return { message: messageErreur(error) };
-  await synchroniserAcompte(sb, devisId.data);
+  const probleme = await synchroniserAcompte(sb, devisId.data, session.organisationId);
   revalider(devisId.data);
-  return { succes: 'Échéance retirée.' };
+  return probleme ? { message: probleme } : { succes: 'Échéance retirée.' };
 }
 
 export async function supprimerBrouillon(_: EtatFormulaire, fd: FormData): Promise<EtatFormulaire> {
@@ -335,12 +378,19 @@ export async function supprimerBrouillon(_: EtatFormulaire, fd: FormData): Promi
 // Émission
 // --------------------------------------------------------------------------
 
+/** Erreur certaine de la base (refus métier) : rien n'a été enregistré. Sinon (réseau, réponse perdue) : on ne sait pas. */
+const refusCertain = (code: string | undefined) => code === 'HD001' || code === 'P0001' || code === 'P0002' || !!code?.startsWith('23');
+
 export async function emettreDevis(_: EtatFormulaire, fd: FormData): Promise<EtatFormulaire> {
   const session = await verifierSession();
   const id = idDe(fd, 'id');
   if (!id.success) return { message: INCOMPLET };
+  if (fd.get('textes_confirmes') !== 'on') return { message: 'Cochez la case : textes légaux À VÉRIFIER par le comptable.' };
   const sb = await clientServeur();
-  if (!(await recalculerTotaux(sb, id.data))) return { message: FIGE };
+  const recalcul = await recalculerTotaux(sb, id.data);
+  if (recalcul === 'fige') redirect(`/devis/${id.data}`);
+  const probleme = messageRecalcul(recalcul);
+  if (probleme) return { message: probleme };
 
   for (let essai = 0; essai < 3; essai++) {
     const c = await chargerDevis(id.data, sb);
@@ -349,14 +399,20 @@ export async function emettreDevis(_: EtatFormulaire, fd: FormData): Promise<Eta
     const { data: prev, error: ePrev } = await sb.rpc('numero_devis_previsionnel', { p_devis_id: id.data });
     if (ePrev || !prev) return { message: ECHEC };
     const { numero, date_emission: date } = prev as { numero: string; date_emission: string };
-    const prep = await preparerEmission(sb, c, date);
-    const bloquants = prep.manques.filter((m) => m.bloquant);
-    if (bloquants.length) return { message: `Émission impossible : ${bloquants.map((m) => m.message).join(' ')}` };
-    if (prep.aCompleter.length) return { message: `Prix à compléter : ${prep.aCompleter.join(', ')}.` };
-    if (!c.lignes.some((l) => l.type === 'ligne' && !l.optionnelle)) return { message: 'Ajoutez au moins une ligne chiffrée (hors option).' };
-    if (fd.get('textes_confirmes') !== 'on') return { message: 'Cochez la case : textes légaux À VÉRIFIER par le comptable.' };
-
-    const octets = await pdfDevis(donneesPdf(c, prep, { numero, dateEmission: date, brouillon: false }));
+    let octets: Uint8Array;
+    let prep;
+    try {
+      prep = await preparerEmission(sb, c, date);
+      const bloquants = prep.manques.filter((m) => m.bloquant);
+      if (bloquants.length) return { message: `Émission impossible : ${bloquants.map((m) => m.message).join(' ')}` };
+      if (prep.aCompleter.length) return { message: `Prix à compléter : ${prep.aCompleter.join(', ')}.` };
+      if (!c.lignes.some((l) => l.type === 'ligne' && !l.optionnelle)) return { message: 'Ajoutez au moins une ligne chiffrée (hors option).' };
+      if ((c.devis.total_ht_cents ?? 0) <= 0) return { message: 'Un devis à 0 € HT ne peut pas être émis.' };
+      octets = await pdfDevis(donneesPdf(c, prep, { numero, dateEmission: date, brouillon: false }));
+    } catch (e) {
+      if (e instanceof ErreurPreparation || e instanceof ErreurDevis) return { message: `Émission impossible : ${e.message}` };
+      throw e;
+    }
     const sha = createHash('sha256').update(octets).digest('hex');
     const chemin = `${session.organisationId}/devis/${id.data}/${randomUUID()}.pdf`;
     await deposer('documents', session.organisationId, chemin, octets, 'application/pdf');
@@ -368,7 +424,16 @@ export async function emettreDevis(_: EtatFormulaire, fd: FormData): Promise<Eta
       revalider(id.data);
       redirect(`/devis/${id.data}?emis=1`);
     }
-    // PDF orphelin (jamais référencé) : retiré.
+    if (!refusCertain(error.code)) {
+      // Réponse perdue : l'émission a peut-être été validée. On relit AVANT de toucher au fichier.
+      const { data: apres } = await sb.from('devis').select('statut, pdf_chemin').eq('id', id.data).maybeSingle();
+      if (apres?.statut !== 'brouillon') {
+        revalider(id.data);
+        redirect(`/devis/${id.data}${apres?.pdf_chemin === chemin ? '?emis=1' : ''}`);
+      }
+      if (!apres) return { message: ECHEC };   // statut inconnu : le fichier est gardé (jamais d'effacement à l'aveugle)
+    }
+    // Refus certain, ou devis resté brouillon : ce PDF n'est référencé nulle part.
     await retirer('documents', session.organisationId, chemin).catch(() => undefined);
     if (error.code !== 'HD001') return { message: error.code === 'P0001' ? `Émission refusée : ${error.message}` : ECHEC };
     // HD001 : numéro ou date changés pendant l'émission (autre devis émis, minuit) -> nouveau PDF.
@@ -380,48 +445,65 @@ export async function emettreDevis(_: EtatFormulaire, fd: FormData): Promise<Eta
 // Envoi, liens, relances
 // --------------------------------------------------------------------------
 
+/**
+ * Envoi pour signature : nouveau lien (affiché une fois) et, si demandé,
+ * email. Idempotent : l'envoi porte l'identifiant fixé par le formulaire
+ * (id_nouveau) ; un nouvel essai après une réponse perdue ne renvoie pas
+ * d'email en double.
+ */
 export async function envoyerDevis(_: EtatFormulaire, fd: FormData): Promise<EtatFormulaire> {
   const session = await verifierSession();
   const id = idDe(fd, 'id');
+  const envoiId = idDe(fd, 'id_nouveau');
   const canal = fd.get('canal') === 'email' ? 'email' : 'lien';
-  if (!id.success) return { message: INCOMPLET };
+  if (!id.success || !envoiId.success) return { message: INCOMPLET };
   const sb = await clientServeur();
+  const { data: deja } = await sb.from('envois').select('canal, destinataire, statut').eq('id', envoiId.data).maybeSingle();
+  if (deja) {
+    return deja.statut === 'envoye' && deja.canal === 'email'
+      ? { succes: `Email déjà envoyé à ${deja.destinataire} : rien n’a été renvoyé.` }
+      : { message: 'Cet envoi a déjà été traité : rechargez la page avant de recommencer.' };
+  }
   const c = await chargerDevis(id.data, sb);
   if (!c) return { message: 'Devis introuvable.' };
   if (c.devis.statut !== 'envoye') return { message: 'Seul un devis émis, ni signé ni refusé, se partage pour signature.' };
   const expire = expirationLien(c.devis.valide_jusqu_au!);
   if (!expire) return { message: 'Ce devis a expiré : créez une nouvelle version.' };
+  const email = c.client?.email ?? null;
+  if (canal === 'email' && !email) return { message: 'Le client n’a pas d’adresse email : créez un lien à partager.' };
+  if (canal === 'email' && !emailConfigure()) return { message: 'Envoi d’emails non configuré sur ce serveur : créez un lien à partager.' };
+
   const { jeton, sha256 } = nouveauJeton();
   const { error } = await sb.from('liens_publics').insert({
     organisation_id: session.organisationId, devis_id: id.data, finalite: 'signature', jeton_sha256: sha256, expire_le: expire.toISOString(),
   });
   if (error) return { message: ECHEC };
   const lien = urlPublique(jeton);
+  const tracer = async (champs: { canal: 'email' | 'manuel'; destinataire?: string | null; fournisseur_id?: string | null; statut?: 'envoye' | 'echec'; erreur?: string | null }) => {
+    const { error: e } = await sb.from('envois').insert({
+      id: envoiId.data, organisation_id: session.organisationId, document_type: 'devis', document_id: id.data, nature: 'envoi', ...champs,
+    });
+    if (e) console.error('Envoi non tracé', e.code);
+  };
 
   if (canal === 'lien') {
-    await sb.from('envois').insert({ organisation_id: session.organisationId, document_type: 'devis', document_id: id.data, nature: 'envoi', canal: 'manuel' });
+    await tracer({ canal: 'manuel' });
     revalider(id.data);
     return { succes: `Lien créé, valable jusqu’au ${formaterDate(expire)}. Copiez-le ou partagez-le.`, lien };
   }
 
-  const email = c.client?.email;
-  if (!email) return { message: 'Le client n’a pas d’adresse email : partagez le lien.', lien };
-  if (!emailConfigure()) return { message: 'Envoi d’emails non configuré sur ce serveur : partagez le lien à la main.', lien };
   const [{ data: modele }, { data: p }] = await Promise.all([
-    sb.from('modeles_messages').select('sujet, corps, actif').eq('code', 'envoi_devis').maybeSingle(),
+    sb.from('modeles_messages').select('sujet, corps').eq('code', 'envoi_devis').maybeSingle(),
     sb.from('parametres_entreprise').select('raison_sociale, email').eq('organisation_id', session.organisationId).single(),
   ]);
-  if (!modele) return { message: 'Modèle de message « envoi du devis » introuvable.', lien };
+  if (!modele) return { message: 'Modèle de message « envoi du devis » introuvable : partagez le lien.', lien };
   const valeurs = {
     client: (c.devis.copie_client as { nom_affiche?: string } | null)?.nom_affiche ?? '', entreprise: p?.raison_sociale ?? '',
     numero: `${c.devis.numero}${c.devis.version! > 1 ? ` (version ${c.devis.version})` : ''}`, lien,
     valide_jusqu_au: formaterDate(c.devis.valide_jusqu_au!),
   };
-  const r = await envoyerEmail({ a: email, sujet: remplirModele(modele.sujet, valeurs), texte: remplirModele(modele.corps, valeurs), repondreA: p?.email });
-  await sb.from('envois').insert({
-    organisation_id: session.organisationId, document_type: 'devis', document_id: id.data, nature: 'envoi', canal: 'email',
-    destinataire: email, fournisseur_id: r.ok ? r.id : null, statut: r.ok ? 'envoye' : 'echec', erreur: r.ok ? null : r.erreur,
-  });
+  const r = await envoyerEmail({ a: email!, sujet: remplirModele(modele.sujet, valeurs), texte: remplirModele(modele.corps, valeurs), repondreA: p?.email });
+  await tracer({ canal: 'email', destinataire: email, fournisseur_id: r.ok ? r.id : null, statut: r.ok ? 'envoye' : 'echec', erreur: r.ok ? null : r.erreur });
   revalider(id.data);
   return r.ok ? { succes: `Email envoyé à ${email}.`, lien } : { message: `${r.erreur} Partagez le lien à la main.`, lien };
 }
@@ -446,12 +528,14 @@ export async function refuserDevis(_: EtatFormulaire, fd: FormData): Promise<Eta
   await verifierSession();
   const id = idDe(fd, 'id');
   if (!id.success) return { message: INCOMPLET };
+  if (fd.get('confirmation') !== 'on') return { message: 'Cochez la case pour confirmer le refus.' };
   const motif = typeof fd.get('motif') === 'string' ? String(fd.get('motif')).trim().slice(0, 500) || null : null;
   const sb = await clientServeur();
+  // Les types générés déclarent tous les paramètres non nuls ; la fonction SQL accepte un motif absent.
   const { error } = await sb.rpc('refuser_devis', { p_devis_id: id.data, p_motif: motif as string });
   if (error) return { message: error.code === 'P0001' ? 'Ce devis ne peut plus être refusé (déjà signé, refusé ou remplacé).' : ECHEC };
   revalider(id.data);
-  return { succes: 'Devis marqué refusé.' };
+  redirect(`/devis/${id.data}?refuse=1`);
 }
 
 export async function nouvelleVersion(_: EtatFormulaire, fd: FormData): Promise<EtatFormulaire> {
@@ -460,9 +544,8 @@ export async function nouvelleVersion(_: EtatFormulaire, fd: FormData): Promise<
   if (!id.success) return { message: INCOMPLET };
   const sb = await clientServeur();
   const { data, error } = await sb.rpc('nouvelle_version_devis', { p_devis_id: id.data });
+  // Les liens de l'ancienne version sont désactivés par la base, dans la même transaction.
   if (error || !data) return { message: error?.code === 'P0001' ? 'Seul un devis envoyé, ni signé ni refusé, peut être remplacé.' : ECHEC };
-  // Les liens de l'ancienne version ne doivent plus servir.
-  await sb.from('liens_publics').update({ revoque_le: new Date().toISOString() }).eq('devis_id', id.data).is('revoque_le', null);
   revalider(id.data);
   redirect(`/devis/${data}?version=1`);
 }
@@ -472,11 +555,14 @@ export async function dupliquerDevis(_: EtatFormulaire, fd: FormData): Promise<E
   const id = idDe(fd, 'id');
   if (!id.success) return { message: INCOMPLET };
   const sb = await clientServeur();
+  const { data: source } = await sb.from('devis').select('regime_tva').eq('id', id.data).maybeSingle();
   const { data, error } = await sb.rpc('dupliquer_devis', { p_devis_id: id.data });
   if (error || !data) return { message: ECHEC };
+  const { data: copie } = await sb.from('devis').select('regime_tva').eq('id', data).maybeSingle();
   await recalculerTotaux(sb, data);
   revalidatePath('/devis');
-  redirect(`/devis/${data}?duplique=1`);
+  // Régime de TVA changé depuis le devis copié : les taux des lignes sont à revoir (signalé sur le brouillon).
+  redirect(`/devis/${data}?duplique=1${source && copie && source.regime_tva !== copie.regime_tva ? '&regime=1' : ''}`);
 }
 
 // --------------------------------------------------------------------------
@@ -490,20 +576,26 @@ export async function signerSurPlace(_: EtatFormulaire, fd: FormData): Promise<E
   const lu = schemaSignature.safeParse({ ...lireChamps(fd), options: fd.getAll('options').map(String) });
   if (!lu.success) return { erreurs: erreursParChamp(lu.error), valeurs: valeursTexte(fd, ['image']) };
   const png = lirePngSignature(lu.data.image);
-  if (!png) return { erreurs: { image: 'Signature illisible : effacez et recommencez.' }, valeurs: valeursTexte(fd, ['image']) };
+  if ('erreur' in png) return { erreurs: { image: MESSAGES_TRACE[png.erreur] }, valeurs: valeursTexte(fd, ['image']) };
   const sb = await clientServeur();
   const { data: d } = await sb.from('devis').select('id, statut').eq('id', id.data).maybeSingle();
   if (!d) return { message: 'Devis introuvable.' };
   if (d.statut !== 'envoye') return { message: 'Ce devis ne peut plus être signé (déjà signé, refusé ou remplacé).' };
   const { ip, userAgent } = await ipEtNavigateur();
-  const image = await deposerTrace(session.organisationId, id.data, png);
+  const image = await deposerTrace(session.organisationId, id.data, png.octets);
+  // IP et navigateur peuvent manquer (null) ; les types générés déclarent les paramètres non nuls.
   const { error } = await sb.rpc('signer_devis_sur_place', {
     p_devis_id: id.data, p_nom: lu.data.nom, p_mention: lu.data.mention, p_image_chemin: image,
     p_document_sha256: lu.data.document_sha256, p_options: lu.data.options, p_ip: ip as string, p_user_agent: userAgent as string,
   });
   if (error) {
-    await retirer('signatures', session.organisationId, image).catch(() => undefined);
-    return { message: error.code === 'P0001' ? messageSignature(error.message) : ECHEC, valeurs: valeursTexte(fd, ['image']) };
+    if (refusCertain(error.code)) {
+      await retirer('signatures', session.organisationId, image).catch(() => undefined);
+      return { message: error.code === 'P0001' ? messageSignature(error.message) : ECHEC, valeurs: valeursTexte(fd, ['image']) };
+    }
+    // Réponse perdue : la signature a peut-être été enregistrée ; le tracé est gardé.
+    const { data: apres } = await sb.from('devis').select('statut').eq('id', id.data).maybeSingle();
+    if (apres?.statut !== 'accepte') return { message: ECHEC, valeurs: valeursTexte(fd, ['image']) };
   }
   const archive = await archiverPdfSigne(session.organisationId, id.data).catch(() => false);
   revalider(id.data);

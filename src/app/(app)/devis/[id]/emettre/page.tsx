@@ -38,7 +38,7 @@ export default async function PageEmettre({ params }: PageProps<'/devis/[id]/eme
     <div className="flex flex-col gap-4">
       <Link href={`/devis/${id.data}`} className="inline-flex min-h-12 items-center underline underline-offset-4">← Retour au brouillon</Link>
       <h1 className="text-2xl font-bold">Émettre le devis</h1>
-      <p>Numéro attribué : <strong>{numero}{c.devis.version! > 1 ? ` (version ${c.devis.version})` : ''}</strong>, daté du {formaterDate(date)}.</p>
+      <p>Numéro qui sera attribué : <strong>{numero}{c.devis.version! > 1 ? ` (version ${c.devis.version})` : ''}</strong>, daté du {formaterDate(date)}.</p>
       {bloquants.length || prep.aCompleter.length || sansLigne ? (
         <Carte titre="À corriger avant d’émettre">
           <ul className="flex flex-col gap-2">

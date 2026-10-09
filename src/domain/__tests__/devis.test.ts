@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  acompte, comparerVersions, controlerEcheancier, ErreurDevis, remplirModele, repriseDePoste, sousTotaux, totalLigne, totauxDevis,
+  acompte, comparerVersions, controlerEcheancier, ErreurDevis, montantsEcheances, remplirModele, repriseDePoste, sousTotaux, TOTAL_MAX_CENTS, totalLigne, totauxDevis,
   ventiler, type LigneDevis, type PosteAReprendre,
 } from '../devis';
 
@@ -183,7 +183,7 @@ describe('propriétés sur des devis aléatoires', () => {
     const r = alea(42);
     for (let essai = 0; essai < 2_000; essai++) {
       const lignes: LigneDevis[] = Array.from({ length: 1 + r(12) }, (_, i) => ({
-        type: 'ligne', designation: `L${i}`, quantiteE4: BigInt(r(5_000_000)), unite: 'm2', prixUnitaireCents: BigInt(r(500_000)),
+        type: 'ligne', designation: `L${i}`, quantiteE4: BigInt(r(5_000_000)), unite: 'm2', prixUnitaireCents: BigInt(r(150_000)), // ≤ 12 × 500 × 1 500 € : sous le plafond de 10 M€
         remiseBp: r(4) === 0 ? r(5_000) : 0, tauxTvaBp: TAUX[r(4)]!, optionnelle: false,
       }));
       const remiseBp = r(3) === 0 ? r(10_001) : 0;
@@ -262,5 +262,44 @@ describe('modèles de messages', () => {
   it('remplace les champs connus, laisse les inconnus visibles', () => {
     expect(remplirModele('Bonjour {client}, devis {numero} : {lien} {inconnu}', { client: 'M. Martin', numero: 'DEV-2026-0001', lien: 'https://x' }))
       .toBe('Bonjour M. Martin, devis DEV-2026-0001 : https://x {inconnu}');
+  });
+});
+
+describe('échéancier en cumulé (aucun centime de trop)', () => {
+  it('1 000,01 € HT à 10 %, 50 % + 50 % -> 550,01 + 550,00 = 1 100,01 € TTC', () => {
+    // Base 100 001 × 50 % = 50 000,5 -> 50 001 ; TVA 5 000,1 -> 5 000 ; cumul 100 % = 100 001 + 10 000.
+    const t = totauxDevis([ligne('A', '1', '1000.01', 1_000)], 0, 'assujetti');
+    const m = montantsEcheances(t.ventilation, [5_000, 5_000], 'assujetti');
+    expect(m.map((x) => x.ttcCents)).toEqual([55_001n, 55_000n]);
+    expect(m.reduce((a, x) => a + x.ttcCents, 0n)).toBe(t.totalTtcCents);
+  });
+  it('la première échéance est l’acompte R9', () => {
+    const t = totauxDevis([ligne('A', '1', '333.33', 1_000), ligne('B', '1', '99.99', 2_000)], 0, 'assujetti');
+    expect(montantsEcheances(t.ventilation, [3_000, 7_000], 'assujetti')[0]).toEqual(acompte(t.ventilation, 3_000, 'assujetti'));
+  });
+  it('propriété : à 100 %, HT, TVA et TTC des échéances = ceux du devis (2 000 cas)', () => {
+    let a = 11;
+    const r = (n: number) => { a = (a * 1103515245 + 12345) % 2147483648; return a % n; };
+    for (let i = 0; i < 2_000; i++) {
+      const lignes = Array.from({ length: 1 + r(4) }, (_, k) => ({
+        ...ligne(`L${k}`, '1', '1', [550, 1_000, 2_000][r(3)]!), quantiteE4: BigInt(1 + r(900_000)), prixUnitaireCents: BigInt(1 + r(90_000)),
+      }));
+      const t = totauxDevis(lignes, r(3) ? 0 : r(10_001), 'assujetti');
+      const parts: number[] = [];
+      let reste = 10_000;
+      while (reste > 0) { const p = Math.min(reste, 1 + r(6_000)); parts.push(p); reste -= p; }
+      const m = montantsEcheances(t.ventilation, parts, 'assujetti');
+      expect(m.reduce((s, x) => s + x.htCents, 0n)).toBe(t.totalHtCents);
+      expect(m.reduce((s, x) => s + x.tvaCents, 0n)).toBe(t.totalTvaCents);
+      expect(m.every((x) => x.htCents >= 0n && x.tvaCents >= 0n)).toBe(true);
+    }
+  });
+  it('plus de 100 % refusé', () => expect(() => montantsEcheances([], [6_000, 5_000], 'franchise')).toThrow(ErreurDevis));
+});
+
+describe('plafond d’un devis', () => {
+  it('10 000 000 € HT accepté, au-delà refusé (options comprises)', () => {
+    expect(totauxDevis([ligne('A', '1', '10000000', 0)], 0, 'franchise').totalHtCents).toBe(TOTAL_MAX_CENTS);
+    expect(() => totauxDevis([ligne('A', '1', '10000000', 0), ligne('O', '1', '0.01', 0, { optionnelle: true })], 0, 'franchise')).toThrow(/trop élevé/);
   });
 });

@@ -1,11 +1,12 @@
 import 'server-only';
 import { verifierSession } from '@/lib/dal';
+import { envPublique } from '@/lib/env';
 import { clientServeur } from '@/lib/supabase/serveur';
 import type { Ligne, Vue } from '@/lib/supabase/types';
 import { ErreurDevis, totauxDevis, type Echeance, type LigneDevis, type PosteAReprendre, type Regime, type TotauxDevis } from '@/domain/devis';
 import { libelleType, type PosteCalc, type ResultatPoste } from '@/domain/calculateur';
 import {
-  controlerMentions, copieChantier, copieClient, copieEmetteur, avecRetractation, TEXTES_A_VERIFIER,
+  controlerMentions, controlerTaux, copieChantier, copieClient, copieEmetteur, avecRetractation, signauxRetractation, TEXTES_A_VERIFIER,
   type CopieChantier, type CopieClient, type CopieEmetteur, type Manque,
 } from '@/domain/devis-document';
 import type { DonneesPdfDevis } from '@/lib/pdf/devis';
@@ -80,20 +81,27 @@ export function colonnesTotaux(t: TotauxDevis) {
  * mêmes règles que la base). Appelé après chaque modification de lignes ou de
  * remise : la base revérifie l'égalité stricte à l'émission.
  */
-export async function recalculerTotaux(sb: Client, devisId: string): Promise<boolean> {
-  const [{ data: d }, { data: lignes }] = await Promise.all([
+export type ResultatRecalcul = 'ok' | 'a_corriger' | 'fige' | 'introuvable' | 'echec';
+
+export async function recalculerTotaux(sb: Client, devisId: string): Promise<ResultatRecalcul> {
+  const [{ data: d, error: e1 }, { data: lignes, error: e2 }] = await Promise.all([
     sb.from('devis').select('remise_globale_bp, regime_tva, statut').eq('id', devisId).maybeSingle(),
     sb.from('devis_lignes').select('*').eq('devis_id', devisId).order('ordre'),
   ]);
-  if (!d || !lignes || d.statut !== 'brouillon') return false;
+  if (e1 || e2 || !lignes) return 'echec';
+  if (!d) return 'introuvable';
+  if (d.statut !== 'brouillon') return 'fige';
   let t: TotauxDevis;
   try { t = totauxDevis(lignes.map(ligneDomaine), d.remise_globale_bp, d.regime_tva); } catch (e) {
-    if (e instanceof ErreurDevis) return true;   // lignes à corriger (signalé sur la page) : totaux inchangés
+    if (e instanceof ErreurDevis) return 'a_corriger';   // lignes à corriger (signalé sur la page) : totaux inchangés
     throw e;
   }
   const { error } = await sb.from('devis').update(colonnesTotaux(t)).eq('id', devisId);
-  return !error;
+  return error ? 'echec' : 'ok';
 }
+
+/** Émission impossible pour une raison à expliquer (message en français), pas un incident. */
+export class ErreurPreparation extends Error {}
 
 export type Preparation = {
   emetteur: CopieEmetteur;
@@ -109,13 +117,14 @@ export type Preparation = {
 
 /** Copies (à la date donnée) et contrôles de l'émission : rien n'est inventé pour combler un manque. */
 export async function preparerEmission(sb: Client, c: DevisComplet, dateIso: string): Promise<Preparation> {
-  const [{ data: p, error }, { data: assurances }] = await Promise.all([
+  const [{ data: p, error }, { data: assurances }, { data: taux }] = await Promise.all([
     sb.from('parametres_entreprise').select('*').eq('organisation_id', c.devis.organisation_id).single(),
     sb.from('assurances').select('type, assureur, numero_contrat, debut, fin, zone_couverte'),
+    sb.from('taux_tva').select('taux_bp, attestation_requise').eq('actif', true),
   ]);
-  if (error || !p) throw new Error('Paramètres introuvables.');
+  if (error || !p) throw new ErreurPreparation('Paramètres de l’entreprise illisibles : réessayez.');
   const emetteur = copieEmetteur(p, (assurances ?? []).map((a) => ({ ...a, type: a.type as 'decennale' | 'rc_pro' })), dateIso);
-  if (!c.client || c.client.anonymise_le) throw new Error('Client introuvable ou anonymisé.');
+  if (!c.client || c.client.anonymise_le) throw new ErreurPreparation('Client introuvable ou anonymisé : ce devis ne peut plus être émis.');
   const client = copieClient(c.client);
   const chantier = copieChantier(c.chantier);
   const manques = controlerMentions(emetteur, client, chantier, {
@@ -123,8 +132,15 @@ export async function preparerEmission(sb: Client, c: DevisComplet, dateIso: str
     delai_debut_texte: c.devis.delai_debut_texte, duree_estimee_jours: c.devis.duree_estimee_jours,
     conditions_paiement: c.devis.conditions_paiement, regime_tva: c.devis.regime_tva,
   });
+  const lignesChiffrees = c.lignes.filter((l) => l.type === 'ligne').map((l) => ({ designation: l.designation, tauxTvaBp: l.taux_tva_bp }));
+  manques.push(...controlerTaux(lignesChiffrees, c.devis.regime_tva, taux ?? []));
+  const retractation = avecRetractation(c.devis.hors_etablissement!, client);
+  const acompteSignature = c.echeances.length
+    ? c.echeances.filter((e) => e.declencheur === 'signature').reduce((a, e) => a + e.pourcentage_bp, 0) : c.devis.acompte_pct_bp!;
+  manques.push(...signauxRetractation({ retractation, dateEmission: dateIso, dateDebutTravaux: c.devis.date_debut_travaux, acompteSignatureBp: acompteSignature }));
   const textes: string[] = [TEXTES_A_VERIFIER.devis_recu];
-  if (avecRetractation(c.devis.hors_etablissement!, client)) textes.push(TEXTES_A_VERIFIER.retractation, TEXTES_A_VERIFIER.execution_anticipee);
+  if (emetteur.mediateur.nom) textes.push(TEXTES_A_VERIFIER.mediateur);
+  if (retractation) textes.push(TEXTES_A_VERIFIER.retractation, TEXTES_A_VERIFIER.execution_anticipee);
   if (emetteur.regime_tva === 'franchise' && p.mention_franchise_a_verifier) textes.push('Mention de franchise de TVA');
   return {
     emetteur, client, chantier, manques,
@@ -146,6 +162,7 @@ export function donneesPdf(c: DevisComplet, prep: Pick<Preparation, 'emetteur' |
     conditionsPaiement: d.conditions_paiement, horsEtablissement: d.hors_etablissement!, notesClient: d.notes_client,
     regime: d.regime_tva, remiseGlobaleBp: d.remise_globale_bp!, lignes: c.lignes.map(ligneDomaine),
     echeances: c.echeances.map(echeanceDomaine), acomptePctBp: d.acompte_pct_bp!, logo: prep.logo,
+    urlConfidentialite: `${envPublique.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '')}/confidentialite`,
   };
 }
 
@@ -174,6 +191,7 @@ export function posteAReprendre(c: { poste: PosteCalc; resultat: ResultatPoste }
     coutMainOeuvreCents: r.coutMainOeuvreCents,
     minutes: r.temps?.minutes ?? null,
     incomplet: r.incomplet.quantite || r.incomplet.temps || r.incomplet.matiere,
-    origine: { poste_id: p.id, chantier_id: chantierId },
+    // Raison d'un prix non calculé : montrée sur la ligne « à compléter ».
+    origine: { poste_id: p.id, chantier_id: chantierId, ...(r.manques[0] ? { manque: r.manques[0] } : 'manque' in p.surface ? { manque: p.surface.manque } : {}) },
   };
 }

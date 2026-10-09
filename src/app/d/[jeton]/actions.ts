@@ -5,7 +5,7 @@ import { erreursParChamp, valeursTexte, type EtatFormulaire } from '@/lib/etat-f
 import { archiverPdfSigne, creerLienConsultation, signerParJeton } from '@/lib/devis-public';
 import { jetonBienForme, nouveauJeton } from '@/lib/liens';
 import { ipEtNavigateur } from '@/lib/requete';
-import { lirePngSignature, schemaSignature } from '@/lib/validation/devis';
+import { lirePngSignature, MESSAGES_TRACE, schemaSignature } from '@/lib/validation/devis';
 
 /** Après signature, le lien de signature est consommé : un lien de consultation le remplace (limite de sécurité). */
 const CONSULTATION_APRES_SIGNATURE_JOURS = 30;
@@ -24,10 +24,10 @@ export async function signerEnLigne(_: EtatFormulaire, fd: FormData): Promise<Et
   });
   if (!lu.success) return { erreurs: erreursParChamp(lu.error), valeurs: valeursTexte(fd, ['image', 'jeton']) };
   const png = lirePngSignature(lu.data.image);
-  if (!png) return { erreurs: { image: 'Signature illisible : effacez et recommencez.' }, valeurs: valeursTexte(fd, ['image', 'jeton']) };
+  if ('erreur' in png) return { erreurs: { image: MESSAGES_TRACE[png.erreur] }, valeurs: valeursTexte(fd, ['image', 'jeton']) };
   const { ip, userAgent } = await ipEtNavigateur();
   const r = await signerParJeton(jeton, {
-    nom: lu.data.nom, mention: lu.data.mention, png, documentSha256: lu.data.document_sha256, options: lu.data.options, ip, userAgent,
+    nom: lu.data.nom, mention: lu.data.mention, png: png.octets, documentSha256: lu.data.document_sha256, options: lu.data.options, ip, userAgent,
   });
   if (!r.ok) return { message: r.message, valeurs: valeursTexte(fd, ['image', 'jeton']) };
   await archiverPdfSigne(r.organisationId, r.devisId).catch((e) => {

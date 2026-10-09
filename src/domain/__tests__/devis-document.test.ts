@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ajouterJours, assuranceEnCours, avecRetractation, controlerMentions, copieChantier, copieClient, copieEmetteur, formaterJours, formaterQuantiteE4,
+  ajouterJours, assuranceEnCours, avecRetractation, controlerMentions, controlerTaux, copieChantier, signauxRetractation, copieClient, copieEmetteur, formaterJours, formaterQuantiteE4,
   identiteEmetteur, lignesAdresse, nomAvecForme, type DevisAControler, type ParametresEmetteur,
 } from '../devis-document';
 
@@ -108,5 +108,51 @@ describe('mentions obligatoires avant émission', () => {
     const pro = { ...client, type: 'professionnel' as const };
     expect(avecRetractation(true, pro)).toBe(false);
     expect(cles(controlerMentions(e, pro, chantier, devis), false)).toContain('retractation_pro');
+  });
+});
+
+describe('taux de TVA des lignes', () => {
+  const actifs = [{ taux_bp: 0, attestation_requise: false }, { taux_bp: 550, attestation_requise: true },
+    { taux_bp: 1_000, attestation_requise: true }, { taux_bp: 2_000, attestation_requise: false }];
+  const L = (designation: string, tauxTvaBp: number) => ({ designation, tauxTvaBp });
+  it('assujetti, taux normal : rien à signaler', () => expect(controlerTaux([L('Murs', 2_000)], 'assujetti', actifs)).toEqual([]));
+  it('assujetti, ligne à 0 % : bloquant (mention justificative absente)', () => {
+    const m = controlerTaux([L('Murs', 0)], 'assujetti', actifs);
+    expect(m.map((x) => [x.cle, x.bloquant])).toEqual([['taux_zero', true]]);
+    expect(m[0]!.message).toContain('« Murs »');
+  });
+  it('assujetti, taux absent des Paramètres : bloquant', () => {
+    expect(controlerTaux([L('Murs', 1_500)], 'assujetti', actifs).map((x) => x.cle)).toEqual(['taux_inactif']);
+  });
+  it('taux réduit avec attestation requise : signalé, non bloquant', () => {
+    const m = controlerTaux([L('Murs', 1_000), L('Plafond', 1_000), L('Isolation', 550)], 'assujetti', actifs);
+    expect(m).toHaveLength(1);
+    expect(m[0]).toMatchObject({ cle: 'attestation_tva', bloquant: false });
+    expect(m[0]!.message).toContain('10 % et 5,5 %');
+  });
+  it('franchise : toute ligne taxée bloque', () => {
+    expect(controlerTaux([L('Murs', 0)], 'franchise', actifs)).toEqual([]);
+    expect(controlerTaux([L('Murs', 1_000)], 'franchise', actifs).map((x) => [x.cle, x.bloquant])).toEqual([['taux_franchise', true]]);
+  });
+});
+
+describe('situations liées au délai de rétractation (signalées)', () => {
+  const base = { retractation: true, dateEmission: '2026-10-09', dateDebutTravaux: null, acompteSignatureBp: 0 };
+  it('sans rétractation : rien', () => expect(signauxRetractation({ ...base, retractation: false, acompteSignatureBp: 3_000 })).toEqual([]));
+  it('paiement à la signature : signalé', () => {
+    expect(signauxRetractation({ ...base, acompteSignatureBp: 3_000 }).map((m) => [m.cle, m.bloquant])).toEqual([['acompte_retractation', false]]);
+  });
+  it('début dans les 14 jours : signalé ; le 15e jour : non', () => {
+    expect(signauxRetractation({ ...base, dateDebutTravaux: '2026-10-22' }).map((m) => m.cle)).toEqual(['debut_retractation']);
+    expect(signauxRetractation({ ...base, dateDebutTravaux: '2026-10-23' })).toEqual([]);
+  });
+});
+
+describe('copie du client minimale', () => {
+  it('ni email ni téléphone figés (non imprimés)', () => {
+    const c = copieClient({ type: 'particulier', civilite: null, nom: 'N', prenom: null, raison_sociale: null, siret: null, tva_intra: null,
+      email: 'a@b.test', telephone: '0600000000', fact_ligne1: null, fact_ligne2: null, fact_code_postal: null, fact_ville: null, fact_pays: null });
+    expect(Object.keys(c)).not.toContain('email');
+    expect(Object.keys(c)).not.toContain('telephone');
   });
 });

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import {
-  ajouterEcheance, creerDevis, deplacerLigne, emettreDevis, enregistrerEntete, enregistrerLigne, envoyerDevis,
+  ajouterEcheance, creerDevis, deplacerLigne, emettreDevis, enregistrerEntete, enregistrerLigne, envoyerDevis, refuserDevis,
 } from '@/app/(app)/devis/actions';
 import { useFormulaire } from '@/components/formulaire/useFormulaire';
 import { MessagesGarde, RappelEnvoi } from '@/components/formulaire/MessagesGarde';
@@ -179,7 +179,7 @@ export function FormulaireEcheance({ devisId }: { devisId: string }) {
       <MessagesGarde garde={garde} />
       <div className="grid grid-cols-2 gap-3">
         <Champ libelle="Libellé" nom="libelle" defaultValue={sv?.libelle ?? ''} erreur={e.libelle} placeholder="Acompte, solde…" />
-        <Champ libelle="Pourcentage" nom="pourcentage_bp" inputMode="decimal" defaultValue={sv?.pourcentage_bp ?? ''} erreur={e.pourcentage_bp} />
+        <Champ libelle="Pourcentage (%)" nom="pourcentage_bp" inputMode="decimal" defaultValue={sv?.pourcentage_bp ?? ''} erreur={e.pourcentage_bp} />
       </div>
       <Selection libelle="Quand" nom="declencheur" value={declencheur} onChange={(ev) => setDeclencheur(ev.target.value)} erreur={e.declencheur}>
         <option value="signature">À la signature</option>
@@ -252,5 +252,25 @@ export function EnvoiDevis({ devisId, email, emailActif }: { devisId: string; em
       )}
       <Bouton type="submit" name="canal" value="lien" variante="secondaire" disabled={enCours}>Créer un lien à partager</Bouton>
     </form>
+  );
+}
+
+// --------------------------------------------------------------------------
+// Refus du client (motif facultatif)
+// --------------------------------------------------------------------------
+
+export function FormulaireRefus({ devisId }: { devisId: string }) {
+  const { etat, action, enCours, formRef, surEnvoi } = useFormulaire(null, refuserDevis);
+  return (
+    <details>
+      <summary className="inline-flex min-h-12 cursor-pointer items-center font-semibold underline underline-offset-4">Marquer refusé…</summary>
+      <form ref={formRef} action={action} onSubmit={surEnvoi} className="mt-2 flex flex-col gap-2">
+        <input type="hidden" name="id" value={devisId} />
+        <RetourFormulaire etat={etat} />
+        <Champ libelle="Motif (facultatif)" nom="motif" maxLength={500} placeholder="Exemple : trop cher, travaux reportés" />
+        <CaseACocher nom="confirmation" libelle="Le client a refusé ce devis" required />
+        <Bouton type="submit" variante="danger" disabled={enCours}>{enCours ? 'Un instant…' : 'Marquer refusé'}</Bouton>
+      </form>
+    </details>
   );
 }

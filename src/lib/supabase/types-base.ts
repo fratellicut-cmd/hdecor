@@ -1667,6 +1667,9 @@ isOneToOne: false
 "refuser_devis":
 { Args: { "p_devis_id": string,"p_motif": string }; Returns: undefined
                            },
+"remplacer_achats_devis":
+{ Args: { "p_achats": Json,"p_devis_id": string }; Returns: undefined
+                           },
 "signer_devis_interne":
 { Args: { "p_devis_id": string,"p_document_sha256": string,"p_image_chemin": string,"p_ip": unknown,"p_mention": string,"p_methode": string,"p_nom": string,"p_options": (string)[],"p_user_agent": string }; Returns: string
                            },

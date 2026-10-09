@@ -36,8 +36,10 @@ export async function GET(requete: Request) {
   let envoyees = 0;
   let echecs = 0;
   for (const d of aRelancer ?? []) {
-    const { data: modele } = await admin.from('modeles_messages').select('sujet, corps, actif')
-      .eq('organisation_id', d.organisation_id).eq('code', 'relance_devis').maybeSingle();
+    const [{ data: modele }, { data: p }] = await Promise.all([
+      admin.from('modeles_messages').select('sujet, corps, actif').eq('organisation_id', d.organisation_id).eq('code', 'relance_devis').maybeSingle(),
+      admin.from('parametres_entreprise').select('email').eq('organisation_id', d.organisation_id).maybeSingle(),
+    ]);
     if (!modele?.actif) continue;
     const expire = expirationLien(d.valide_jusqu_au);
     if (!expire) continue;
@@ -50,11 +52,14 @@ export async function GET(requete: Request) {
       client: d.client, entreprise: d.entreprise, numero: `${d.numero}${d.version > 1 ? ` (version ${d.version})` : ''}`,
       lien: urlPublique(jeton), valide_jusqu_au: formaterDate(d.valide_jusqu_au),
     };
-    const r = await envoyerEmail({ a: d.email, sujet: remplirModele(modele.sujet, valeurs), texte: remplirModele(modele.corps, valeurs) });
-    await admin.from('envois').insert({
+    // Les réponses du client vont à l'entreprise, pas à l'adresse d'expédition.
+    const r = await envoyerEmail({ a: d.email, sujet: remplirModele(modele.sujet, valeurs), texte: remplirModele(modele.corps, valeurs), repondreA: p?.email });
+    const { error: eEnvoi } = await admin.from('envois').insert({
       organisation_id: d.organisation_id, document_type: 'devis', document_id: d.devis_id, nature: 'relance_devis', canal: 'email',
       destinataire: d.email, fournisseur_id: r.ok ? r.id : null, statut: r.ok ? 'envoye' : 'echec', erreur: r.ok ? null : r.erreur,
     });
+    // Email parti mais non tracé : signalé (la relance pourrait repartir demain).
+    if (eEnvoi) console.error('Relance envoyée mais non tracée', d.devis_id, eEnvoi.code);
     if (r.ok) envoyees++; else echecs++;
   }
   return Response.json({ ok: echecs === 0, relances: envoyees, echecs });
