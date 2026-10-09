@@ -26,6 +26,7 @@ export default async function PageParametres() {
     { href: '/parametres/calcul', titre: 'Réglages de calcul', detail: 'Rendements, supports, temps de préparation, consommables', aVerifier: (calculAVerifier ?? 0) > 0 },
     { href: '/parametres/journal', titre: 'Journal des actions', detail: 'Qui a créé, modifié ou effacé quoi, et quand' },
     { href: '/confidentialite', titre: 'Confidentialité', detail: 'Données traitées, durées de conservation, droits' },
+    { href: '/compte', titre: 'Mon compte', detail: 'Mot de passe, double authentification, déconnexion' },
   ];
   return (
     <div className="flex flex-col gap-3">

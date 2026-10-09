@@ -1537,6 +1537,9 @@ isOneToOne: false
 "definir_preparations":
 { Args: { "p_etapes": (string)[],"p_poste_id": string }; Returns: undefined
                            },
+"deplacer_ligne_devis":
+{ Args: { "p_ligne_id": string,"p_sens": number }; Returns: undefined
+                           },
 "devis_a_relancer":
 { Args: Record<PropertyKey, never>; Returns: {
               "client": string,"devis_id": string,"email": string,"entreprise": string,"numero": string,"organisation_id": string,"valide_jusqu_au": string,"version": number

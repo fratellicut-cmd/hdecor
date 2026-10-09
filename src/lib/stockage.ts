@@ -30,3 +30,13 @@ export async function lire(espace: Espace, organisationId: string, chemin: strin
   if (error || !data) return null;
   return new Uint8Array(await data.arrayBuffer());
 }
+
+/**
+ * Retire un fichier qui vient d'être déposé et n'est référencé nulle part
+ * (émission ou signature refusée juste après le dépôt). Jamais un document émis.
+ */
+export async function retirer(espace: Espace, organisationId: string, chemin: string) {
+  verifierChemin(organisationId, chemin);
+  const { error } = await clientAdmin().storage.from(espace).remove([chemin]);
+  if (error) throw new Error(`Retrait impossible (${espace}) : ${error.message}`);
+}

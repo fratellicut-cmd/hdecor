@@ -781,7 +781,7 @@ select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prokind = 'f' and p.prorettype <> 'trigger'::regtype
      and has_function_privilege('authenticated', p.oid, 'execute')),
-  'aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,copier_poste,deductions_bien_formees,definir_preparations,dupliquer_devis,dupliquer_piece,effacer_client,emettre_devis,emettre_facture,est_membre,importer_produits,marquer_facture_envoyee,nouvelle_version_devis,numero_devis_previsionnel,organisation_du_chemin,rechercher_clients,refuser_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,ventilation_attendue,ventilation_bien_formee',
+  'aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,copier_poste,deductions_bien_formees,definir_preparations,deplacer_ligne_devis,dupliquer_devis,dupliquer_piece,effacer_client,emettre_devis,emettre_facture,est_membre,importer_produits,marquer_facture_envoyee,nouvelle_version_devis,numero_devis_previsionnel,organisation_du_chemin,rechercher_clients,refuser_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,ventilation_attendue,ventilation_bien_formee',
   'sécurité : liste COMPLÈTE des fonctions appelables par une session');
 select tests.echoue($$select public.purger_journal_audit(now() - interval '20 years')$$, 'permission denied',
   'sécurité : purge du journal réservée au serveur');
@@ -1575,6 +1575,18 @@ select tests.egal((select statut::text || ' ' || coalesce(numero, '-') || ' ' ||
 select tests.egal((select string_agg(code, ',' order by code) from public.modeles_messages where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'),
   'envoi_devis,relance_devis', 'messages : modèles d''envoi et de relance créés');
 select tests.echoue($$select * from public.devis_a_relancer()$$, 'permission denied', 'relances : réservées au rôle service');
+-- Déplacement d'une ligne : échange d'ordre atomique ; devis émis figé.
+insert into public.devis_lignes (id, organisation_id, devis_id, ordre, type, designation)
+values ('aaaaaaaa-0000-0000-0000-0000000d4011', 'aaaaaaaa-0000-0000-0000-00000000000a', current_setting('tests.dup')::uuid, 2, 'section', 'Séjour');
+select public.deplacer_ligne_devis('aaaaaaaa-0000-0000-0000-0000000d4011', -1);
+select tests.egal((select string_agg(designation, ',' order by ordre) from public.devis_lignes where devis_id = current_setting('tests.dup')::uuid),
+  'Séjour,Peinture', 'déplacement : la section passe en tête');
+select public.deplacer_ligne_devis('aaaaaaaa-0000-0000-0000-0000000d4011', -1);
+select tests.egal((select string_agg(ordre::text, ',' order by ordre) from public.devis_lignes where devis_id = current_setting('tests.dup')::uuid),
+  '1,2', 'déplacement : déjà en tête, rien ne change');
+select tests.echoue($$select public.deplacer_ligne_devis((select id from public.devis_lignes where devis_id = 'aaaaaaaa-0000-0000-0000-0000000d4001'), 1)$$,
+  'figées', 'déplacement : refusé sur un devis émis');
+select tests.echoue($$select public.deplacer_ligne_devis('aaaaaaaa-0000-0000-0000-0000000d4011', 2)$$, 'Sens invalide', 'déplacement : sens contrôlé');
 
 
 set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000001';
@@ -1589,6 +1601,7 @@ select tests.echoue($$select public.importer_produits('aaaaaaaa-0000-0000-0000-0
 select tests.egal((select count(*) from public.v_alertes_prix), 0::bigint, 'B ne voit pas les alertes de prix de A');
 select tests.echoue($$select public.dupliquer_devis('aaaaaaaa-0000-0000-0000-0000000d4001')$$, 'introuvable', 'B ne duplique pas un devis de A');
 select tests.echoue($$select public.numero_devis_previsionnel('aaaaaaaa-0000-0000-0000-0000000d4001')$$, 'introuvable', 'B ne lit pas le numéro prévisionnel de A');
+select tests.echoue($$select public.deplacer_ligne_devis('aaaaaaaa-0000-0000-0000-0000000d4011', 1)$$, 'introuvable', 'B ne déplace pas une ligne de A');
 select tests.egal((select count(*) from public.referentiel_calcul where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'), 0::bigint,
   'B ne voit pas le référentiel de calcul de A');
 select tests.egal(public.confirmer_valeurs('aaaaaaaa-0000-0000-0000-00000000000a', array['validite_devis_jours']), false,
