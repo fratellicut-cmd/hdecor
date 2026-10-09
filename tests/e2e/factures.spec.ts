@@ -333,6 +333,8 @@ test('relance manuelle d’une facture en retard : préparée sans être notée,
   await page.reload();
   await expect(page.getByText(/relance 1 · lien partagé/)).toBeVisible();
   await expect(page.getByText(/relance 2/)).toHaveCount(0);
+  // Rappel 2 seulement préparé : le lien du rappel 1 (partagé) reste le seul valable, rien n'est désactivé.
+  await expect(page.getByText('Désactiver le lien envoyé (2)')).toBeVisible();
 });
 
 test('rétractation : devis signé chez un particulier -> acompte sans demande de paiement pendant 14 jours', async ({ page, browser }) => {

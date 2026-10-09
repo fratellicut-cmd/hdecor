@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { lireMontantEnCentimes } from '../formats';
 import { totauxDevis, type LigneDevis } from '../devis';
 import { copieClient, copieEmetteur, type ParametresEmetteur } from '../devis-document';
 import {
@@ -154,12 +155,27 @@ describe('avoirs', () => {
   it('reste dû inatteignable en un avoir (1 200,01 € TTC à 20 % après un avoir de 100,00) : message en deux fois, et les deux avoirs passent', () => {
     // Facture 1 000,01 HT + 200,00 TVA ; avoir de 100,00 = 83,33 HT + 16,67 TVA ; reste 916,68 HT + 183,33 TVA = 1 100,01.
     const reste = netParTaux([{ taux_bp: 2_000, base_ht_cents: 100_001n, tva_cents: 20_000n }], [], [[{ taux_bp: 2_000, base_ht_cents: 8_333n, tva_cents: 1_667n }]]);
-    expect(() => lignesAvoirMontant(reste, 110_001n, 'assujetti', false, 'A')).toThrow(/en deux fois : un avoir de 1\s100,00\s€, puis un de 0,01 €/);
+    expect(() => lignesAvoirMontant(reste, 110_001n, 'assujetti', false, 'A')).toThrow(/Montant atteignable le plus proche : 1\s100,00\s€/);
     const a1 = lignesAvoirMontant(reste, 110_000n, 'assujetti', false, 'A');
     const t1 = totauxFacture(a1, 0, 'assujetti');
     expect(t1.totalTtcCents).toBe(110_000n);
     const a2 = lignesAvoirMontant(netParTaux(reste, [], [t1.ventilation]), 1n, 'assujetti', false, 'A');
     expect(totauxFacture(a2, 0, 'assujetti').totalTtcCents).toBe(1n);
+  });
+  it('deux taux : le montant proposé est toujours atteignable (montants de 100,00 à 199,99 €)', () => {
+    const net = [{ taux_bp: 1_000, base_ht_cents: 300_000n, tva_cents: 30_000n }, { taux_bp: 2_000, base_ht_cents: 200_000n, tva_cents: 40_000n }];
+    let refuses = 0;
+    for (let m = 10_000n; m < 20_000n; m++) {
+      try { lignesAvoirMontant(net, m, 'assujetti', false, 'A'); } catch (e) {
+        refuses++;
+        const propose = /le plus proche : ([\d\s\u00a0\u202f]+,\d\d)/.exec((e as Error).message)?.[1];
+        expect(propose, (e as Error).message).toBeTruthy();
+        const c = BigInt(lireMontantEnCentimes(propose!)!);
+        expect(c < m).toBe(true);
+        expect(totauxFacture(lignesAvoirMontant(net, c, 'assujetti', false, 'A'), 0, 'assujetti').totalTtcCents).toBe(c);
+      }
+    }
+    expect(refuses).toBeGreaterThan(0);
   });
   it('propriété : tout montant atteignable reste exact sur deux taux (2 000 cas)', () => {
     let a = 3;

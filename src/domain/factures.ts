@@ -171,7 +171,30 @@ export function lignesAvoirTotal(lignesOrigine: LigneFacture[]): LigneFacture[] 
  * EXACTEMENT le montant demandé ; si un taux rend ce montant impossible au
  * centime près, une erreur l'explique (jamais d'avoir approché en silence).
  */
+/**
+ * Avoir d'un montant TTC donné ; si ce montant n'est pas atteignable au
+ * centime (arrondi de la TVA), l'erreur propose le montant atteignable le
+ * plus proche en dessous, VÉRIFIÉ (et le complément à faire ensuite).
+ */
 export function lignesAvoirMontant(netParTaux: Ventilation, montantTtcCents: bigint, regime: Regime, autoliquidation: boolean,
+  libelle: string): LigneFacture[] {
+  try {
+    return lignesAvoirMontantExact(netParTaux, montantTtcCents, regime, autoliquidation, libelle);
+  } catch (e) {
+    if (!(e instanceof ErreurFacture) || !e.message.includes('pas atteignable')) throw e;
+    for (let m = montantTtcCents - 1n; m > 0n && m >= montantTtcCents - 200n; m--) {
+      try {
+        lignesAvoirMontantExact(netParTaux, m, regime, autoliquidation, libelle);
+        throw new ErreurFacture(`Avoir : ${formaterEuros(montantTtcCents)} n’est pas atteignable au centime près (arrondi de la TVA). Montant atteignable le plus proche : ${formaterEuros(m)} (le reste, ${formaterEuros(montantTtcCents - m)}, pourra faire l’objet d’un second avoir).`);
+      } catch (x) {
+        if (x instanceof ErreurFacture && x.message.includes('le plus proche')) throw x;
+      }
+    }
+    throw e;
+  }
+}
+
+function lignesAvoirMontantExact(netParTaux: Ventilation, montantTtcCents: bigint, regime: Regime, autoliquidation: boolean,
   libelle: string): LigneFacture[] {
   const netTtc = netParTaux.reduce((a, v) => a + v.base_ht_cents + v.tva_cents, 0n);
   if (montantTtcCents <= 0n || montantTtcCents > netTtc) throw new ErreurFacture('Montant de l’avoir : entre 0,01 € et le net à payer.');
@@ -191,7 +214,7 @@ export function lignesAvoirMontant(netParTaux: Ventilation, montantTtcCents: big
     while (ttcDe(base, t) < cible) base += 1n;
     while (base > 0n && ttcDe(base, t) > cible) base -= 1n;
     if (ttcDe(base, t) !== cible) {
-      throw new ErreurFacture(`Avoir : ${formaterEuros(cible)} TTC n’est pas atteignable au centime près au taux de ${formaterTaux(t)} (arrondi de la TVA). ${parts.length > 1 ? 'Essayez un montant voisin d’un centime, ou établissez-le en deux avoirs.' : `Établissez-le en deux fois : un avoir de ${formaterEuros(montantTtcCents - 1n)}, puis un de 0,01 €.`}`);
+      throw new ErreurFacture(`Avoir : ${formaterEuros(cible)} TTC n’est pas atteignable au centime près au taux de ${formaterTaux(t)} (arrondi de la TVA).`);
     }
     if (base > v.base_ht_cents) throw new ErreurFacture('Avoir : supérieur au net de la facture pour ce taux.');
     lignes.push({

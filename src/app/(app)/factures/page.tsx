@@ -24,7 +24,7 @@ export default async function PageFactures({ searchParams }: PageProps<'/facture
   if (filtre === 'brouillon') requete = requete.eq('statut', 'brouillon');
   const [{ data, error }, { data: incidents }] = await Promise.all([
     requete,
-    supabase.from('incidents_paiement').select('facture_id, montant_cents').is('traite_le', null),
+    supabase.from('incidents_paiement').select('id, facture_id, montant_cents').is('traite_le', null),
   ]);
   type F = NonNullable<typeof data>[number];
   // Nom du client : copie figée pour un document émis, fiche client pour un brouillon.
@@ -47,7 +47,7 @@ export default async function PageFactures({ searchParams }: PageProps<'/facture
       {incidents?.length ? (
         <Message type="erreur">
           {incidents.length} paiement{incidents.length > 1 ? 's' : ''} par carte encaissé{incidents.length > 1 ? 's' : ''} par Stripe mais non enregistré{incidents.length > 1 ? 's' : ''} : à rembourser.{' '}
-          {incidents.map((i) => <Link key={i.facture_id} href={`/factures/${i.facture_id}`} className="inline-flex min-h-11 items-center underline underline-offset-4">voir la facture</Link>)}
+          {incidents.map((i) => <Link key={i.id} href={`/factures/${i.facture_id}`} className="inline-flex min-h-11 items-center underline underline-offset-4">voir la facture</Link>)}
         </Message>
       ) : null}
       <nav aria-label="Filtres" className="flex flex-wrap gap-2">
