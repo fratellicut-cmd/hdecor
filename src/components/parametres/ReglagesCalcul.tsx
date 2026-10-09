@@ -1,0 +1,108 @@
+'use client';
+
+import { useActionState, type ReactNode } from 'react';
+import {
+  ajouterConsommable, enregistrerCoefficient, enregistrerEtape, enregistrerMetre, enregistrerReferentiel,
+} from '@/app/(app)/parametres/calcul/actions';
+import { ETAT_INITIAL, type EtatFormulaire } from '@/lib/etat-formulaire';
+import { RetourFormulaire } from './RetourFormulaire';
+import { Bouton } from '@/components/ui/Bouton';
+import { BadgeAVerifier, Champ } from '@/components/ui/Champ';
+import { CaseACocher, Selection } from '@/components/ui/Autres';
+
+type Action = (e: EtatFormulaire, f: FormData) => Promise<EtatFormulaire>;
+
+function Ligne({ action, titre, aVerifier, caches, children }: {
+  action: Action; titre: string; aVerifier: boolean; caches: Record<string, string>; children: (e: Record<string, string>, v: Record<string, string>) => ReactNode;
+}) {
+  const [etat, envoyer, enCours] = useActionState(action, ETAT_INITIAL);
+  return (
+    <form action={envoyer} className="flex flex-col gap-2 border-t border-trait py-3 first:border-t-0" noValidate>
+      {Object.entries(caches).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
+      <p className="flex flex-wrap items-center gap-2 font-semibold">{titre}{aVerifier ? <BadgeAVerifier /> : null}</p>
+      <RetourFormulaire etat={etat} />
+      {children(etat.erreurs ?? {}, etat.valeurs ?? {})}
+      {/* Jamais pré-cochée : une valeur confirmée puis modifiée redevient À VÉRIFIER, sauf nouvelle confirmation. */}
+      <CaseACocher nom="confirme" libelle={aVerifier ? 'Valeur confirmée (fiche technique, comptable ou expérience)' : 'Confirmer aussi la nouvelle valeur'} />
+      <Bouton type="submit" variante="secondaire" disabled={enCours}>{enCours ? 'Enregistrement…' : 'Enregistrer'}</Bouton>
+    </form>
+  );
+}
+
+export function LigneReferentiel({ type, libelle, min, max, minutes, aVerifier }: {
+  type: string; libelle: string; min: string; max: string; minutes: string; aVerifier: boolean;
+}) {
+  return (
+    <Ligne action={enregistrerReferentiel} titre={libelle} aVerifier={aVerifier} caches={{ type_produit: type }}>
+      {(e, v) => (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <Champ libelle="Rendement mini (m²/L)" nom="rendement_min" inputMode="decimal" defaultValue={v.rendement_min ?? min} erreur={e.rendement_min} />
+            <Champ libelle="Rendement maxi (m²/L)" nom="rendement_max" inputMode="decimal" defaultValue={v.rendement_max ?? max} erreur={e.rendement_max} />
+          </div>
+          <Champ libelle="Temps de pose (min par m² et par couche)" nom="minutes_par_m2_couche" inputMode="decimal" defaultValue={v.minutes_par_m2_couche ?? minutes}
+            erreur={e.minutes_par_m2_couche} aide="Vide : temps non compté (signalé dans le calcul)." />
+        </>
+      )}
+    </Ligne>
+  );
+}
+
+export function LigneCoefficient({ support, libelle, pourcentage, aVerifier }: { support: string; libelle: string; pourcentage: string; aVerifier: boolean }) {
+  return (
+    <Ligne action={enregistrerCoefficient} titre={libelle} aVerifier={aVerifier} caches={{ support }}>
+      {(e, v) => (
+        <Champ libelle="Rendement retenu (% du rendement indiqué)" nom="coef_rendement_bp" inputMode="decimal" defaultValue={v.coef_rendement_bp ?? pourcentage}
+          erreur={e.coef_rendement_bp} aide="Support poreux ou irrégulier : moins de 100 % (ex. 80)." />
+      )}
+    </Ligne>
+  );
+}
+
+export function LigneEtape({ id, libelle, minutes, aVerifier }: { id: string; libelle: string; minutes: string; aVerifier: boolean }) {
+  return (
+    <Ligne action={enregistrerEtape} titre={libelle} aVerifier={aVerifier} caches={{ id }}>
+      {(e, v) => (
+        <Champ libelle="Temps (min par m²)" nom="minutes_par_m2" inputMode="decimal" defaultValue={v.minutes_par_m2 ?? minutes} erreur={e.minutes_par_m2} />
+      )}
+    </Ligne>
+  );
+}
+
+export function FormulaireConsommable() {
+  const [etat, envoyer, enCours] = useActionState(ajouterConsommable, ETAT_INITIAL);
+  const e = etat.erreurs ?? {};
+  const v = etat.valeurs ?? {};
+  return (
+    <form action={envoyer} className="flex flex-col gap-3" noValidate>
+      <RetourFormulaire etat={etat} />
+      <Champ libelle="Libellé" nom="libelle" defaultValue={v.libelle} erreur={e.libelle} placeholder="Bâches et adhésif, rouleaux…" />
+      <div className="grid grid-cols-2 gap-3">
+        <Selection libelle="Compté" nom="mode" defaultValue={v.mode ?? 'par_chantier'}>
+          <option value="par_chantier">par chantier</option>
+          <option value="par_m2">par m² peint</option>
+        </Selection>
+        <Champ libelle="Prix HT (€)" nom="prix_ht_cents" inputMode="decimal" defaultValue={v.prix_ht_cents} erreur={e.prix_ht_cents} />
+      </div>
+      <Bouton type="submit" variante="secondaire" disabled={enCours}>{enCours ? 'Ajout…' : 'Ajouter le consommable'}</Bouton>
+    </form>
+  );
+}
+
+export function FormulaireMetre({ porteLargeur, porteHauteur, formats }: { porteLargeur: string; porteHauteur: string; formats: string }) {
+  const [etat, envoyer, enCours] = useActionState(enregistrerMetre, ETAT_INITIAL);
+  const e = etat.erreurs ?? {};
+  const v = etat.valeurs ?? {};
+  return (
+    <form action={envoyer} className="flex flex-col gap-3" noValidate>
+      <RetourFormulaire etat={etat} />
+      <div className="grid grid-cols-2 gap-3">
+        <Champ libelle="Porte : largeur (cm)" nom="porte_largeur_mm" inputMode="decimal" defaultValue={v.porte_largeur_mm ?? porteLargeur} erreur={e.porte_largeur_mm} />
+        <Champ libelle="Porte : hauteur (cm)" nom="porte_hauteur_mm" inputMode="decimal" defaultValue={v.porte_hauteur_mm ?? porteHauteur} erreur={e.porte_hauteur_mm} />
+      </div>
+      <Champ libelle="Formats de pots (L), séparés par « ; »" nom="formats_pots_ml" defaultValue={v.formats_pots_ml ?? formats} erreur={e.formats_pots_ml}
+        aide="Utilisés quand aucun produit du catalogue n’est choisi (prix inconnus)." />
+      <Bouton type="submit" variante="secondaire" disabled={enCours}>{enCours ? 'Enregistrement…' : 'Enregistrer'}</Bouton>
+    </form>
+  );
+}

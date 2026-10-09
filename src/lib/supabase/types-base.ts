@@ -1463,8 +1463,14 @@ isOneToOne: false
 "deductions_bien_formees":
 { Args: { "p": Json }; Returns: boolean
                            },
+"definir_preparations":
+{ Args: { "p_etapes": (string)[],"p_poste_id": string }; Returns: undefined
+                           },
 "devis_par_jeton":
 { Args: { "p_jeton": string }; Returns: Json
+                           },
+"dupliquer_piece":
+{ Args: { "p_nom": string,"p_piece_id": string }; Returns: string
                            },
 "effacer_client":
 { Args: { "p_client_id": string }; Returns: number

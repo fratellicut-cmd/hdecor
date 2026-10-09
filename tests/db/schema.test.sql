@@ -781,7 +781,7 @@ select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prokind = 'f' and p.prorettype <> 'trigger'::regtype
      and has_function_privilege('authenticated', p.oid, 'execute')),
-  'aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,deductions_bien_formees,effacer_client,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,organisation_du_chemin,rechercher_clients,refuser_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,ventilation_attendue,ventilation_bien_formee',
+  'aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,deductions_bien_formees,definir_preparations,dupliquer_piece,effacer_client,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,organisation_du_chemin,rechercher_clients,refuser_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,ventilation_attendue,ventilation_bien_formee',
   'sécurité : liste COMPLÈTE des fonctions appelables par une session');
 select tests.echoue($$select public.purger_journal_audit(now() - interval '20 years')$$, 'permission denied',
   'sécurité : purge du journal réservée au serveur');
@@ -1384,10 +1384,41 @@ select tests.echoue($$insert into public.consommables (organisation_id, libelle,
 insert into public.consommables (organisation_id, libelle, mode, prix_ht_cents)
 values ('aaaaaaaa-0000-0000-0000-00000000000a', 'Bâches et adhésif', 'par_chantier', 2500);
 
+-- Duplication atomique d'une pièce (ouvertures, éléments, postes, préparations).
+insert into public.pieces (id, organisation_id, chantier_id, nom, mode_saisie, longueur_mm, largeur_mm, hauteur_mm)
+values ('aaaaaaaa-0000-0000-0000-0000000d1e01', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca001', 'Chambre 1', 'rectangle', 4000, 3000, 2500);
+insert into public.ouvertures (organisation_id, piece_id, type, largeur_mm, hauteur_mm)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000d1e01', 'porte', 830, 2040);
+insert into public.elements (id, organisation_id, piece_id, type, unite, quantite_e4, developpe_mm)
+values ('aaaaaaaa-0000-0000-0000-0000000d1e02', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000d1e01', 'plinthe', 'ml', 140000, 100);
+insert into public.postes_travaux (id, organisation_id, piece_id, cible, element_id, support, type_produit)
+values ('aaaaaaaa-0000-0000-0000-0000000d1e03', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000d1e01', 'element',
+        'aaaaaaaa-0000-0000-0000-0000000d1e02', 'bois_brut', 'laque');
+select public.definir_preparations('aaaaaaaa-0000-0000-0000-0000000d1e03',
+  array(select id from public.etapes_preparation where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and code in ('poncage', 'impression')));
+select tests.egal((select count(*) from public.postes_preparations where poste_id = 'aaaaaaaa-0000-0000-0000-0000000d1e03'), 2::bigint,
+  'préparations : deux étapes enregistrées');
+select public.definir_preparations('aaaaaaaa-0000-0000-0000-0000000d1e03',
+  array(select id from public.etapes_preparation where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and code = 'poncage'));
+select tests.egal((select count(*) from public.postes_preparations where poste_id = 'aaaaaaaa-0000-0000-0000-0000000d1e03'), 1::bigint,
+  'préparations : remplacées en bloc');
+-- (Duplication d'abord, vérification ensuite : une même requête ne voit pas
+-- les lignes insérées par la fonction qu'elle appelle.)
+select set_config('tests.copie', public.dupliquer_piece('aaaaaaaa-0000-0000-0000-0000000d1e01', 'Chambre 2')::text, false);
+select tests.egal((select count(*) from public.pieces p
+  join public.ouvertures o on o.piece_id = p.id
+  join public.elements e on e.piece_id = p.id
+  join public.postes_travaux t on t.piece_id = p.id and t.element_id = e.id
+  join public.postes_preparations x on x.poste_id = t.id
+  where p.id = current_setting('tests.copie')::uuid and p.nom = 'Chambre 2'), 1::bigint,
+  'duplication : ouverture, élément, poste rattaché au NOUVEL élément, préparation');
+
 set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000001';
 select tests.egal((select count(*) from public.clients), 0::bigint, 'B ne voit pas les clients de A');
 select tests.egal((select count(*) from public.rechercher_clients('helene')), 0::bigint, 'B ne trouve pas les clients de A par la recherche');
 select tests.egal((select count(*) from public.consommables), 0::bigint, 'B ne voit pas les consommables de A');
+select tests.echoue($$select public.dupliquer_piece('aaaaaaaa-0000-0000-0000-0000000d1e01', 'Vol')$$, 'introuvable', 'B ne duplique pas une pièce de A');
+select tests.echoue($$select public.definir_preparations('aaaaaaaa-0000-0000-0000-0000000d1e03', '{}')$$, 'introuvable', 'B ne modifie pas les préparations de A');
 select tests.egal((select count(*) from public.referentiel_calcul where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'), 0::bigint,
   'B ne voit pas le référentiel de calcul de A');
 select tests.egal(public.confirmer_valeurs('aaaaaaaa-0000-0000-0000-00000000000a', array['validite_devis_jours']), false,
