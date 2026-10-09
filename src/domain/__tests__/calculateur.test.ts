@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calculerPoste, dixiemesDeJour, listeAchat, type EtapeCalc, type ParametresCalcul, type PosteCalc, type ProduitCalc } from '../calculateur';
+import { calculerPoste, cleTeinte, dixiemesDeJour, listeAchat, type EtapeCalc, type ParametresCalcul, type PosteCalc, type ProduitCalc } from '../calculateur';
 import { formaterQuantiteCourte, quantiteDepuisFraction } from '../peinture';
 
 const params: ParametresCalcul = {
@@ -9,6 +9,7 @@ const params: ParametresCalcul = {
   formatsDefautMl: [1000, 2500, 5000, 10_000, 15_000],
   formatsDefautG: [5000, 15_000, 25_000],
   hauteurAlerteMm: 3000,
+  toleranceResteBp: 1000,
   coefSupport: { ancienne_peinture: { bp: 10_000, aVerifier: true }, platre_neuf: { bp: 8000, aVerifier: true } },
   referentiel: {
     acrylique: { rendementMinCentiemes: 1000, minutesParM2CoucheCentiemes: 15, sechageDixiemesH: null, aVerifier: true },
@@ -253,3 +254,27 @@ describe('audits de la boucle 2', () => {
     expect(r.avertissements).toContain('Extérieur : ce produit n’est pas déclaré pour l’extérieur au catalogue.');
   });
 });
+
+describe('teinte libre et coût indicatif (boucle 3)', () => {
+  it('clé de teinte : casse, espaces et forme Unicode ignorés', () => {
+    expect(cleTeinte('RAL 9010')).toBe(cleTeinte('ral9010'));
+    expect(cleTeinte('Blanc  cassé')).toBe(cleTeinte('blanc cassé'));
+    expect(cleTeinte('Blanc cass\u0065\u0301')).toBe(cleTeinte('Blanc cass\u00e9'));
+    expect(cleTeinte('Gris')).not.toBe(cleTeinte('Gris clair'));
+  });
+  it('coût indicatif (prix partiels) : le total n’est pas présenté comme complet, pas de prix de vente', () => {
+    // Formats 1 L (sans prix) et 10 L (90 €), besoin 7,024 L : règle sans prix ; 10 L laisserait
+    // 2,976 L (> 1 L et > 10 % = 0,702 L) -> 8 × 1 L (reste 0,976 L), prix inconnu.
+    const produit: ProduitCalc = { ...acryliqueCatalogue, formats: [{ contenanceMl: 1000, prixCents: null }, { contenanceMl: 10_000, prixCents: 9000n }] };
+    const r = calculerPoste({ ...posteMurs, produit }, params);
+    expect(r.pots?.retenue.pots.map((x) => `${x.nombre}×${x.contenanceMl}`)).toEqual(['8×1000']);
+    // 9,2 L : 10 L (reste 0,8 L < 1 L), prix connu des pots retenus mais choix non optimisé au coût.
+    const neuf = calculerPoste({ ...posteMurs, produit, surface: { mm2: 41_818_182n } }, params);
+    expect(neuf.pots?.retenue.coutCents).toBe(9000n);
+    const l = listeAchat([{ poste: { ...posteMurs, produit, surface: { mm2: 41_818_182n } }, resultat: neuf }], [], params);
+    expect(l.lignes[0]!.coutIndicatif).toBe(true);
+    expect(l.coutComplet).toBe(false);
+    expect(l.prixVenteHtCents).toBeNull();
+  });
+});
+

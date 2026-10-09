@@ -59,7 +59,7 @@ test('métré de référence : 31,93 m² de murs, 12,00 m² de plafond, détail 
   expect(erreurs).toEqual([]);
 });
 
-test('calcul peinture : 7,02 L, 1 pot de 10 L sans prix, avertissements, puis coût avec un produit chiffré', async ({ page }) => {
+test('calcul peinture : 7,02 L, pots 5 + 2,5 L sans prix, avertissements, puis coût avec un produit chiffré', async ({ page }) => {
   const nom = `Peinture-${unique()}`;
   const chantier = await nouveauChantier(page, nom);
   await pieceReference(page, chantier);
@@ -70,8 +70,8 @@ test('calcul peinture : 7,02 L, 1 pot de 10 L sans prix, avertissements, puis co
   await expect(page.getByRole('heading', { level: 1, name: 'Calcul peinture' })).toBeVisible();
   const carte = page.locator('section').filter({ hasText: 'Chambre : murs' });
   await expect(carte.getByText('7,02 L')).toBeVisible();
-  // Prix inconnus (R3 révisée) : le moins de pots -> 1 × 10 L.
-  await expect(carte.getByText(/^1 × 10\s*L/)).toBeVisible();
+  // Prix inconnus (R3) : 10 L laisserait 2,98 L (> 1 L et > 10 %) -> 5 + 2,5 L.
+  await expect(carte.getByText(/^1 × 5\s*L \+ 1 × 2,5\s*L/)).toBeVisible();
   await expect(carte.getByText('prix inconnus : le moins de pots (indicatif)')).toBeVisible();
   await expect(carte.getByText(/Ancienne peinture : prévoir un lessivage/)).toBeVisible();
   await expect(carte.getByText('À VÉRIFIER')).toBeVisible();

@@ -58,7 +58,17 @@ function composer(formats: Format[], comptes: number[], besoinMl: bigint): Combi
   return { pots, totalMl: total, resteMl: total - besoinMl, nombrePots: nombre, coutCents: cout };
 }
 
-export function choisirPots(besoinMl: bigint, formatsBruts: Format[]): ChoixPots {
+/**
+ * Sans prix : reste toléré, en points de base du besoin (paramètre de
+ * l'entreprise, 10 % au départ). Un reste inférieur au plus petit format est
+ * toujours accepté (il est atteignable avec ce seul format).
+ */
+export type OptionsPots = { toleranceResteBp: number };
+
+export function choisirPots(besoinMl: bigint, formatsBruts: Format[], options: OptionsPots): ChoixPots {
+  if (!Number.isSafeInteger(options.toleranceResteBp) || options.toleranceResteBp < 0 || options.toleranceResteBp > 10_000) {
+    throw new ErreurPots('Tolérance de reste invalide (0 à 100 %).');
+  }
   if (besoinMl < 0n) throw new ErreurPots('Besoin négatif.');
   if (besoinMl > BESOIN_MAX_ML) throw new ErreurPots('Besoin supérieur à 10 000 L : vérifiez la saisie (surface, rendement).');
   // Formats distincts et valides uniquement.
@@ -111,11 +121,17 @@ export function choisirPots(besoinMl: bigint, formatsBruts: Format[]): ChoixPots
       if (plusCher < 0n || (plusCher === 0n && (t < meilleur || (t === meilleur && nb[t]! < nb[meilleur]!)))) meilleur = t;
     }
   } else {
-    // Sans prix (R3 révisée, boucle 2) : parmi TOUTES les combinaisons qui
-    // couvrent le besoin, le moins de pots, puis le moins de reste. 13,86 L
-    // -> 1 × 15 L et non 10 + 2,5 + 1 + 1 L. Choix indicatif (prix inconnus).
+    // Sans prix (R3, révisée en boucle 3 après arbitrage entre l'audit métier et
+    // le contrôle des calculs) : parmi les combinaisons dont le reste est
+    // inférieur au plus petit format OU au plus égal à la tolérance (% du
+    // besoin), le moins de pots, puis le moins de reste. Avec 10 % :
+    // 13,86 L -> 1 × 15 L ; 7,024 L -> 5 + 2,5 L ; 1,1 L (1 L / 15 L) -> 2 × 1 L.
+    const plusPetitMl = BigInt(formats[0]!.contenanceMl);
+    const toleranceMl = (besoinMl * BigInt(options.toleranceResteBp)) / 10_000n;
     for (let t = besoinPas; t <= borne; t += 1) {
       if (cout[t] === null) continue;
+      const reste = BigInt(t) * BigInt(pas) - besoinMl;
+      if (reste >= plusPetitMl && reste > toleranceMl) continue;
       if (meilleur < 0 || nb[t]! < nb[meilleur]!) meilleur = t;
     }
   }

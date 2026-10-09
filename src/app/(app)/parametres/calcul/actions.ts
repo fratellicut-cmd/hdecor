@@ -163,6 +163,7 @@ const schemaMetre = z.object({
     z.number().int().min(1000, { error: 'Hauteur de porte : 100 cm minimum.' }).max(4000, { error: 'Hauteur de porte : 400 cm maximum.' })),
   formats_pots_ml: formats('Pots'),
   formats_sacs_g: formats('Sacs'),
+  tolerance_reste_bp: pourcentage(0, 10_000),
   hauteur_alerte_mm: z.preprocess((v) => lireLongueurMm(String(v ?? ''), 'm') ?? Number.NaN,
     z.number({ error: 'Alerte de hauteur : nombre invalide (exemple : 3 ou 3,5).' }).int().min(2000, { error: 'Alerte de hauteur : 2 m minimum.' }).max(20_000, { error: 'Alerte de hauteur : 20 m maximum.' })),
   // Heures (une décimale) -> minutes : 7,5 h -> 450.

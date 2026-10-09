@@ -101,6 +101,10 @@ where e.code = v.code;
 alter table public.parametres_entreprise
   add column minutes_par_jour integer not null default 420 check (minutes_par_jour between 60 and 1440);
 
+-- Pots sans prix : reste toléré en % du besoin (règle R3), paramétrable.
+alter table public.parametres_entreprise
+  add column tolerance_reste_bp integer not null default 1000 check (tolerance_reste_bp between 0 and 10000);
+
 -- Version d'un poste (conflit avec un brouillon gardé sur le téléphone).
 alter table public.postes_travaux add column updated_at timestamptz not null default now();
 create trigger postes_travaux_updated_at before update on public.postes_travaux

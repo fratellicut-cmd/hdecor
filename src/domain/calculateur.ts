@@ -64,6 +64,8 @@ export type ParametresCalcul = {
   formatsDefautMl: number[];
   formatsDefautG: number[];
   hauteurAlerteMm: number;
+  /** Pots sans prix : reste toléré, en points de base du besoin (R3). */
+  toleranceResteBp: number;
   coefSupport: Partial<Record<Support, { bp: number; aVerifier: boolean }>>;
   referentiel: Partial<Record<TypeProduit, ReferentielType>>;
 };
@@ -145,6 +147,9 @@ export const uniteDuType = (t: TypeProduit | null): 'L' | 'kg' => (t === 'enduit
  * forme pour un poste et pour la matière d'une étape : une impression posée
  * en poste et une impression cochée en préparation font UNE ligne.
  */
+/** Teinte tapée -> clé de regroupement : forme Unicode unique, sans casse ni espaces (« RAL 9010 » = « ral9010 »). */
+export const cleTeinte = (t: string) => t.normalize('NFC').toLocaleLowerCase('fr').replace(/\s+/g, '');
+
 const cleAchat = (produit: string, teinte: string | null, finition: string | null) => `${produit}|${teinte ?? ''}|${finition ?? ''}`;
 
 const formatsDefaut = (p: ParametresCalcul, unite: 'L' | 'kg'): Format[] =>
@@ -193,7 +198,7 @@ export function calculerPoste(poste: PosteCalc, p: ParametresCalcul): ResultatPo
   if (surfaceMm2 !== null && rendement !== null) {
     quantite = calculerQuantite({ surfaceMm2, rendementCentiemes: rendement, coefSupportBp, couches: poste.couches, margePerteBp: marge });
     try {
-      pots = choisirPots(quantite.aCouvrirMl, poste.produit?.formats.length ? poste.produit.formats : formatsDefaut(p, unite));
+      pots = choisirPots(quantite.aCouvrirMl, poste.produit?.formats.length ? poste.produit.formats : formatsDefaut(p, unite), { toleranceResteBp: p.toleranceResteBp });
       coutMatiere = pots.retenue.coutCents;
     } catch (e) {
       if (!(e instanceof ErreurPots)) throw e;
@@ -315,7 +320,10 @@ export type ListeAchat = {
   doublons: string[];
   consommables: { id: string; libelle: string; coutCents: bigint; aVerifier: boolean }[];
   coutMatiereCents: bigint;
-  /** Faux si une ligne n'a pas de prix ou si un poste / une matière n'est pas chiffré. */
+  /**
+   * Faux si une ligne n'a pas de prix, si un poste / une matière n'est pas
+   * chiffré, ou si un coût n'est qu'indicatif (combinaison non optimisée au coût).
+   */
   coutComplet: boolean;
   tempsMinutes: bigint;
   /** Faux si un temps de pose ou de préparation manque. */
@@ -349,11 +357,12 @@ export function listeAchat(postes: { poste: PosteCalc; resultat: ResultatPoste }
   const etapesParSurface = new Map<string, { libelle: string; postes: number; surface: string }>();
   const produitsParSurface = new Map<string, { libelle: string; postes: number; surface: string }>();
   for (const { poste, resultat } of postes) {
-    const produit = poste.produit ? `p:${poste.produit.id}` : poste.typeProduit ? `t:${poste.typeProduit}` : null;
-    if (produit) {
-      const k = `${poste.cleSurface}#${produit}`;
+    // Par TYPE de produit : un produit du catalogue et un « type à choisir » identiques sur un même mur sont aussi vus.
+    const typeEffectif = poste.produit?.type ?? poste.typeProduit;
+    if (typeEffectif) {
+      const k = `${poste.cleSurface}#${typeEffectif}`;
       const vu = produitsParSurface.get(k);
-      produitsParSurface.set(k, { libelle: poste.produit?.libelle ?? LIBELLES_TYPE[poste.typeProduit!], postes: (vu?.postes ?? 0) + 1, surface: poste.libelle });
+      produitsParSurface.set(k, { libelle: LIBELLES_TYPE[typeEffectif], postes: (vu?.postes ?? 0) + 1, surface: poste.libelle });
     }
     for (const e of poste.etapes) {
       const k = `${poste.cleSurface}#${e.id}`;
@@ -388,7 +397,7 @@ export function listeAchat(postes: { poste: PosteCalc; resultat: ResultatPoste }
     const quantite = quantiteDepuisFraction(c.quantite);
     let pots: ChoixPots | null = null;
     let probleme: string | null = null;
-    try { pots = choisirPots(quantite.aCouvrirMl, c.formats); } catch (e) {
+    try { pots = choisirPots(quantite.aCouvrirMl, c.formats, { toleranceResteBp: p.toleranceResteBp }); } catch (e) {
       if (!(e instanceof ErreurPots)) throw e;
       probleme = e.message;
     }
@@ -408,11 +417,11 @@ export function listeAchat(postes: { poste: PosteCalc; resultat: ResultatPoste }
 
   const doublons = [
     ...[...produitsParSurface.values()].filter((v) => v.postes > 1)
-      .map((v) => `« ${v.libelle} » prévu sur ${v.postes} postes de la même surface (${v.surface}) : peinture et temps comptés ${v.postes} fois. Retirez le poste en trop.`),
+      .map((v) => `${v.libelle} prévu sur ${v.postes} postes de la même surface (${v.surface}) : peinture et temps comptés ${v.postes} fois. Retirez le poste en trop.`),
     ...[...etapesParSurface.values()].filter((v) => v.postes > 1)
       .map((v) => `Étape « ${v.libelle} » cochée sur ${v.postes} postes de la même surface (${v.surface}) : son temps et sa matière sont comptés ${v.postes} fois. Décochez-la sur l’un d’eux.`),
   ];
-  const coutComplet = prixComplets && matiereComplete && !nonChiffres.length;
+  const coutComplet = prixComplets && matiereComplete && !nonChiffres.length && !lignes.some((l) => l.coutIndicatif);
   const mo = p.tauxHoraireCents === null ? null : coutMainOeuvre(temps, p.tauxHoraireCents);
   const vente = coutComplet && tempsComplet && mo !== null ? prixVenteMatiere(cout, p.coefMargeBp) + mo : null;
   return {

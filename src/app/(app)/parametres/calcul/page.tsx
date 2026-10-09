@@ -30,7 +30,7 @@ export default async function PageReglagesCalcul() {
     supabase.from('coefficients_support').select('*'),
     supabase.from('etapes_preparation').select('*').eq('actif', true).order('ordre'),
     supabase.from('consommables').select('*').eq('actif', true).order('libelle'),
-    supabase.from('parametres_entreprise').select('porte_largeur_mm, porte_hauteur_mm, formats_pots_ml, formats_sacs_g, hauteur_alerte_mm, minutes_par_jour').eq('organisation_id', session.organisationId).single(),
+    supabase.from('parametres_entreprise').select('porte_largeur_mm, porte_hauteur_mm, formats_pots_ml, formats_sacs_g, hauteur_alerte_mm, minutes_par_jour, tolerance_reste_bp').eq('organisation_id', session.organisationId).single(),
   ]);
   if (ref.error || coefs.error || etapes.error || conso.error || param.error) throw new Error('Lecture impossible : réglages de calcul.');
   const coefDe = new Map(coefs.data.map((c) => [c.support, c]));
@@ -45,7 +45,7 @@ export default async function PageReglagesCalcul() {
           formats={param.data.formats_pots_ml.map((f) => formaterContenance(f).replace(/ L$/, '')).join(' ; ')}
           sacs={param.data.formats_sacs_g.map((f) => formaterContenance(f).replace(/ L$/, '')).join(' ; ')}
           hauteurAlerte={longueurVersSaisie(param.data.hauteur_alerte_mm, 'm')}
-          heuresParJour={formaterHeures(param.data.minutes_par_jour)} />
+          heuresParJour={formaterHeures(param.data.minutes_par_jour)} toleranceReste={pourcentageVersSaisie(param.data.tolerance_reste_bp)} />
       </Carte>
 
       <Carte titre="Rendements par type de produit">

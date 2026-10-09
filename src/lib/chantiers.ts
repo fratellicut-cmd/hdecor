@@ -6,7 +6,7 @@ import { centiemes } from '@/domain/chiffrage';
 import { lireDecimal } from '@/domain/saisie';
 import {
   calculerPoste, listeAchat, type Consommable, type EtapeCalc, type ParametresCalcul, type PosteCalc, type ProduitCalc,
-  type ResultatPoste, type ListeAchat, type Finition,
+  type ResultatPoste, type ListeAchat, type Finition, cleTeinte,
 } from '@/domain/calculateur';
 import { calculerSurfacesPiece, ErreurMetre, surfaceElementMm2, type SurfacesPiece } from '@/domain/metre';
 import type { Support, TypeProduit } from '@/domain/systemes';
@@ -84,7 +84,7 @@ export async function calculerChantier(id: string) {
     supabase.from('coefficients_support').select('*'),
     supabase.from('etapes_preparation').select('*').eq('actif', true).order('ordre'),
     supabase.from('consommables').select('*').eq('actif', true).order('libelle'),
-    supabase.from('parametres_entreprise').select('marge_perte_bp, coef_marge_bp, taux_horaire_cents, formats_pots_ml, formats_sacs_g, hauteur_alerte_mm, minutes_par_jour, porte_largeur_mm, porte_hauteur_mm')
+    supabase.from('parametres_entreprise').select('marge_perte_bp, coef_marge_bp, taux_horaire_cents, formats_pots_ml, formats_sacs_g, hauteur_alerte_mm, minutes_par_jour, tolerance_reste_bp, porte_largeur_mm, porte_hauteur_mm')
       .eq('organisation_id', session.organisationId).single(),
   ]);
   const p = verifier(parametres, 'paramètres');
@@ -130,6 +130,7 @@ export async function calculerChantier(id: string) {
     formatsDefautMl: p.formats_pots_ml,
     formatsDefautG: p.formats_sacs_g,
     hauteurAlerteMm: p.hauteur_alerte_mm,
+    toleranceResteBp: p.tolerance_reste_bp,
     coefSupport: Object.fromEntries(verifier(coefficients, 'coefficients').map((c) => [c.support, { bp: c.coef_rendement_bp, aVerifier: c.statut_verification !== 'verifie' }])),
     referentiel: Object.fromEntries(verifier(referentiel, 'référentiel').map((r) => [r.type_produit, {
       rendementMinCentiemes: centiemes(r.rendement_min),
@@ -189,9 +190,6 @@ export async function calculerChantier(id: string) {
     ...base, postes: calcules, liste, parametres: p, produits: lesProduits, teintes: lesTeintes, etapes: lesEtapes,
   } satisfies Record<string, unknown> & { postes: { poste: PosteCalc; resultat: ResultatPoste }[] };
 }
-
-/** Teinte tapée -> clé de regroupement : forme Unicode unique, sans casse ni espaces. */
-export const cleTeinte = (t: string) => t.normalize('NFC').toLocaleLowerCase('fr').replace(/\s+/g, '');
 
 /** numeric(5,1) en heures -> dixièmes d'heure entiers (6,5 h -> 65), lu sans calcul flottant. */
 function dixiemes(v: number | null): number | null {

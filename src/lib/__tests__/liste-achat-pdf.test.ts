@@ -11,7 +11,7 @@ const { pdfListeAchat } = await import('../pdf/liste-achat');
 
 const params: ParametresCalcul = {
   margePerteBp: 1000, coefMargeBp: 13_000, tauxHoraireCents: 4500n, formatsDefautMl: [1000, 2500, 5000, 10_000, 15_000],
-  formatsDefautG: [5000, 15_000, 25_000], hauteurAlerteMm: 3000, coefSupport: { ancienne_peinture: { bp: 10_000, aVerifier: true } },
+  formatsDefautG: [5000, 15_000, 25_000], hauteurAlerteMm: 3000, toleranceResteBp: 1000, coefSupport: { ancienne_peinture: { bp: 10_000, aVerifier: true } },
   referentiel: { acrylique: { rendementMinCentiemes: 1000, minutesParM2CoucheCentiemes: 15, sechageDixiemesH: null, aVerifier: true } },
 };
 const poste: PosteCalc = {
