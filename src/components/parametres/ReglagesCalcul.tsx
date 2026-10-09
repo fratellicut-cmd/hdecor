@@ -128,7 +128,7 @@ export function FormulaireMetre({ porteLargeur, porteHauteur, formats, sacs, hau
       <Champ libelle="Formats de pots (L), séparés par « ; »" nom="formats_pots_ml" defaultValue={v.formats_pots_ml ?? formats} erreur={e.formats_pots_ml}
         aide="Utilisés quand aucun produit du catalogue n’est choisi (prix inconnus)." />
       <Champ libelle="Reste toléré quand les prix sont inconnus (%)" nom="tolerance_reste_bp" inputMode="decimal" defaultValue={v.tolerance_reste_bp ?? toleranceReste}
-        erreur={e.tolerance_reste_bp} aide="Pots choisis sans prix : le moins de pots possible, avec un reste inférieur au plus petit pot ou à ce pourcentage du besoin." />
+        erreur={e.tolerance_reste_bp} aide="Pots choisis sans prix : le moins de pots possible, avec un reste inférieur au plus petit pot ou à ce pourcentage du besoin. Plus haut = moins de pots, plus de reste." />
       <Champ libelle="Formats de sacs d’enduit (kg), séparés par « ; »" nom="formats_sacs_g" defaultValue={v.formats_sacs_g ?? sacs} erreur={e.formats_sacs_g} />
       <div className="grid grid-cols-2 gap-3">
         <Champ libelle="Alerte de hauteur (m)" nom="hauteur_alerte_mm" inputMode="decimal" defaultValue={v.hauteur_alerte_mm ?? hauteurAlerte} erreur={e.hauteur_alerte_mm}
