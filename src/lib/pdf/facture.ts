@@ -178,9 +178,11 @@ export async function pdfFacture(d: DonneesPdfFacture): Promise<Uint8Array> {
     lignesTotaux.push([avoir ? 'Total TTC de l’avoir' : 'Total TTC', formaterEuros(totaux.totalTtcCents), true]);
   }
   for (const x of d.deductions) {
-    lignesTotaux.push([`Acompte ${x.numero} déduit`, `-${formaterEuros(x.ttc)}`, false,
+    // Avoir d'annulation d'une facture qui déduisait des acomptes : ces acomptes restent dus, ils ne sont pas crédités.
+    lignesTotaux.push([avoir ? `Acompte ${x.numero} non repris (reste acquis)` : `Acompte ${x.numero} déduit`, `-${formaterEuros(x.ttc)}`, false,
       sansTva ? undefined : `dont HT ${formaterEuros(x.ht)}, TVA ${formaterEuros(x.tva)}`]);
   }
+  if (avoir && d.deductions.length) lignesTotaux.push(['Montant de l’avoir (net)', formaterEuros(net), true]);
   if (!avoir && (d.deductions.length || sansTva)) lignesTotaux.push(['Net à payer', formaterEuros(net), true]);
   place(c, lignesTotaux.length * 16 + d.deductions.length * 11 + 30);
   const xLib = A4.l - MARGE - 300;

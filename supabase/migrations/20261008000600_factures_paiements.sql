@@ -406,7 +406,8 @@ begin
     if jsonb_array_length(v_f.deductions) > 0 and (
          v_avoirs <> 0 or v_f.net_a_payer_cents <> v_origine.net_a_payer_cents
          or v_f.deductions <> v_origine.deductions
-         or v_f.total_ttc_cents <> v_origine.total_ttc_cents) then
+         or v_f.total_ttc_cents <> v_origine.total_ttc_cents
+         or v_f.ventilation_tva <> v_origine.ventilation_tva) then
       raise exception 'Un avoir qui reprend les acomptes déduits annule toute la facture d''origine.' using errcode = 'P0001';
     end if;
     -- Acompte ou situation : un avoir de CORRECTION l'annule en totalité (une

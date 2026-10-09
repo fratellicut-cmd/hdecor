@@ -22,7 +22,10 @@ export default async function PageFactures({ searchParams }: PageProps<'/facture
   if (filtre === 'a_encaisser') requete = requete.eq('statut', 'emise').neq('type', 'avoir').gt('reste_a_payer_cents', 0);
   if (filtre === 'en_retard') requete = requete.eq('statut_affiche', 'en_retard');
   if (filtre === 'brouillon') requete = requete.eq('statut', 'brouillon');
-  const { data, error } = await requete;
+  const [{ data, error }, { data: incidents }] = await Promise.all([
+    requete,
+    supabase.from('incidents_paiement').select('facture_id, montant_cents').is('traite_le', null),
+  ]);
   type F = NonNullable<typeof data>[number];
   // Nom du client : copie figée pour un document émis, fiche client pour un brouillon.
   const idsClients = [...new Set((data ?? []).filter((f) => !f.copie_client).map((f) => f.client_id!))];
@@ -41,6 +44,12 @@ export default async function PageFactures({ searchParams }: PageProps<'/facture
         <Link href="/factures/nouvelle" className="inline-flex min-h-12 items-center rounded-xl bg-anthracite px-5 font-semibold text-creme">+ Nouvelle</Link>
       </div>
       {sp.supprime === '1' ? <Message type="succes">Brouillon supprimé.</Message> : null}
+      {incidents?.length ? (
+        <Message type="erreur">
+          {incidents.length} paiement{incidents.length > 1 ? 's' : ''} par carte encaissé{incidents.length > 1 ? 's' : ''} par Stripe mais non enregistré{incidents.length > 1 ? 's' : ''} : à rembourser.{' '}
+          {incidents.map((i) => <Link key={i.facture_id} href={`/factures/${i.facture_id}`} className="inline-flex min-h-11 items-center underline underline-offset-4">voir la facture</Link>)}
+        </Message>
+      ) : null}
       <nav aria-label="Filtres" className="flex flex-wrap gap-2">
         {Object.entries(FILTRES).map(([k, l]) => (
           <Link key={k} href={k === 'a_encaisser' ? '/factures' : `/factures?filtre=${k}`} aria-current={filtre === k ? 'page' : undefined}
@@ -67,7 +76,7 @@ export default async function PageFactures({ searchParams }: PageProps<'/facture
                 <span className={`text-sm ${retard ? 'font-semibold text-danger' : 'text-encre-douce'}`}>
                   {[LIBELLES_TYPE_FACTURE[f.type as TypeFacture], LIBELLES_STATUT_FACTURE[f.statut_affiche!] ?? f.statut_affiche,
                     f.date_emission ? `émise le ${formaterDate(f.date_emission)}` : null,
-                    !avoir && f.statut === 'emise' && f.reste_a_payer_cents ? `reste dû sur ${formaterEuros(f.net_a_payer_cents!)}, échéance ${formaterDate(f.date_echeance!)}` : null,
+                    !avoir && f.statut === 'emise' && f.reste_a_payer_cents ? `reste ${formaterEuros(f.reste_a_payer_cents)} sur ${formaterEuros(f.net_a_payer_cents!)}, échéance ${formaterDate(f.date_echeance!)}` : null,
                     avoir && f.reste_a_rembourser_cents ? `à rembourser ${formaterEuros(f.reste_a_rembourser_cents)}` : null,
                   ].filter(Boolean).join(' · ')}
                 </span>

@@ -127,6 +127,19 @@ describe('avoir', async () => {
   });
 });
 
+describe('avoir d’annulation d’une finale qui déduisait un acompte (1 000,03 € HT à 20 %, acompte 360,01 €)', async () => {
+  const emAss = { ...copieEmetteur({ ...params, regime_tva: 'assujetti', numero_tva_intra: 'FR00123456789' }, assurances, '2026-10-09'), paiement };
+  const t = texte(await pdfFacture({ ...base, type: 'avoir', numero: 'AVO-2026-0002', devis: null, regime: 'assujetti', emetteur: emAss,
+    origine: { numero: 'FAC-2026-0002', dateEmission: '2026-10-09' }, natureAvoir: 'correction', lignes: [l('Murs', 10_000n, 100_003n, 2_000)],
+    deductions: [{ facture_id: 'a1', numero: 'FAC-2026-0001', ht: 30_001n, tva: 6_000n, ttc: 36_001n }] }));
+  it('montant réellement crédité imprimé en net ; acompte présenté comme non repris', () => {
+    expect(t).toContain('Total TTC de l’avoir 1 200,04 €');
+    expect(t).toContain('Acompte FAC-2026-0001 non repris (reste acquis) -360,01 €');
+    expect(t).toContain('Montant de l’avoir (net) 840,03 €');
+    expect(t).not.toContain('déduit');
+  });
+});
+
 describe('aperçu d’un brouillon', async () => {
   const t = texte(await pdfFacture({ ...base, numero: null, brouillon: true }));
   it('sans numéro, marqué', () => {

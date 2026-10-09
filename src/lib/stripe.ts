@@ -33,8 +33,9 @@ export async function creerSessionPaiement(p: {
   try {
     const r = await fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST', body: corps, signal: AbortSignal.timeout(15_000),
-      // Même facture, même reste : Stripe renvoie la même session (deux onglets ne créent pas deux paiements).
-      headers: { authorization: `Bearer ${cle}`, 'content-type': 'application/x-www-form-urlencoded', 'idempotency-key': `hdecor-${p.factureId}-${p.montantCents}` },
+      // Même facture, même reste, même heure : Stripe renvoie la même session (deux onglets ne créent pas deux paiements),
+      // sans jamais renvoyer une session expirée (24 h).
+      headers: { authorization: `Bearer ${cle}`, 'content-type': 'application/x-www-form-urlencoded', 'idempotency-key': `hdecor-${p.factureId}-${p.montantCents}-${Math.floor(Date.now() / 3_600_000)}` },
     });
     if (!r.ok) { console.error('Stripe : session refusée', r.status); return null; }
     const s = await r.json() as { url?: unknown };

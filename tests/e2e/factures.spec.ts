@@ -234,6 +234,15 @@ test('réglages : modèles de messages, champ inconnu refusé', async ({ page })
   await expect(carte.getByText('Enregistré.')).toBeVisible();
   await page.reload();
   await expect(carte.getByLabel('Jours après l’échéance')).toHaveValue('10');
+  // Délais croissants exigés.
+  await carte.getByLabel('Jours après l’échéance').fill('20');
+  await carte.getByRole('button', { name: 'Enregistrer ce message' }).click();
+  await expect(carte.getByText(/Le 2e rappel doit partir après le 1er/)).toBeVisible();
+  // Modèle sans délai (envoi de facture) : enregistrable.
+  const envoi = page.locator('section').filter({ hasText: 'Envoi d’une facture' });
+  await envoi.getByLabel('Objet').fill('Votre facture {numero}');
+  await envoi.getByRole('button', { name: 'Enregistrer ce message' }).click();
+  await expect(envoi.getByText('Enregistré.')).toBeVisible();
 });
 
 test('paiement en ligne : webhook Stripe signé, enregistré une seule fois, signature fausse refusée', async ({ page, request }) => {
@@ -287,7 +296,7 @@ test('paiement en ligne : webhook Stripe signé, enregistré une seule fois, sig
   expect(r3.status()).toBe(200);
 });
 
-test('relance manuelle d’une facture en retard : rappels 1 puis 2 prêts à partager, tracés', async ({ page }) => {
+test('relance manuelle d’une facture en retard : préparée sans être notée, notée une fois copiée, 2e rappel plus tôt sur confirmation', async ({ page }) => {
   const nom = `Relance-${unique()}`;
   await chantierAvecClient(page, nom);
   await page.goto('/factures/nouvelle');
@@ -300,18 +309,30 @@ test('relance manuelle d’une facture en retard : rappels 1 puis 2 prêts à pa
   sqlLocal(`update public.factures set date_echeance = public.aujourd_hui_paris() - 20, envoyee_le = now() - interval '50 days' where id = '${id}'`);
   await page.reload();
   await expect(page.getByText(/Échéance dépassée/)).toBeVisible();
-  await page.getByRole('button', { name: 'Préparer un message à partager (SMS, WhatsApp)' }).click();
-  await expect(page.getByText('Rappel 1 prêt : copiez ou partagez le message.')).toBeVisible();
-  const texte = await page.getByLabel('Message de relance (avec le lien de la facture)').inputValue();
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  const preparer = () => page.getByRole('button', { name: 'Préparer un message à partager (SMS, WhatsApp)' }).click();
+  const message = () => page.getByLabel('Message de relance (avec le lien de la facture)');
+  await preparer();
+  await expect(page.getByText(/Rappel 1 préparé/)).toBeVisible();
+  const texte = await message().inputValue();
   expect(texte).toContain(`la facture ${numero}`);
   expect(texte).toMatch(/480,00\s€/);
   expect(texte).toMatch(/\/f\/[A-Za-z0-9_-]{43}/);
-  await page.getByRole('button', { name: 'Préparer un message à partager (SMS, WhatsApp)' }).click();
-  await expect(page.getByText('Rappel 2 prêt : copiez ou partagez le message.')).toBeVisible();
-  expect(await page.getByLabel('Message de relance (avec le lien de la facture)').inputValue()).toContain('Malgré notre précédent rappel');
+  // Préparé mais ni copié ni partagé : rien n'est noté, préparer de nouveau redonne le 1er rappel.
+  await preparer();
+  await expect(page.getByText(/Rappel 1 préparé/)).toBeVisible();
+  await page.getByRole('button', { name: 'Copier' }).click();
+  await expect(page.getByText('Rappel 1 noté dans l’historique.')).toBeVisible();
+  // Le 2e rappel est prévu 8 jours après le 1er (délais 7 et 15) : confirmation exigée pour le préparer maintenant.
+  await preparer();
+  await expect(page.getByText(/le rappel 2 est prévu à partir du/)).toBeVisible();
+  await page.getByLabel('Relancer plus tôt que prévu').check();
+  await preparer();
+  await expect(page.getByText(/Rappel 2 préparé/)).toBeVisible();
+  expect(await message().inputValue()).toContain('Malgré notre précédent rappel');
   await page.reload();
   await expect(page.getByText(/relance 1 · lien partagé/)).toBeVisible();
-  await expect(page.getByText(/relance 2 · lien partagé/)).toBeVisible();
+  await expect(page.getByText(/relance 2/)).toHaveCount(0);
 });
 
 test('rétractation : devis signé chez un particulier -> acompte sans demande de paiement pendant 14 jours', async ({ page, browser }) => {
@@ -326,6 +347,9 @@ test('rétractation : devis signé chez un particulier -> acompte sans demande d
   await expect(page.getByText(/Facture émise/)).toBeVisible();
   const pdf = texteDuPdf(await (await page.request.get(`${page.url().split('?')[0]}/pdf`)).body());
   expect(pdf).toContain('Aucun paiement n’est demandé avant le');
+  // Chèque tendu à la signature : saisie possible, mais avertissement.
+  await page.getByText('Enregistrer un paiement', { exact: true }).click();
+  await expect(page.getByText(/Délai de rétractation en cours jusqu’au/)).toBeVisible();
   await page.getByRole('button', { name: 'Créer un lien à partager' }).click();
   const lien = (await page.getByLabel('Lien de la facture').inputValue()).replace(/^https?:\/\/[^/]+/, new URL(devisUrl).origin);
   const contexte = await browser.newContext({ ...test.info().project.use, baseURL: undefined });

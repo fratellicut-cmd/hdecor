@@ -151,6 +151,16 @@ describe('avoirs', () => {
       [[{ taux_bp: 2_000, base_ht_cents: 70_000n, tva_cents: 14_000n }]]))
       .toEqual([{ taux_bp: 1_000, base_ht_cents: 367_176n, tva_cents: 36_718n }, { taux_bp: 2_000, base_ht_cents: 28_568n, tva_cents: 5_714n }]);
   });
+  it('reste dû inatteignable en un avoir (1 200,01 € TTC à 20 % après un avoir de 100,00) : message en deux fois, et les deux avoirs passent', () => {
+    // Facture 1 000,01 HT + 200,00 TVA ; avoir de 100,00 = 83,33 HT + 16,67 TVA ; reste 916,68 HT + 183,33 TVA = 1 100,01.
+    const reste = netParTaux([{ taux_bp: 2_000, base_ht_cents: 100_001n, tva_cents: 20_000n }], [], [[{ taux_bp: 2_000, base_ht_cents: 8_333n, tva_cents: 1_667n }]]);
+    expect(() => lignesAvoirMontant(reste, 110_001n, 'assujetti', false, 'A')).toThrow(/en deux fois : un avoir de 1\s100,00\s€, puis un de 0,01 €/);
+    const a1 = lignesAvoirMontant(reste, 110_000n, 'assujetti', false, 'A');
+    const t1 = totauxFacture(a1, 0, 'assujetti');
+    expect(t1.totalTtcCents).toBe(110_000n);
+    const a2 = lignesAvoirMontant(netParTaux(reste, [], [t1.ventilation]), 1n, 'assujetti', false, 'A');
+    expect(totauxFacture(a2, 0, 'assujetti').totalTtcCents).toBe(1n);
+  });
   it('propriété : tout montant atteignable reste exact sur deux taux (2 000 cas)', () => {
     let a = 3;
     const r = (n: number) => { a = (a * 1103515245 + 12345) % 2147483648; return a % n; };

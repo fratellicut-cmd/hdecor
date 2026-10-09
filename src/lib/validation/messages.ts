@@ -26,8 +26,8 @@ export function schemaModeleMessage(code: CodeMessage) {
   return z.object({
     sujet: verifier('Objet', 200),
     corps: verifier('Message', 5000).refine((t) => t.includes('{lien}'), { error: 'Le message doit contenir {lien} (le lien vers le document).' }),
-    delai_jours: estRelanceImpaye(code) ? entier(1, 365, 'Délai') : z.unknown().transform(() => undefined),
-    actif: estRelanceImpaye(code) ? caseACocher : z.unknown().transform(() => undefined),
+    delai_jours: estRelanceImpaye(code) ? entier(1, 365, 'Délai') : z.unknown().optional().transform(() => undefined),
+    actif: estRelanceImpaye(code) ? caseACocher : z.unknown().optional().transform(() => undefined),
   });
 }
 

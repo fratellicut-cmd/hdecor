@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import {
-  annulerPaiement, creerAvoir, relancerFacture, creerFacture, deplacerLigneFacture, emettreFacture, enregistrerEnteteFacture, enregistrerLigneFacture,
+  annulerPaiement, creerAvoir, noterRelancePartagee, relancerFacture, creerFacture, deplacerLigneFacture, emettreFacture, enregistrerEnteteFacture, enregistrerLigneFacture,
   enregistrerPaiement, envoyerFacture,
 } from '@/app/(app)/factures/actions';
 import { useFormulaire } from '@/components/formulaire/useFormulaire';
@@ -250,7 +250,11 @@ export function EnvoiFacture({ factureId, email, emailActif }: { factureId: stri
 // Paiements
 // --------------------------------------------------------------------------
 
-export function FormulairePaiement({ factureId, reste, aujourdhui, remboursement }: { factureId: string; reste: string; aujourdhui: string; remboursement: boolean }) {
+export function FormulairePaiement({ factureId, reste, aujourdhui, remboursement, retractationJusquau }: {
+  factureId: string; reste: string; aujourdhui: string; remboursement: boolean;
+  /** Contrat signé chez le client : dernier jour du délai de rétractation (encore en cours), sinon null. */
+  retractationJusquau?: string | null;
+}) {
   const { etat, action, enCours, formRef, garde, surEnvoi } = useFormulaire(`facture:paiement:${factureId}`, enregistrerPaiement, { viderApresSucces: true });
   const e = etat.erreurs ?? {};
   const sv = etat.succes ? undefined : etat.valeurs;
@@ -259,6 +263,12 @@ export function FormulairePaiement({ factureId, reste, aujourdhui, remboursement
       <input type="hidden" name="facture_id" value={factureId} />
       <RetourFormulaire etat={etat} />
       <MessagesGarde garde={garde} />
+      {retractationJusquau ? (
+        <Message type="alerte">
+          Délai de rétractation en cours jusqu’au {retractationJusquau} : la facture ne demande aucun paiement avant. Un encaissement pendant ce
+          délai peut être interdit (À VÉRIFIER avec le comptable).
+        </Message>
+      ) : null}
       <div className="grid grid-cols-2 gap-3">
         <Champ libelle={remboursement ? 'Montant remboursé (€)' : 'Montant reçu (€)'} nom="montant_cents" inputMode="decimal"
           defaultValue={sv?.montant_cents ?? reste} erreur={e.montant_cents} />
@@ -343,35 +353,48 @@ export function FormulaireAvoir({ factureId, reste, totalSeulement }: { factureI
 
 export function RelanceFacture({ factureId, email, emailActif }: { factureId: string; email: string | null; emailActif: boolean }) {
   const { etat, action, enCours, formRef, surEnvoi } = useFormulaire(null, relancerFacture);
-  const [copie, setCopie] = useState(false);
+  // Le rappel préparé n'est noté dans l'historique qu'une fois copié ou partagé.
+  const { etat: etatNote, action: noterAction, enCours: noteEnCours, formRef: noteRef, surEnvoi: surNote } = useFormulaire(null, noterRelancePartagee);
+  const [fait, setFait] = useState<string | null>(null);
   const texte = etat.texte;
+  const marquer = (comment: string) => {
+    setFait(comment);
+    noteRef.current?.requestSubmit();
+  };
+  const copier = async () => { if (texte) { await navigator.clipboard.writeText(texte); marquer('Copié ✓'); } };
   const partager = async () => {
     if (!texte) return;
-    if (navigator.share) { try { await navigator.share({ text: texte }); } catch { /* partage annulé */ } }
-    else { await navigator.clipboard.writeText(texte); setCopie(true); }
+    if (navigator.share) { try { await navigator.share({ text: texte }); marquer('Partagé ✓'); } catch { /* partage annulé : rien n'est noté */ } }
+    else await copier();
   };
   return (
-    <form ref={formRef} action={action} onSubmit={surEnvoi} className="flex flex-col gap-3">
-      <input type="hidden" name="id" value={factureId} />
-      <RetourFormulaire etat={etat} />
-      {texte ? (
+    <div className="flex flex-col gap-3">
+      <form ref={formRef} action={action} onSubmit={(e) => { setFait(null); surEnvoi(e); }} className="flex flex-col gap-3">
+        <input type="hidden" name="id" value={factureId} />
+        <RetourFormulaire etat={etat} />
+        <p className="text-sm">Le rappel suivant (1er, 2e puis dernier) est préparé avec le modèle de Réglages &gt; Messages et relances.</p>
+        <CaseACocher nom="plus_tot" libelle="Relancer plus tôt que prévu" />
+        {emailActif && email ? (
+          <Bouton type="submit" name="canal" value="email" disabled={enCours}>{enCours ? 'Envoi…' : `Relancer par email (${email})`}</Bouton>
+        ) : null}
+        <Bouton type="submit" name="canal" value="lien" variante={emailActif && email ? 'secondaire' : 'principal'} disabled={enCours}>
+          Préparer un message à partager (SMS, WhatsApp)
+        </Bouton>
+      </form>
+      {texte && etat.niveau ? (
         <div className="flex flex-col gap-2 rounded-xl border-2 border-anthracite bg-white p-3">
           <TexteLong libelle="Message de relance (avec le lien de la facture)" nom="texte_relance" readOnly rows={7} value={texte} />
           <div className="grid grid-cols-2 gap-2">
-            <Bouton type="button" variante="secondaire" onClick={async () => { await navigator.clipboard.writeText(texte); setCopie(true); }}>
-              {copie ? 'Copié ✓' : 'Copier'}
-            </Bouton>
-            <Bouton type="button" variante="secondaire" onClick={partager}>Partager (SMS…)</Bouton>
+            <Bouton type="button" variante="secondaire" onClick={copier} disabled={noteEnCours}>{fait === 'Copié ✓' ? fait : 'Copier'}</Bouton>
+            <Bouton type="button" variante="secondaire" onClick={partager} disabled={noteEnCours}>{fait === 'Partagé ✓' ? fait : 'Partager (SMS…)'}</Bouton>
           </div>
+          <form ref={noteRef} action={noterAction} onSubmit={surNote}>
+            <input type="hidden" name="id" value={factureId} />
+            <input type="hidden" name="niveau" value={etat.niveau} />
+            <RetourFormulaire etat={etatNote} />
+          </form>
         </div>
       ) : null}
-      <p className="text-sm">Le rappel suivant (1er, 2e puis dernier) est préparé avec le modèle de Réglages &gt; Messages et relances, et noté dans l’historique.</p>
-      {emailActif && email ? (
-        <Bouton type="submit" name="canal" value="email" disabled={enCours}>{enCours ? 'Envoi…' : `Relancer par email (${email})`}</Bouton>
-      ) : null}
-      <Bouton type="submit" name="canal" value="lien" variante={emailActif && email ? 'secondaire' : 'principal'} disabled={enCours}>
-        Préparer un message à partager (SMS, WhatsApp)
-      </Bouton>
-    </form>
+    </div>
   );
 }

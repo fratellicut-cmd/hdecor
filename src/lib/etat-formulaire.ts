@@ -12,6 +12,8 @@ export type EtatFormulaire = {
   lien?: string;
   /** Message prêt à copier ou partager (relance par SMS, WhatsApp…). */
   texte?: string;
+  /** Niveau de relance préparé (impaye_1…3), noté seulement quand le message est copié ou partagé. */
+  niveau?: string;
 };
 
 export const ETAT_INITIAL: EtatFormulaire = {};

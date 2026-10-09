@@ -27,6 +27,7 @@ import {
 import { xmlFacturX } from '@/domain/facturx';
 import { formaterDate, formaterEuros, formaterTaux } from '@/domain/formats';
 import { aujourdHuiParis } from '@/domain/dates';
+import { ajouterJours } from '@/domain/devis-document';
 import { schemaAvancement, schemaAvoir, schemaEnteteFacture, schemaLigneFacture, schemaNouvelleFacture, schemaPaiement } from '@/lib/validation/factures';
 
 const ECHEC = 'L’enregistrement a échoué. Vérifiez la connexion et réessayez.';
@@ -490,8 +491,19 @@ export async function envoyerFacture(_: EtatFormulaire, fd: FormData): Promise<E
   const email = c.client?.email ?? null;
   if (canal === 'email' && !email) return { message: 'Le client n’a pas d’adresse email : créez un lien à partager.' };
   if (canal === 'email' && !emailConfigure()) return { message: 'Envoi d’emails non configuré sur ce serveur : créez un lien à partager.' };
+  // Envoi par email réservé AVANT le lien : un second envoi simultané s'arrête là, sans désactiver le lien du premier.
+  if (canal === 'email') {
+    const reservation = await reserverEnvoi(sb, {
+      id: envoiId.data, organisation_id: session.organisationId, document_type: 'facture', document_id: id.data, nature: 'envoi', destinataire: email,
+    });
+    if (reservation === 'deja') return { message: 'Cet email est déjà en cours d’envoi : rechargez la page dans un instant.' };
+    if (reservation === 'echec') return { message: `${ECHEC} Aucun email n’est parti.` };
+  }
   const lien = await nouveauLienFacture(sb, session.organisationId, id.data, c.facture.date_echeance!);
-  if (!lien) return { message: ECHEC };
+  if (!lien) {
+    if (canal === 'email') await conclureEnvoi(sb, envoiId.data, { ok: false, nonConfigure: false, erreur: 'Lien non créé.' });
+    return { message: ECHEC };
+  }
   const tracer = async (champs: { canal: 'email' | 'manuel'; destinataire?: string | null; fournisseur_id?: string | null }) => {
     const { error: e } = await sb.from('envois').insert({
       id: envoiId.data, organisation_id: session.organisationId, document_type: 'facture', document_id: id.data, nature: 'envoi', ...champs,
@@ -567,9 +579,12 @@ const NIVEAUX_RELANCE = ['impaye_1', 'impaye_2', 'impaye_3'] as const;
 /**
  * Relance MANUELLE d'une facture échue (client sans email, ou relance
  * immédiate) : niveau suivant non encore fait, message du modèle rempli,
- * nouveau lien. Par email si possible, sinon message prêt à partager (SMS,
- * WhatsApp) ; la relance est tracée dans « Envois et relances » (une seule
- * fois par niveau, comme la relance automatique).
+ * nouveau lien.
+ *  - email : envoi réservé AVANT le lien et l'email (jamais deux fois) ;
+ *  - message à partager : PRÉPARÉ seulement ; il n'est noté dans l'historique
+ *    qu'une fois copié ou partagé (noterRelancePartagee). Préparer de nouveau
+ *    redonne le même niveau.
+ * Un niveau plus tôt que l'écart prévu (Réglages) demande une confirmation.
  */
 export async function relancerFacture(_: EtatFormulaire, fd: FormData): Promise<EtatFormulaire> {
   const session = await verifierSession();
@@ -578,48 +593,77 @@ export async function relancerFacture(_: EtatFormulaire, fd: FormData): Promise<
   const canal = fd.get('canal') === 'email' ? 'email' : 'lien';
   if (!id.success || !envoiId.success) return { message: INCOMPLET };
   const sb = await clientServeur();
-  const [{ data: f }, { data: faits, error: eFaits }] = await Promise.all([
+  const [{ data: f }, { data: faits, error: eFaits }, { data: modeles, error: eModeles }] = await Promise.all([
     sb.from('v_factures').select('id, numero, type, statut, date_echeance, reste_a_payer_cents, copie_client, client_id').eq('id', id.data).maybeSingle(),
-    sb.from('envois').select('nature').eq('document_type', 'facture').eq('document_id', id.data).neq('statut', 'echec'),
+    sb.from('envois').select('nature, envoye_le').eq('document_type', 'facture').eq('document_id', id.data).neq('statut', 'echec'),
+    sb.from('modeles_messages').select('code, sujet, corps, delai_jours').in('code', [...NIVEAUX_RELANCE]),
   ]);
-  if (!f || eFaits) return { message: f ? ECHEC : 'Facture introuvable.' };
+  if (!f || eFaits || eModeles) return { message: f ? ECHEC : 'Facture introuvable.' };
   if (f.type === 'avoir' || f.statut !== 'emise' || !(f.reste_a_payer_cents! > 0)) return { message: 'Cette facture n’a rien à relancer.' };
   if (f.date_echeance! >= aujourdHuiParis()) return { message: `Pas encore échue (échéance le ${formaterDate(f.date_echeance!)}).` };
-  const niveau = NIVEAUX_RELANCE.find((n) => !(faits ?? []).some((e) => e.nature === n));
-  if (!niveau) return { message: 'Les trois rappels ont déjà été faits : contactez le client directement.' };
-  const [{ data: modele }, { data: p }, { data: client }] = await Promise.all([
-    sb.from('modeles_messages').select('sujet, corps').eq('code', niveau).maybeSingle(),
+  const rangDe = NIVEAUX_RELANCE.findIndex((n) => !(faits ?? []).some((e) => e.nature === n));
+  if (rangDe < 0) return { message: 'Les trois rappels ont déjà été faits : contactez le client directement.' };
+  const niveau = NIVEAUX_RELANCE[rangDe]!;
+  const modele = modeles?.find((m) => m.code === niveau);
+  if (!modele) return { message: 'Modèle de relance introuvable (Réglages > Messages et relances).' };
+  // Écart prévu depuis le rappel précédent (différence des délais, 1 jour au moins).
+  if (rangDe > 0 && fd.get('plus_tot') !== 'on') {
+    const precedent = NIVEAUX_RELANCE[rangDe - 1]!;
+    const fait = (faits ?? []).filter((e) => e.nature === precedent).map((e) => aujourdHuiParis(new Date(e.envoye_le))).sort().at(-1);
+    const ecart = Math.max((modele.delai_jours ?? 0) - (modeles?.find((m) => m.code === precedent)?.delai_jours ?? 0), 1);
+    const prevu = fait ? ajouterJours(fait, ecart) : null;
+    if (prevu && aujourdHuiParis() < prevu) {
+      return { message: `Le rappel ${rangDe} a été fait le ${formaterDate(fait!)} ; le rappel ${rangDe + 1} est prévu à partir du ${formaterDate(prevu)}. Cochez « Relancer plus tôt que prévu » pour le préparer maintenant.` };
+    }
+  }
+  const [{ data: p }, { data: client }] = await Promise.all([
     sb.from('parametres_entreprise').select('raison_sociale, email').eq('organisation_id', session.organisationId).single(),
     sb.from('clients').select('email, anonymise_le').eq('id', f.client_id!).maybeSingle(),
   ]);
-  if (!modele) return { message: 'Modèle de relance introuvable (Réglages > Messages et relances).' };
   const email = client && !client.anonymise_le ? client.email : null;
   if (canal === 'email' && (!email || !emailConfigure())) return { message: 'Envoi par email impossible : partagez le message.' };
+  if (canal === 'email') {
+    const reservation = await reserverEnvoi(sb, {
+      id: envoiId.data, organisation_id: session.organisationId, document_type: 'facture', document_id: id.data, nature: niveau, destinataire: email,
+    });
+    if (reservation === 'deja') return { message: 'Ce rappel est déjà en cours d’envoi ou fait : rechargez la page.' };
+    if (reservation === 'echec') return { message: `${ECHEC} Aucun email n’est parti.` };
+  }
   const lien = await nouveauLienFacture(sb, session.organisationId, id.data, f.date_echeance!);
-  if (!lien) return { message: ECHEC };
+  if (!lien) {
+    if (canal === 'email') await conclureEnvoi(sb, envoiId.data, { ok: false, nonConfigure: false, erreur: 'Lien non créé.' });
+    return { message: ECHEC };
+  }
   const valeurs = {
     client: (f.copie_client as { nom_affiche?: string } | null)?.nom_affiche ?? '', entreprise: p?.raison_sociale ?? '', numero: f.numero!,
     lien, montant: formaterEuros(f.reste_a_payer_cents!), echeance: formaterDate(f.date_echeance!),
   };
   const texte = remplirModele(modele.corps, valeurs);
-  const rang = niveau.slice(-1);
+  const rang = rangDe + 1;
   if (canal === 'lien') {
-    const { error } = await sb.from('envois').insert({
-      id: envoiId.data, organisation_id: session.organisationId, document_type: 'facture', document_id: id.data, nature: niveau, canal: 'manuel',
-    });
-    if (error) return { message: error.code === '23505' ? 'Ce rappel vient d’être fait : rechargez la page.' : ECHEC };
     revalider(id.data);
-    return { succes: `Rappel ${rang} prêt : copiez ou partagez le message.`, lien, texte };
+    return { succes: `Rappel ${rang} préparé : copiez-le ou partagez-le (il sera noté dans l’historique à ce moment-là).`, lien, texte, niveau };
   }
-  const reservation = await reserverEnvoi(sb, {
-    id: envoiId.data, organisation_id: session.organisationId, document_type: 'facture', document_id: id.data, nature: niveau, destinataire: email,
-  });
-  if (reservation === 'deja') return { message: 'Ce rappel est déjà en cours d’envoi ou fait : rechargez la page.' };
-  if (reservation === 'echec') return { message: `${ECHEC} Aucun email n’est parti.` };
   const r = await envoyerEmail({ a: email!, sujet: remplirModele(modele.sujet, valeurs), texte, repondreA: p?.email });
   await conclureEnvoi(sb, envoiId.data, r);
   revalider(id.data);
   return r.ok ? { succes: `Rappel ${rang} envoyé par email à ${email}.` } : { message: `${r.erreur} Partagez le message à la main.`, lien, texte };
+}
+
+/** Rappel préparé, copié ou partagé par Yorick : noté une seule fois dans l'historique (canal « manuel »). */
+export async function noterRelancePartagee(_: EtatFormulaire, fd: FormData): Promise<EtatFormulaire> {
+  const session = await verifierSession();
+  const id = idDe(fd, 'id');
+  const envoiId = idDe(fd, 'id_nouveau');
+  const niveau = z.enum(NIVEAUX_RELANCE).safeParse(fd.get('niveau'));
+  if (!id.success || !envoiId.success || !niveau.success) return { message: INCOMPLET };
+  const sb = await clientServeur();
+  const { error } = await sb.from('envois').insert({
+    id: envoiId.data, organisation_id: session.organisationId, document_type: 'facture', document_id: id.data, nature: niveau.data, canal: 'manuel',
+  });
+  if (error && error.code !== '23505') return { message: 'Le rappel n’a pas pu être noté dans l’historique : réessayez.' };
+  revalider(id.data);
+  return { succes: `Rappel ${niveau.data.slice(-1)} noté dans l’historique.` };
 }
 
 /** Facture remise en main propre ou envoyée autrement : date d'envoi enregistrée (relances possibles ensuite). */

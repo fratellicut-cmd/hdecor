@@ -191,7 +191,7 @@ export function lignesAvoirMontant(netParTaux: Ventilation, montantTtcCents: big
     while (ttcDe(base, t) < cible) base += 1n;
     while (base > 0n && ttcDe(base, t) > cible) base -= 1n;
     if (ttcDe(base, t) !== cible) {
-      throw new ErreurFacture(`Avoir : ${formaterEuros(cible)} TTC n’est pas atteignable au centime près au taux de ${formaterTaux(t)} (arrondi de la TVA). Ajustez le montant d’un centime, ou établissez un avoir de tout le reste dû.`);
+      throw new ErreurFacture(`Avoir : ${formaterEuros(cible)} TTC n’est pas atteignable au centime près au taux de ${formaterTaux(t)} (arrondi de la TVA). Établissez-le en deux fois : un avoir de ${formaterEuros(montantTtcCents - 1n)}, puis un de 0,01 €.`);
     }
     if (base > v.base_ht_cents) throw new ErreurFacture('Avoir : supérieur au net de la facture pour ce taux.');
     lignes.push({
@@ -326,6 +326,9 @@ export function controlerMentionsFacture(e: CopieEmetteurFacture, c: CopieClient
     if (!c.tva_intra) signale('autoliquidation_tva', 'Autoliquidation : numéro de TVA du client non renseigné (À VÉRIFIER avec le comptable).', 'client');
   }
   if (ch && (vide(ch.adresse.ligne1) || vide(ch.adresse.ville))) signale('chantier_adresse', 'Adresse du chantier incomplète.', 'chantier');
+  if (f.type === 'libre' && c.type === 'particulier') {
+    signale('libre_retractation', 'Facture sans devis : si le contrat a été conclu chez le client, le délai de rétractation n’est pas contrôlé ici (aucun paiement ne peut être exigé pendant ce délai : À VÉRIFIER).', 'devis');
+  }
   if (f.fin_retractation && f.type !== 'avoir') {
     if (f.date_echeance <= f.fin_retractation) {
       bloque('echeance_retractation', `Devis signé chez le client : délai de rétractation jusqu’au ${formaterDateIso(f.fin_retractation)}. L’échéance doit tomber après : allongez le délai de paiement.`, 'devis');

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { z } from 'zod';
-import { chargerFacture, deductionsDomaine, ligneFactureDomaine, ventilationDomaine } from '@/lib/factures';
+import { chargerFacture, deductionsDomaine, finRetractationFacture, ligneFactureDomaine, ventilationDomaine } from '@/lib/factures';
 import { clientServeur } from '@/lib/supabase/serveur';
 import { tauxProposes } from '@/lib/taux';
 import { emailConfigure } from '@/lib/email';
@@ -208,6 +208,8 @@ export default async function PageFacture({ params, searchParams }: PageProps<'/
   };
   const reste = BigInt(avoir ? f.reste_a_rembourser_cents ?? 0 : f.reste_a_payer_cents ?? 0);
   const encaissable = f.statut === 'emise' && reste > 0n;
+  const finRetr = avoir ? null : finRetractationFacture(c, (f.copie_client as { type?: string } | null)?.type ?? '');
+  const retractation = finRetr && aujourdHuiParis() <= finRetr ? finRetr : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -237,7 +239,7 @@ export default async function PageFacture({ params, searchParams }: PageProps<'/
           <div className="flex justify-between gap-3 text-lg font-bold"><dt>{avoir ? 'Reste à rembourser' : 'Reste à payer'}</dt><dd className="tabular-nums">{formaterEuros(reste)}</dd></div>
         </dl>
         <p className="mt-2 text-sm text-encre-douce">
-          Émise le {formaterDate(f.date_emission!)}{avoir ? '' : ` · échéance le ${formaterDate(f.date_echeance!)}`}
+          {avoir ? 'Émis' : 'Émise'} le {formaterDate(f.date_emission!)}{avoir ? '' : ` · échéance le ${formaterDate(f.date_echeance!)}`}
           {f.envoyee_le ? ` · envoyée le ${formaterDateHeure(f.envoyee_le)}` : ''}
         </p>
       </Carte>
@@ -265,7 +267,8 @@ export default async function PageFacture({ params, searchParams }: PageProps<'/
             <summary className="inline-flex min-h-12 cursor-pointer items-center font-semibold underline underline-offset-4">
               {avoir ? 'Enregistrer un remboursement' : 'Enregistrer un paiement'}
             </summary>
-            <div className="mt-2"><FormulairePaiement factureId={f.id} reste={montantVersSaisie(Number(reste))} aujourdhui={aujourdHuiParis()} remboursement={avoir} /></div>
+            <div className="mt-2"><FormulairePaiement factureId={f.id} reste={montantVersSaisie(Number(reste))} aujourdhui={aujourdHuiParis()} remboursement={avoir}
+              retractationJusquau={retractation ? formaterDate(retractation) : null} /></div>
           </details>
         ) : null}
       </Carte>
