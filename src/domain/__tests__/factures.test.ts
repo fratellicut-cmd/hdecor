@@ -1,0 +1,261 @@
+import { describe, expect, it } from 'vitest';
+import { totauxDevis, type LigneDevis } from '../devis';
+import { copieClient, copieEmetteur, type ParametresEmetteur } from '../devis-document';
+import {
+  controlerMentionsFacture, deductionsDisponibles, ErreurFacture, formaterIban, ibanValide, lignesAcompte, lignesAvoirMontant,
+  lignesAvoirTotal, lignesDepuisDevis, mentionIndemnite, mentionPenalites, netAPayer, netParTaux, totalLigneFacture, totauxFacture,
+  textesAVerifierFacture, type CopieEmetteurFacture, type FactureDuDevis, type LigneFacture,
+} from '../factures';
+import { payloadVirementSepa, ErreurVirement } from '../virement';
+import { xmlFacturX } from '../facturx';
+
+const ld = (designation: string, qE4: bigint, pu: bigint, taux: number, autres: Partial<LigneDevis> = {}): LigneDevis => ({
+  type: 'ligne', designation, quantiteE4: qE4, unite: 'm2', prixUnitaireCents: pu, remiseBp: 0, tauxTvaBp: taux, optionnelle: false, ...autres,
+});
+const lf = (l: LigneDevis, avancementBp: number | null = null): LigneFacture => ({ ...l, avancementBp });
+
+describe('R4 facture : total de ligne avec avancement, arrondi en une fois', () => {
+  it('31,93 m² × 12,50 € = 399,125 -> 399,13 € (100 %)', () => expect(totalLigneFacture(319_300n, 1_250n, 0, null)).toBe(39_913n));
+  it('situation 50 % : 399,125 × 0,5 = 199,5625 -> 199,56 € (et non 399,13 / 2 = 199,565 -> 199,57)', () => {
+    expect(totalLigneFacture(319_300n, 1_250n, 0, 5_000)).toBe(19_956n);
+  });
+  it('remise 10 % et avancement 33,33 % : 100 € × 0,9 × 0,3333 = 29,997 -> 30,00 €', () => {
+    expect(totalLigneFacture(10_000n, 10_000n, 1_000, 3_333)).toBe(3_000n);
+  });
+  it('bornes', () => {
+    expect(() => totalLigneFacture(1n, 1n, 0, 10_001)).toThrow(ErreurFacture);
+    expect(() => totalLigneFacture(-1n, 1n, 0, null)).toThrow(ErreurFacture);
+  });
+});
+
+describe('cas de référence §6 : acompte 30 % puis finale', () => {
+  // Devis 5 000,00 € HT à 10 % : TTC 5 500,00 €.
+  const devis = [ld('Peinture', 10_000n, 500_000n, 1_000, { id: 'l1' })];
+  const accepte = totauxDevis(devis, 0, 'assujetti');
+  it('acompte 30 % = 1 500,00 € HT + 150,00 € TVA = 1 650,00 € TTC', () => {
+    const lignes = lignesAcompte(accepte.ventilation, 0, 3_000, 'assujetti', 'Acompte de 30 % sur le devis DEV-2026-0001');
+    expect(lignes).toHaveLength(1);
+    expect(lignes[0]).toMatchObject({ quantiteE4: 10_000n, unite: 'forfait', prixUnitaireCents: 150_000n, tauxTvaBp: 1_000 });
+    const t = totauxFacture(lignes, 0, 'assujetti');
+    expect([t.totalHtCents, t.totalTvaCents, t.totalTtcCents]).toEqual([150_000n, 15_000n, 165_000n]);
+  });
+  it('finale = 5 500,00 − 1 650,00 = 3 850,00 € TTC, détail HT / TVA de l’acompte déduit', () => {
+    const t = totauxFacture(lignesDepuisDevis(devis, new Set(), null), 0, 'assujetti');
+    expect(t.totalTtcCents).toBe(550_000n);
+    const deductions = [{ facture_id: 'a1', numero: 'FAC-2026-0001', ht: 150_000n, tva: 15_000n, ttc: 165_000n }];
+    expect(netAPayer(t.totalTtcCents, deductions)).toBe(385_000n);
+    expect(netParTaux(t.ventilation, [[{ taux_bp: 1_000, base_ht_cents: 150_000n, tva_cents: 15_000n }]]))
+      .toEqual([{ taux_bp: 1_000, base_ht_cents: 350_000n, tva_cents: 35_000n }]);
+  });
+  it('acomptes supérieurs au total : refusé', () => {
+    expect(() => netAPayer(100n, [{ facture_id: 'a', numero: 'n', ht: 100n, tva: 1n, ttc: 101n }])).toThrow(ErreurFacture);
+  });
+});
+
+describe('acompte d’échéance : identique au devis imprimé', () => {
+  it('deux taux, 2e échéance de 30 % après 20 % : base en cumulé, TVA R6', () => {
+    // 1 000,01 € à 10 % et 333,33 € à 20 %. Cumul 20 % puis 50 %.
+    const v = totauxDevis([ld('A', 10_000n, 100_001n, 1_000), ld('B', 10_000n, 33_333n, 2_000)], 0, 'assujetti').ventilation;
+    const lignes = lignesAcompte(v, 2_000, 3_000, 'assujetti', 'Acompte début des travaux');
+    // 10 % : arrondi(100 001 × 0,5) − arrondi(100 001 × 0,2) = 50 001 − 20 000 = 30 001 ; 20 % : 16 667 − 6 667 = 10 000.
+    expect(lignes.map((l) => [l.tauxTvaBp, l.prixUnitaireCents])).toEqual([[1_000, 30_001n], [2_000, 10_000n]]);
+    expect(lignes[0]!.designation).toBe('Acompte début des travaux (TVA 10 %)');
+  });
+  it('l’échéance qui solde le devis n’est pas un acompte (facture finale)', () => {
+    const v = totauxDevis([ld('A', 10_000n, 100_000n, 0)], 0, 'franchise').ventilation;
+    expect(() => lignesAcompte(v, 3_000, 7_000, 'franchise', 'Solde')).toThrow(/facture finale/);
+  });
+});
+
+describe('finale et situation reprises du devis', () => {
+  const devis: LigneDevis[] = [
+    { type: 'section', designation: 'Séjour', quantiteE4: null, unite: null, prixUnitaireCents: null, remiseBp: 0, tauxTvaBp: null, optionnelle: false, id: 's' },
+    ld('Murs', 319_300n, 1_250n, 0, { id: 'l1' }),
+    ld('Boiseries', 50_000n, 2_000n, 0, { id: 'o1', optionnelle: true, unite: 'ml' }),
+    ld('Plafond', 120_000n, 1_500n, 0, { id: 'o2', optionnelle: true }),
+  ];
+  it('options retenues seulement ; total = montant accepté du devis', () => {
+    const lignes = lignesDepuisDevis(devis, new Set(['o1']), null);
+    expect(lignes.map((l) => l.designation)).toEqual(['Séjour', 'Murs', 'Boiseries']);
+    expect(lignes.every((l) => !l.optionnelle)).toBe(true);
+    expect(lignes[1]!.devisLigneId).toBe('l1');
+    expect(totauxFacture(lignes, 1_000, 'franchise').totalTtcCents).toBe(totauxDevis(devis, 1_000, 'franchise', new Set(['o1'])).totalTtcCents);
+  });
+  it('situation : avancement cumulé par ligne', () => {
+    const lignes = lignesDepuisDevis(devis, new Set(), 4_000, new Map([['l1', 6_000]]));
+    expect(lignes.find((l) => l.designation === 'Murs')!.avancementBp).toBe(6_000);
+    expect(lignes.find((l) => l.designation === 'Séjour')!.avancementBp).toBeNull();
+    // 399,125 × 0,6 = 239,475 -> 239,48 €
+    expect(totauxFacture(lignes, 0, 'franchise').totalHtCents).toBe(23_948n);
+  });
+});
+
+describe('déductions disponibles (même règle que la base)', () => {
+  const f = (id: string, type: FactureDuDevis['type'], statut: FactureDuDevis['statut'], deduit: string[] = []): FactureDuDevis => ({
+    id, numero: id.toUpperCase(), type, statut, totalHtCents: 100n, totalTvaCents: 0n, totalTtcCents: 100n, deduit,
+  });
+  it('acomptes et situations émis, non déduits ailleurs ; une facture annulée libère les siens', () => {
+    const liste = [f('a1', 'acompte', 'emise'), f('a2', 'acompte', 'emise'), f('s1', 'situation', 'emise', ['a1']),
+      f('b', 'acompte', 'brouillon'), f('x', 'acompte', 'annulee'), f('fin', 'finale', 'annulee', ['a2'])];
+    expect(deductionsDisponibles(liste).map((d) => d.facture_id)).toEqual(['a2', 's1']);
+  });
+  it('en modifiant une facture : ses propres déductions ne la bloquent pas', () => {
+    const liste = [f('a1', 'acompte', 'emise'), f('fin', 'finale', 'emise', ['a1'])];
+    expect(deductionsDisponibles(liste, 'fin').map((d) => d.facture_id)).toEqual(['a1']);
+  });
+});
+
+describe('avoirs', () => {
+  it('avoir total d’une facture sans acompte : mêmes lignes, même total', () => {
+    const lignes = [lf(ld('Murs', 319_300n, 1_250n, 1_000, { id: 'x' }))];
+    const avoir = lignesAvoirTotal(lignes);
+    expect(avoir[0]!.id).toBeUndefined();
+    expect(totauxFacture(avoir, 0, 'assujetti').totalTtcCents).toBe(totauxFacture(lignes, 0, 'assujetti').totalTtcCents);
+  });
+  it('avoir d’un montant TTC exact, au prorata des taux', () => {
+    const net = [{ taux_bp: 1_000, base_ht_cents: 350_000n, tva_cents: 35_000n }];
+    const lignes = lignesAvoirMontant(net, 110_000n, 'assujetti', false, 'Geste commercial');
+    expect(lignes[0]!.prixUnitaireCents).toBe(100_000n);
+    expect(totauxFacture(lignes, 0, 'assujetti').totalTtcCents).toBe(110_000n);
+  });
+  it('montant inatteignable au centime près (10 % : 5 cts ne s’obtient pas) : erreur explicite', () => {
+    // base 4 -> 4 + 0 = 4 ; base 5 -> 5 + 1 = 6 : 5 cts TTC impossible.
+    expect(() => lignesAvoirMontant([{ taux_bp: 1_000, base_ht_cents: 1_000n, tva_cents: 100n }], 5n, 'assujetti', false, 'A'))
+      .toThrow(/pas atteignable/);
+  });
+  it('franchise : tout montant est atteignable', () => {
+    const l = lignesAvoirMontant([{ taux_bp: 0, base_ht_cents: 66_913n, tva_cents: 0n }], 12_345n, 'franchise', false, 'Avoir');
+    expect(l[0]!.prixUnitaireCents).toBe(12_345n);
+  });
+  it('au-delà du net : refusé', () => {
+    expect(() => lignesAvoirMontant([{ taux_bp: 0, base_ht_cents: 100n, tva_cents: 0n }], 101n, 'franchise', false, 'A')).toThrow(ErreurFacture);
+  });
+  it('propriété : tout montant atteignable reste exact sur deux taux (2 000 cas)', () => {
+    let a = 3;
+    const r = (n: number) => { a = (a * 1103515245 + 12345) % 2147483648; return a % n; };
+    const net = [{ taux_bp: 1_000, base_ht_cents: 350_000n, tva_cents: 35_000n }, { taux_bp: 2_000, base_ht_cents: 120_000n, tva_cents: 24_000n }];
+    let exacts = 0;
+    for (let i = 0; i < 2_000; i++) {
+      const m = BigInt(1 + r(529_000));
+      try {
+        const lignes = lignesAvoirMontant(net, m, 'assujetti', false, 'A');
+        expect(totauxFacture(lignes, 0, 'assujetti').totalTtcCents).toBe(m);
+        exacts++;
+      } catch (e) { expect((e as Error).message).toMatch(/pas atteignable/); }
+    }
+    expect(exacts).toBeGreaterThan(1_500);
+  });
+});
+
+describe('totaux facture : autoliquidation et franchise', () => {
+  it('autoliquidation : lignes à 10 %, TVA facturée 0', () => {
+    const t = totauxFacture([lf(ld('Murs', 10_000n, 100_000n, 1_000))], 0, 'assujetti', true);
+    expect(t.ventilation).toEqual([{ taux_bp: 1_000, base_ht_cents: 100_000n, tva_cents: 0n }]);
+  });
+  it('autoliquidation en franchise : refusée', () => expect(() => totauxFacture([], 0, 'franchise', true)).toThrow(ErreurFacture));
+  it('franchise : ligne taxée refusée', () => expect(() => totauxFacture([lf(ld('A', 1n, 1n, 1_000))], 0, 'franchise')).toThrow(ErreurFacture));
+});
+
+describe('IBAN et QR de virement', () => {
+  it('IBAN : clé de contrôle', () => {
+    expect(ibanValide('FR14 2004 1010 0505 0001 3M02 606')).toBe(true);
+    expect(ibanValide('DE89370400440532013000')).toBe(true);
+    expect(ibanValide('FR14 2004 1010 0505 0001 3M02 607')).toBe(false);
+    expect(ibanValide('')).toBe(false);
+    expect(formaterIban('fr1420041010050500013m02606')).toBe('FR14 2004 1010 0505 0001 3M02 606');
+  });
+  it('QR SEPA (EPC 002) : champs dans l’ordre, montant au point décimal', () => {
+    expect(payloadVirementSepa({ beneficiaire: "H'DECOR EI", iban: 'FR14 2004 1010 0505 0001 3M02 606', bic: 'PSSTFRPPPAR', montantCents: 385_000n, reference: 'Facture FAC-2026-0002' }))
+      .toBe("BCD\n002\n1\nSCT\nPSSTFRPPPAR\nH'DECOR EI\nFR1420041010050500013M02606\nEUR3850.00\n\n\nFacture FAC-2026-0002");
+  });
+  it('QR : accents retirés, longueurs bornées, refus des valeurs fausses', () => {
+    const p = payloadVirementSepa({ beneficiaire: 'Éléonore Pèlerin', iban: 'DE89370400440532013000', montantCents: 5n, reference: 'x'.repeat(200) });
+    expect(p.split('\n')[5]).toBe('Eleonore Pelerin');
+    expect(p.split('\n')[7]).toBe('EUR0.05');
+    expect(p.split('\n')[10]).toHaveLength(140);
+    expect(() => payloadVirementSepa({ beneficiaire: 'A', iban: 'FR00', montantCents: 1n, reference: '' })).toThrow(ErreurVirement);
+    expect(() => payloadVirementSepa({ beneficiaire: 'A', iban: 'DE89370400440532013000', montantCents: 0n, reference: '' })).toThrow(ErreurVirement);
+  });
+});
+
+describe('mentions obligatoires de la facture', () => {
+  const params: ParametresEmetteur = {
+    raison_sociale: "H'DECOR", forme_juridique: 'EI', nom_dirigeant: null, siret: '12345678900011', immatriculation: null,
+    adresse_ligne1: '1 rue A', adresse_ligne2: null, code_postal: '57100', ville: 'Thionville', telephone: null, email: null,
+    numero_tva_intra: null, regime_tva: 'franchise', mention_franchise: 'TVA non applicable, art. 293 B du CGI',
+    mediateur_nom: 'M', mediateur_coordonnees: null, mediateur_site: null, mentions_pied: null,
+  };
+  const dec = { type: 'decennale' as const, assureur: 'A', numero_contrat: 'D', debut: '2026-01-01', fin: null, zone_couverte: 'France' };
+  const e: CopieEmetteurFacture = {
+    ...copieEmetteur(params, [dec], '2026-10-09'),
+    paiement: { iban: 'FR1420041010050500013M02606', bic: null, taux_penalites_bp: 1_000, indemnite_recouvrement_cents: 4_000, escompte_texte: 'Pas d’escompte.' },
+  };
+  const part = copieClient({ type: 'particulier', civilite: null, nom: 'Martin', prenom: 'Alice', raison_sociale: null, siret: null, tva_intra: null,
+    email: null, telephone: null, fact_ligne1: '3 av. B', fact_ligne2: null, fact_code_postal: '57100', fact_ville: 'Thionville', fact_pays: null });
+  const pro = { ...part, type: 'professionnel' as const, nom_affiche: 'Société X' };
+  const f = { type: 'finale' as const, date_prestation_debut: '2026-10-01', date_prestation_fin: '2026-10-05', autoliquidation: false, regime_tva: 'franchise' as const };
+  const cles = (m: { cle: string; bloquant: boolean }[], b = true) => m.filter((x) => x.bloquant === b).map((x) => x.cle);
+  it('complète : aucun bloquant ; particulier : indemnité non imprimée, signalée', () => {
+    expect(cles(controlerMentionsFacture(e, part, null, f))).toEqual([]);
+    expect(cles(controlerMentionsFacture(e, part, null, f), false)).toEqual(['indemnite_particulier']);
+    expect(mentionIndemnite(e.paiement, part)).toBeNull();
+    expect(mentionIndemnite(e.paiement, pro)).toBe('Indemnité forfaitaire pour frais de recouvrement en cas de retard de paiement : 40,00 €.');
+  });
+  it('IBAN faux, pénalités absentes, date de prestation absente : bloquants', () => {
+    const m = controlerMentionsFacture({ ...e, paiement: { ...e.paiement, iban: 'FR00 1234', taux_penalites_bp: null } }, part, null,
+      { ...f, date_prestation_debut: null, date_prestation_fin: null });
+    expect(cles(m)).toEqual(['iban', 'penalites', 'date_prestation']);
+  });
+  it('avoir : ni IBAN ni pénalités exigés', () => {
+    expect(cles(controlerMentionsFacture({ ...e, paiement: { ...e.paiement, iban: null, taux_penalites_bp: null } }, part, null,
+      { ...f, type: 'avoir', date_prestation_debut: null, date_prestation_fin: null }))).toEqual([]);
+  });
+  it('autoliquidation : client professionnel exigé', () => {
+    const a = { ...e, regime_tva: 'assujetti' as const, numero_tva_intra: 'FR00123456789' };
+    expect(cles(controlerMentionsFacture(a, part, null, { ...f, regime_tva: 'assujetti', autoliquidation: true }))).toEqual(['autoliquidation_client']);
+    expect(cles(controlerMentionsFacture(a, pro, null, { ...f, regime_tva: 'assujetti', autoliquidation: true }), false)).toContain('autoliquidation_tva');
+  });
+  it('mention des pénalités et textes à vérifier', () => {
+    expect(mentionPenalites(e.paiement)).toBe('En cas de retard de paiement, des pénalités au taux annuel de 10 % sont exigibles à compter du lendemain de la date d’échéance.');
+    expect(textesAVerifierFacture(e, pro, f)).toEqual(['Mention des pénalités de retard (taux et point de départ)', 'Mention de l’indemnité forfaitaire pour frais de recouvrement', 'Mention de franchise de TVA']);
+  });
+});
+
+describe('Factur-X (XML CII, préparé)', () => {
+  const e = {
+    ...copieEmetteur({
+      raison_sociale: "H'DECOR & Fils <test>", forme_juridique: 'EI', nom_dirigeant: null, siret: '12345678900011', immatriculation: null,
+      adresse_ligne1: '1 rue A', adresse_ligne2: null, code_postal: '57100', ville: 'Thionville', telephone: null, email: null,
+      numero_tva_intra: null, regime_tva: 'franchise', mention_franchise: 'TVA non applicable, art. 293 B du CGI', mediateur_nom: null,
+      mediateur_coordonnees: null, mediateur_site: null, mentions_pied: null,
+    }, [], '2026-10-09'),
+    paiement: { iban: 'FR1420041010050500013M02606', bic: null },
+  };
+  const client = copieClient({ type: 'particulier', civilite: null, nom: 'Martin', prenom: 'Alice', raison_sociale: null, siret: null, tva_intra: null,
+    email: null, telephone: null, fact_ligne1: '3 av. B', fact_ligne2: null, fact_code_postal: '57100', fact_ville: 'Thionville', fact_pays: null });
+  const lignes = [lf(ld('Murs', 319_300n, 1_250n, 0))];
+  const t = totauxFacture(lignes, 0, 'franchise');
+  const xml = xmlFacturX({
+    numero: 'FAC-2026-0002', type: 'finale', dateEmission: '2026-10-09', dateEcheance: '2026-11-08', datePrestation: '2026-10-05', emetteur: e, client,
+    lignes, ventilation: t.ventilation, regime: 'franchise', autoliquidation: false, remiseGlobaleCents: 0n,
+    totalHtCents: t.totalHtCents, totalTvaCents: t.totalTvaCents, totalTtcCents: t.totalTtcCents,
+    deductions: [{ facture_id: 'a', numero: 'FAC-2026-0001', ht: 10_000n, tva: 0n, ttc: 10_000n }], netAPayerCents: t.totalTtcCents - 10_000n, factureOrigine: null,
+  });
+  it('balises équilibrées (XML bien formé)', () => {
+    const pile: string[] = [];
+    for (const m of xml.replace(/<\?xml[^>]*\?>/, '').matchAll(/<(\/?)([\w:]+)[^>]*?(\/?)>/g)) {
+      if (m[3]) continue;
+      if (m[1]) expect(pile.pop()).toBe(m[2]); else pile.push(m[2]!);
+    }
+    expect(pile).toEqual([]);
+  });
+  it.each([
+    ['profil EN 16931', '<ram:ID>urn:cen.eu:en16931:2017</ram:ID>'], ['numéro', '<ram:ID>FAC-2026-0002</ram:ID>'], ['type facture', '<ram:TypeCode>380</ram:TypeCode>'],
+    ['date', '<udt:DateTimeString format="102">20261009</udt:DateTimeString>'], ['échappement', "H&apos;DECOR &amp; Fils &lt;test&gt;"],
+    ['quantité m²', '<ram:BilledQuantity unitCode="MTK">31.9300</ram:BilledQuantity>'], ['total ligne', '<ram:LineTotalAmount>399.13</ram:LineTotalAmount>'],
+    ['exonération (franchise)', '<ram:ExemptionReason>TVA non applicable, art. 293 B du CGI</ram:ExemptionReason>'], ['catégorie E', '<ram:CategoryCode>E</ram:CategoryCode>'],
+    ['IBAN', '<ram:IBANID>FR1420041010050500013M02606</ram:IBANID>'], ['SIREN vendeur', '<ram:ID schemeID="0002">123456789</ram:ID>'],
+    ['acompte déjà payé', '<ram:TotalPrepaidAmount>100.00</ram:TotalPrepaidAmount>'], ['net à payer', '<ram:DuePayableAmount>299.13</ram:DuePayableAmount>'],
+    ['échéance', '<ram:DueDateDateTime><udt:DateTimeString format="102">20261108</udt:DateTimeString></ram:DueDateDateTime>'],
+  ])('%s', (_, attendu) => expect(xml).toContain(attendu));
+});
