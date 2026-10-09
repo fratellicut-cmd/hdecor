@@ -2,7 +2,7 @@ import type { ResultatPoste } from '@/domain/calculateur';
 import { formaterDuree } from '@/domain/chiffrage';
 import { formaterEuros } from '@/domain/formats';
 import { formaterSurface } from '@/domain/metre';
-import { formaterContenance, formaterQuantite } from '@/domain/peinture';
+import { formaterContenance, formaterQuantite, formaterQuantiteCourte } from '@/domain/peinture';
 import type { Combinaison } from '@/domain/pots';
 import { BadgeAVerifier } from '@/components/ui/Champ';
 
@@ -22,7 +22,7 @@ export function ResultatPosteVue({ r }: { r: ResultatPoste }) {
         <div><dt className="text-sm text-encre-douce">Surface</dt><dd className="font-semibold">{r.surfaceMm2 === null ? '—' : formaterSurface(r.surfaceMm2)}</dd></div>
         <div>
           <dt className="text-sm text-encre-douce">Quantité</dt>
-          <dd className="font-semibold">{r.quantite ? `${formaterQuantite(r.quantite.dixMilliemes)} ${u}` : '—'}</dd>
+          <dd className="font-semibold">{r.quantite ? `${formaterQuantiteCourte(r.quantite)} ${u}` : '—'}</dd>
         </div>
         <div className="col-span-2">
           <dt className="text-sm text-encre-douce">Pots</dt>
@@ -31,14 +31,14 @@ export function ResultatPosteVue({ r }: { r: ResultatPoste }) {
               <>
                 {texteCombinaison(r.pots.retenue, u)}
                 <span className="block text-sm font-normal text-encre-douce">
-                  Reste : {formaterContenance(Number(r.pots.retenue.resteMl), u)} · {r.pots.choixAuCout ? 'choix au moindre coût' : 'prix inconnus : choix au moindre reste'}
+                  Reste : {formaterContenance(Number(r.pots.retenue.resteMl), u)} · {r.pots.choixAuCout ? 'choix au moindre coût' : 'prix inconnus : le moins de pots (indicatif)'}
                 </span>
               </>
             ) : '—'}
           </dd>
         </div>
         <div><dt className="text-sm text-encre-douce">Coût matière HT</dt><dd className="font-semibold">{r.coutMatiereCents === null ? 'prix à renseigner' : formaterEuros(r.coutMatiereCents)}</dd></div>
-        <div><dt className="text-sm text-encre-douce">Temps</dt><dd className="font-semibold">{r.temps ? formaterDuree(r.temps.minutes) : '—'}{r.coutMainOeuvreCents !== null ? ` · ${formaterEuros(r.coutMainOeuvreCents)}` : ''}</dd></div>
+        <div><dt className="text-sm text-encre-douce">Temps{r.incomplet.temps ? ' (partiel)' : ''}</dt><dd className="font-semibold">{r.temps ? formaterDuree(r.temps.minutes) : '—'}{r.coutMainOeuvreCents !== null ? ` · ${formaterEuros(r.coutMainOeuvreCents)}` : ''}</dd></div>
       </dl>
       {r.avertissements.map((a) => <p key={a} className="rounded-lg bg-alerte-fond px-3 py-2 text-sm font-semibold text-alerte">⚠ {a}</p>)}
       {r.sechage ? <p className="text-sm">{r.sechage}</p> : null}

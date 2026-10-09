@@ -85,7 +85,7 @@ export async function supprimerChantier(_: EtatFormulaire, formData: FormData): 
   const supabase = await clientServeur();
   const { data: fichiers, error } = await supabase.rpc('supprimer_chantier', { p_chantier_id: id.data });
   if (error) {
-    return { message: error.code === 'P0001' ? 'Ce chantier a des devis, factures ou un PV : il ne peut pas être supprimé.' : ECHEC };
+    return { message: error.code === 'P0001' ? 'Ce chantier a des devis, factures, dépenses ou un PV : il ne peut pas être supprimé.' : ECHEC };
   }
   if ((fichiers ?? 0) > 0) {
     after(async () => {
@@ -114,7 +114,7 @@ export async function enregistrerPiece(_: EtatFormulaire, formData: FormData): P
   if (idSaisi) {
     const idLu = identifiant.safeParse(idSaisi);
     if (!idLu.success) return { message: 'Pièce introuvable.' };
-    const { data, error } = await supabase.from('pieces').update(lu.data).eq('id', idLu.data).select('id').maybeSingle();
+    const { data, error } = await supabase.from('pieces').update(lu.data).eq('id', idLu.data).eq('chantier_id', chantierId.data).select('id').maybeSingle();
     if (error) return { message: messageErreur(error.code), valeurs: valeursTexte(formData) };
     if (!data) return { message: 'Pièce introuvable.' };
     id = data.id;
@@ -227,17 +227,19 @@ export async function enregistrerPoste(_: EtatFormulaire, formData: FormData): P
   const session = await verifierSession();
   const chantierId = idDe(formData, 'chantier_id');
   if (!chantierId.success) return { message: 'Chantier introuvable.' };
+  // Les étapes cochées sont rendues avec la saisie (une seule chaîne) pour survivre à une erreur.
+  const saisie = () => ({ ...valeursTexte(formData, ['etapes']), etapes: formData.getAll('etapes').map(String).join(',') });
   const lu = schemaPoste.safeParse(lireChamps(formData, ['etapes']));
-  if (!lu.success) return { erreurs: erreursParChamp(lu.error), valeurs: valeursTexte(formData, ['etapes']) };
+  if (!lu.success) return { erreurs: erreursParChamp(lu.error), valeurs: saisie() };
   const { etapes, ...poste } = lu.data;
   const supabase = await clientServeur();
 
   // La pièce doit appartenir au chantier (et l'élément à la pièce : clé étrangère composite côté base).
   const { data: piece } = await supabase.from('pieces').select('id').eq('id', poste.piece_id).eq('chantier_id', chantierId.data).maybeSingle();
-  if (!piece) return { erreurs: { piece_id: 'Pièce introuvable dans ce chantier.' }, valeurs: valeursTexte(formData, ['etapes']) };
+  if (!piece) return { erreurs: { piece_id: 'Pièce introuvable dans ce chantier.' }, valeurs: saisie() };
   if (poste.element_id) {
     const { data: el } = await supabase.from('elements').select('id').eq('id', poste.element_id).eq('piece_id', poste.piece_id).maybeSingle();
-    if (!el) return { erreurs: { element_id: 'Cet élément n’appartient pas à la pièce choisie.' }, valeurs: valeursTexte(formData, ['etapes']) };
+    if (!el) return { erreurs: { element_id: 'Cet élément n’appartient pas à la pièce choisie.' }, valeurs: saisie() };
   }
 
   const idSaisi = formData.get('id');
@@ -246,16 +248,22 @@ export async function enregistrerPoste(_: EtatFormulaire, formData: FormData): P
     const idLu = identifiant.safeParse(idSaisi);
     if (!idLu.success) return { message: 'Poste introuvable.' };
     const { data, error } = await supabase.from('postes_travaux').update(poste).eq('id', idLu.data).select('id').maybeSingle();
-    if (error) return { message: messageErreur(error.code), valeurs: valeursTexte(formData, ['etapes']) };
+    if (error) return { message: messageErreur(error.code), valeurs: saisie() };
     if (!data) return { message: 'Poste introuvable.' };
     id = data.id;
   } else {
-    const { data, error } = await supabase.from('postes_travaux').insert({ ...poste, organisation_id: session.organisationId }).select('id').single();
-    if (error) return { message: messageErreur(error.code), valeurs: valeursTexte(formData, ['etapes']) };
+    // Identifiant créé par le formulaire : un nouvel envoi (réseau coupé après
+    // l'enregistrement, double toucher) met à jour le même poste au lieu d'en
+    // créer un second, qui doublerait la peinture comptée.
+    const idNouveau = identifiant.safeParse(formData.get('id_nouveau'));
+    if (!idNouveau.success) return { message: 'Formulaire incomplet : rechargez la page.' };
+    const { data, error } = await supabase.from('postes_travaux')
+      .upsert({ ...poste, id: idNouveau.data, organisation_id: session.organisationId }, { onConflict: 'id' }).select('id').single();
+    if (error) return { message: messageErreur(error.code), valeurs: saisie() };
     id = data.id;
   }
   const { error: ePrep } = await supabase.rpc('definir_preparations', { p_poste_id: id, p_etapes: etapes });
-  if (ePrep) return { message: 'Poste enregistré, mais pas ses étapes de préparation : réessayez.', valeurs: valeursTexte(formData, ['etapes']) };
+  if (ePrep) return { message: 'Poste enregistré, mais pas ses étapes de préparation : réessayez.', valeurs: saisie() };
   revalidatePath(`/chantiers/${chantierId.data}`, 'layout');
   redirect(`/chantiers/${chantierId.data}/peinture?enregistre=1#poste-${id}`);
 }

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { enregistrerPoste } from '@/app/(app)/chantiers/actions';
 import { libelleType } from '@/domain/calculateur';
 import { pourcentageVersSaisie } from '@/domain/formats';
-import type { TypeProduit } from '@/domain/systemes';
+import { LIBELLES_SUPPORT, type TypeProduit } from '@/domain/systemes';
 import { SUPPORTS, TYPES_PRODUIT } from '@/lib/validation/chantiers';
 import { useFormulaire } from '@/components/formulaire/useFormulaire';
 import { MessagesGarde, RappelEnvoi } from '@/components/formulaire/MessagesGarde';
@@ -13,13 +13,8 @@ import { Bouton } from '@/components/ui/Bouton';
 import { BadgeAVerifier, Champ } from '@/components/ui/Champ';
 import { CaseACocher, Selection } from '@/components/ui/Autres';
 
-export const LIBELLES_SUPPORT: Record<string, string> = {
-  platre_neuf: 'Plâtre neuf', ancienne_peinture: 'Ancienne peinture', beton: 'Béton', enduit: 'Enduit', bois_brut: 'Bois brut',
-  bois_vernis: 'Bois verni', metal: 'Métal', papier_peint: 'Papier peint', carrelage: 'Carrelage', autre: 'Autre',
-};
-
 export type PosteSaisi = {
-  id?: string; piece_id: string; cible: string; element_id: string | null; support: string; zone_humide: boolean; taches: boolean;
+  id?: string; updated_at?: string; piece_id: string; cible: string; element_id: string | null; support: string; zone_humide: boolean; taches: boolean; exterieur: boolean;
   produit_id: string | null; type_produit: string | null; teinte_id: string | null; finition: string | null; couches: number;
   rendement_force: number | null; marge_perte_bp: number | null; majoration_temps_bp: number; etapes: string[];
 };
@@ -33,7 +28,10 @@ type Options = {
 };
 
 export function FormulairePoste({ chantierId, poste, options }: { chantierId: string; poste: PosteSaisi; options: Options }) {
-  const { etat, action, enCours, formRef, garde } = useFormulaire(`poste:${poste.id ?? `nouveau:${chantierId}`}`, enregistrerPoste);
+  const { etat, action, enCours, formRef, garde } = useFormulaire(`poste:${poste.id ?? `nouveau:${chantierId}`}`, enregistrerPoste,
+    { version: poste.id ? (poste.updated_at ?? null) : undefined });
+  // Identifiant du futur poste, fixé à l'ouverture : un nouvel envoi ne crée pas de doublon.
+  const [idNouveau] = useState(() => crypto.randomUUID());
   const e = etat.erreurs ?? {};
   const sv = etat.valeurs;
   const v = (cle: string, defaut: string) => sv?.[cle] ?? defaut;
@@ -45,7 +43,7 @@ export function FormulairePoste({ chantierId, poste, options }: { chantierId: st
   return (
     <form ref={formRef} action={action} onSubmit={garde.surEnvoi} className="flex flex-col gap-4" noValidate>
       <input type="hidden" name="chantier_id" value={chantierId} />
-      {poste.id ? <input type="hidden" name="id" value={poste.id} /> : null}
+      {poste.id ? <input type="hidden" name="id" value={poste.id} /> : <input type="hidden" name="id_nouveau" value={idNouveau} />}
       <RetourFormulaire etat={etat} />
       <MessagesGarde garde={garde} />
 
@@ -58,7 +56,7 @@ export function FormulairePoste({ chantierId, poste, options }: { chantierId: st
         <legend className="mb-1 font-semibold">À peindre</legend>
         <div className="grid grid-cols-3 gap-2">
           {([['murs', 'Murs'], ['plafond', 'Plafond'], ['element', 'Élément']] as const).map(([c, l]) => (
-            <label key={c} className={`flex min-h-12 cursor-pointer items-center justify-center rounded-xl border-2 px-2 font-semibold ${cible === c ? 'border-anthracite bg-anthracite text-creme' : 'border-trait bg-white'}`}>
+            <label key={c} className={`flex min-h-12 cursor-pointer items-center justify-center rounded-xl border-2 px-2 font-semibold has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-or-fonce ${cible === c ? 'border-anthracite bg-anthracite text-creme' : 'border-trait bg-white'}`}>
               <input type="radio" name="cible" value={c} defaultChecked={cible === c} onChange={() => setCible(c)} className="sr-only" />
               {l}
             </label>
@@ -79,12 +77,13 @@ export function FormulairePoste({ chantierId, poste, options }: { chantierId: st
       <div className="grid grid-cols-2 gap-2">
         <CaseACocher nom="zone_humide" libelle="Pièce humide" defaultChecked={sv ? sv.zone_humide === 'on' : poste.zone_humide} />
         <CaseACocher nom="taches" libelle="Taches (eau, fumée…)" defaultChecked={sv ? sv.taches === 'on' : poste.taches} />
+        <CaseACocher nom="exterieur" libelle="Extérieur (façade…)" defaultChecked={sv ? sv.exterieur === 'on' : poste.exterieur} />
       </div>
 
       <fieldset className="flex flex-col gap-1">
         <legend className="mb-1 font-semibold">Préparation</legend>
         {options.etapes.map((et) => (
-          <CaseACocher key={et.id} nom="etapes" valeur={et.id} defaultChecked={poste.etapes.includes(et.id)}
+          <CaseACocher key={et.id} nom="etapes" valeur={et.id} defaultChecked={sv ? (sv.etapes ?? '').split(',').includes(et.id) : poste.etapes.includes(et.id)}
             libelle={<span className="flex flex-wrap items-center gap-2">{et.libelle}{et.aVerifier ? <BadgeAVerifier /> : null}</span>} />
         ))}
       </fieldset>
@@ -112,7 +111,8 @@ export function FormulairePoste({ chantierId, poste, options }: { chantierId: st
           <option value="brillant">Brillant</option>
         </Selection>
       </div>
-      <Champ libelle="Nombre de couches" nom="couches" inputMode="numeric" defaultValue={v('couches', String(poste.couches))} erreur={e.couches} />
+      <Champ libelle="Nombre de couches" nom="couches" inputMode="numeric" defaultValue={v('couches', String(poste.couches))} erreur={e.couches}
+        aide="Pour un enduit : nombre de passes (environ 1 mm chacune)." />
 
       <details>
         <summary className="inline-flex min-h-12 cursor-pointer items-center font-semibold underline underline-offset-4">Réglages avancés</summary>

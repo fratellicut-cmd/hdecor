@@ -24,6 +24,8 @@ export type Quantite = {
   exacte: Fraction;
   /** Litres (ou kg) × 10 000, demi supérieur : 7,0239 L -> 70 239n. */
   dixMilliemes: bigint;
+  /** Litres (ou kg) × 100 pour l'affichage, arrondi UNE fois depuis la valeur exacte (pas de double arrondi). */
+  centiemes: bigint;
   /** Volume à couvrir en ml (ou g), arrondi au supérieur. */
   aCouvrirMl: bigint;
 };
@@ -47,11 +49,7 @@ export function calculerQuantite(e: EntreeQuantite): Quantite {
   // S/1e6 ÷ (r/100 × c/1e4) × k × (1e4 + m)/1e4  =  S × 100 × k × (1e4 + m) / (1e6 × r × c)
   const num = e.surfaceMm2 * 100n * couches * (10_000n + marge);
   const den = 1_000_000n * rendement * coef;
-  return {
-    exacte: { num, den },
-    dixMilliemes: (num * 10_000n * 2n + den) / (2n * den),
-    aCouvrirMl: (num * 1_000n + den - 1n) / den,
-  };
+  return quantiteDepuisFraction({ num, den });
 }
 
 /** Somme exacte de fractions (liste d'achat : un même produit sur plusieurs postes). */
@@ -75,11 +73,17 @@ export function quantiteDepuisFraction(f: Fraction): Quantite {
   return {
     exacte: f,
     dixMilliemes: (f.num * 10_000n * 2n + f.den) / (2n * f.den),
+    centiemes: (f.num * 100n * 2n + f.den) / (2n * f.den),
     aCouvrirMl: (f.num * 1_000n + f.den - 1n) / f.den,
   };
 }
 
-/** « 7,0239 » ou « 7,02 » (litres ou kg) à partir des dix-millièmes. */
+/** Quantité affichée à 2 décimales : « 7,02 ». */
+export function formaterQuantiteCourte(q: Quantite): string {
+  return `${q.centiemes / 100n},${(q.centiemes % 100n).toString().padStart(2, '0')}`;
+}
+
+/** « 7,0239 » (4 décimales) à partir des dix-millièmes ; 2 décimales : voir formaterQuantiteCourte. */
 export function formaterQuantite(dixMilliemes: bigint, decimales: 2 | 4 = 2): string {
   const v = decimales === 4 ? dixMilliemes : (dixMilliemes + 50n) / 100n;
   const facteur = decimales === 4 ? 10_000n : 100n;

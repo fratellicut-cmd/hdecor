@@ -1,6 +1,6 @@
 import type { ListeAchat } from './calculateur';
 import { formaterEuros } from './formats';
-import { formaterContenance, formaterQuantite } from './peinture';
+import { formaterContenance, formaterQuantiteCourte } from './peinture';
 
 /** Texte de la liste d'achat pour un message (fournisseur, collègue) : sans donnée client. */
 export function texteListeAchat(titre: string, liste: ListeAchat): string {
@@ -8,7 +8,11 @@ export function texteListeAchat(titre: string, liste: ListeAchat): string {
   for (const l of liste.lignes) {
     const pots = l.pots?.retenue.pots.map((p) => `${p.nombre} × ${formaterContenance(p.contenanceMl, l.unite)}`).join(' + ');
     lignes.push(`• ${l.libelle}${l.reference ? ` (réf. ${l.reference})` : ''}${l.teinte ? `, teinte ${l.teinte}` : ''}`);
-    lignes.push(`  ${formaterQuantite(l.quantite.dixMilliemes)} ${l.unite} -> ${pots ?? l.probleme ?? 'pots à déterminer'}`);
+    lignes.push(`  ${formaterQuantiteCourte(l.quantite)} ${l.unite} -> ${pots ?? l.probleme ?? 'pots à déterminer'}`);
+  }
+  if (liste.nonChiffres.length) {
+    lignes.push('', `ATTENTION, liste incomplète : ${liste.nonChiffres.length} poste(s) non chiffré(s) :`);
+    for (const n of liste.nonChiffres) lignes.push(`• ${n.libelle} : ${n.raison}`);
   }
   if (liste.consommables.length) {
     lignes.push('', 'Consommables :');
@@ -18,7 +22,12 @@ export function texteListeAchat(titre: string, liste: ListeAchat): string {
   return lignes.join('\n');
 }
 
-/** Total affichable (matière) : « 84,79 € » ou « 84,79 € (partiel : prix manquants) ». */
+/**
+ * Total affichable (matière) : « 84,79 € », « 84,79 € (partiel) », ou
+ * « prix à renseigner » quand aucun prix n'est connu (jamais un faux 0,00 €).
+ */
 export function totalMatiere(liste: ListeAchat): string {
-  return `${formaterEuros(liste.coutMatiereCents)}${liste.coutComplet ? '' : ' (partiel : prix manquants)'}`;
+  if (liste.coutComplet) return formaterEuros(liste.coutMatiereCents);
+  if (liste.coutMatiereCents === 0n) return 'prix à renseigner';
+  return `${formaterEuros(liste.coutMatiereCents)} (partiel : prix ou postes manquants)`;
 }

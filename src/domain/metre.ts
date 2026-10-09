@@ -73,7 +73,7 @@ export function mm2EnCentiemesM2(mm2: bigint): bigint {
   return (mm2 + 5_000n) / 10_000n;
 }
 
-/** « 31,93 m² » (espace fine insécable avant l'unité). */
+/** « 31,93 m² » (espace insécable avant l'unité, fine pour les milliers). */
 export function formaterSurface(mm2: bigint): string {
   const c = mm2EnCentiemesM2(mm2);
   const entier = (c / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');

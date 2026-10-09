@@ -25,7 +25,7 @@ export default async function PagePoste({ params }: PageProps<'/chantiers/[id]/p
         <h1 className="text-2xl font-bold">{trouve.poste.libelle}</h1>
       </div>
       <FormulairePoste chantierId={id.data} options={optionsPoste(c)} poste={{
-        id: l.id, piece_id: l.piece_id, cible: l.cible, element_id: l.element_id, support: l.support, zone_humide: l.zone_humide,
+        id: l.id, updated_at: l.updated_at, piece_id: l.piece_id, cible: l.cible, element_id: l.element_id, support: l.support, zone_humide: l.zone_humide, exterieur: l.exterieur,
         taches: l.taches, produit_id: l.produit_id, type_produit: l.type_produit, teinte_id: l.teinte_id, finition: l.finition,
         couches: l.couches, rendement_force: l.rendement_force, marge_perte_bp: l.marge_perte_bp, majoration_temps_bp: l.majoration_temps_bp,
         etapes: trouve.poste.etapes.map((e) => e.id),

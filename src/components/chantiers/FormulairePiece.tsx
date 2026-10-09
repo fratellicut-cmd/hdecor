@@ -78,7 +78,7 @@ export function FormulairePiece({ chantierId, piece }: { chantierId: string; pie
         <legend className="mb-1 font-semibold">Forme de la pièce</legend>
         <div className="grid grid-cols-2 gap-2">
           {([['rectangle', 'Rectangle'], ['murs', 'Mur par mur']] as const).map(([m, l]) => (
-            <label key={m} className={`flex min-h-12 cursor-pointer items-center justify-center rounded-xl border-2 px-3 font-semibold ${mode === m ? 'border-anthracite bg-anthracite text-creme' : 'border-trait bg-white'}`}>
+            <label key={m} className={`flex min-h-12 cursor-pointer items-center justify-center rounded-xl border-2 px-3 font-semibold has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-or-fonce ${mode === m ? 'border-anthracite bg-anthracite text-creme' : 'border-trait bg-white'}`}>
               <input type="radio" name="mode_saisie" value={m} defaultChecked={mode === m} onChange={() => setMode(m)} className="sr-only" />
               {l}
             </label>

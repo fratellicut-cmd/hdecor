@@ -2,7 +2,7 @@ import 'server-only';
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import type { ListeAchat } from '@/domain/calculateur';
 import { formaterEuros, formaterDate } from '@/domain/formats';
-import { formaterContenance, formaterQuantite } from '@/domain/peinture';
+import { formaterContenance, formaterQuantiteCourte } from '@/domain/peinture';
 import { totalMatiere } from '@/domain/liste-texte';
 import { AVERTISSEMENT_RENDEMENT } from '@/domain/systemes';
 
@@ -68,7 +68,12 @@ export async function pdfListeAchat(entete: { entreprise: string; chantier: stri
   ecrire(c, `Établie le ${formaterDate(entete.date)}`, { couleur: GRIS });
   c.y -= 8;
 
-  if (!liste.lignes.length) ecrire(c, 'Aucun produit : ajoutez des postes de peinture au chantier.');
+  if (liste.nonChiffres.length) {
+    ecrire(c, `ATTENTION : liste incomplète, ${liste.nonChiffres.length} poste(s) non chiffré(s)`, { taille: 11, gras: true, couleur: ALERTE });
+    for (const n of liste.nonChiffres) ecrire(c, `- ${n.libelle} : ${n.raison}`, { couleur: ALERTE });
+    c.y -= 6;
+  }
+  if (!liste.lignes.length) ecrire(c, 'Aucun produit chiffré : complétez les postes de peinture du chantier.');
   for (const l of liste.lignes) {
     if (c.y < MARGE + 70) nouvellePage(c);
     c.page.drawLine({ start: { x: MARGE, y: c.y }, end: { x: A4.l - MARGE, y: c.y }, thickness: 0.5, color: GRIS });
@@ -76,7 +81,7 @@ export async function pdfListeAchat(entete: { entreprise: string; chantier: stri
     ecrire(c, `${l.libelle}${l.aVerifier ? '  [À VÉRIFIER]' : ''}`, { taille: 11, gras: true });
     const details = [l.reference ? `Réf. ${l.reference}` : null, l.teinte ? `Teinte : ${l.teinte}` : null].filter(Boolean).join('   ');
     if (details) ecrire(c, details, { couleur: GRIS });
-    ecrire(c, `Besoin : ${formaterQuantite(l.quantite.dixMilliemes)} ${l.unite}`);
+    ecrire(c, `Besoin : ${formaterQuantiteCourte(l.quantite)} ${l.unite}`);
     if (l.pots) {
       const pots = l.pots.retenue.pots.map((p) => `${p.nombre} × ${formaterContenance(p.contenanceMl, l.unite)}`).join(' + ');
       ecrire(c, `À acheter : ${pots}   (reste ${formaterContenance(Number(l.pots.retenue.resteMl), l.unite)})`, { gras: true });

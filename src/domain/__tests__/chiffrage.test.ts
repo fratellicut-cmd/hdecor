@@ -44,14 +44,17 @@ describe('lecture des décimaux de la base', () => {
 
 describe('cohérence des systèmes (avertissements)', () => {
   const base: EntreeSysteme = {
-    cible: 'murs', support: 'ancienne_peinture', zoneHumide: false, taches: false, preparations: ['lessivage'],
+    cible: 'murs', support: 'ancienne_peinture', zoneHumide: false, taches: false, exterieur: false, preparations: ['lessivage', 'poncage'],
     typeProduit: 'acrylique', usagesProduit: [], couches: 2, couchesRecommandees: null,
   };
   it('système correct : aucun avertissement', () => expect(avertissementsSysteme(base)).toEqual([]));
   it.each([
     [{ support: 'platre_neuf' as const }, /Plâtre neuf/],
     [{ preparations: [] }, /lessivage/],
-    [{ support: 'bois_brut' as const, cible: 'element' as const, typeProduit: 'laque' as const }, /ponçage/],
+    [{ preparations: ['lessivage'] }, /brillante ou satinée/],
+    [{ exterieur: true }, /prévu pour l’extérieur/],
+    [{ typeProduit: 'facade' as const }, /façade utilisée en intérieur/],
+    [{ support: 'bois_brut' as const, cible: 'element' as const, typeProduit: 'laque' as const, preparations: [] }, /ponçage/],
     [{ support: 'metal' as const }, /antirouille/],
     [{ support: 'papier_peint' as const }, /dépose/],
     [{ taches: true }, /sous-couche bloquante/],
@@ -64,5 +67,10 @@ describe('cohérence des systèmes (avertissements)', () => {
   });
   it('plâtre neuf avec impression cochée : plus d’avertissement d’impression', () => {
     expect(avertissementsSysteme({ ...base, support: 'platre_neuf', preparations: ['impression'] })).toEqual([]);
+  });
+  it('façade en extérieur, comptée comme élément : pas de faux avertissement « boiseries »', () => {
+    const a = avertissementsSysteme({ ...base, cible: 'element', exterieur: true, typeProduit: 'facade', support: 'beton' });
+    expect(a.join(' ')).not.toMatch(/Boiseries/);
+    expect(a.join(' ')).toMatch(/conditions d’application/);
   });
 });

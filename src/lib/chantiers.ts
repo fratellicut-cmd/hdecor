@@ -76,18 +76,21 @@ export async function calculerChantier(id: string) {
     .order('ordre').order('created_at'), 'postes');
   const [prepas, produits, conditionnements, teintes, referentiel, coefficients, etapes, consommables, parametres] = await Promise.all([
     supabase.from('postes_preparations').select('*').in('poste_id', lesPostes.map((x) => x.id)),
-    supabase.from('produits').select('*').eq('actif', true).order('marque').order('designation'),
+    // Produits actifs, et produits archivés encore utilisés par un poste (signalés).
+    supabase.from('produits').select('*').order('marque').order('designation'),
     supabase.from('conditionnements').select('*').eq('actif', true),
     supabase.from('teintes').select('id, nom, marque, code_ral, code_ncs, code_fabricant, statut_verification').order('nom'),
     supabase.from('referentiel_calcul').select('*'),
     supabase.from('coefficients_support').select('*'),
     supabase.from('etapes_preparation').select('*').eq('actif', true).order('ordre'),
     supabase.from('consommables').select('*').eq('actif', true).order('libelle'),
-    supabase.from('parametres_entreprise').select('marge_perte_bp, coef_marge_bp, taux_horaire_cents, formats_pots_ml, porte_largeur_mm, porte_hauteur_mm')
+    supabase.from('parametres_entreprise').select('marge_perte_bp, coef_marge_bp, taux_horaire_cents, formats_pots_ml, formats_sacs_g, hauteur_alerte_mm, minutes_par_jour, porte_largeur_mm, porte_hauteur_mm')
       .eq('organisation_id', session.organisationId).single(),
   ]);
   const p = verifier(parametres, 'paramètres');
-  const lesProduits = verifier(produits, 'produits');
+  const tousProduits = verifier(produits, 'produits');
+  const utilises = new Set([...lesPostes.map((x) => x.produit_id), ...verifier(etapes, 'étapes de préparation').map((e) => e.produit_id)]);
+  const lesProduits = tousProduits.filter((pr) => pr.actif || utilises.has(pr.id));
   const lesConditionnements = verifier(conditionnements, 'conditionnements');
   const lesTeintes = verifier(teintes, 'teintes');
   const lesEtapes = verifier(etapes, 'étapes de préparation');
@@ -100,9 +103,10 @@ export async function calculerChantier(id: string) {
     unite: pr.unite_mesure as 'L' | 'kg',
     rendementCentiemes: centiemes(pr.rendement_m2_par_unite),
     couchesRecommandees: pr.couches_recommandees,
-    sechageRecouvrableH: pr.sechage_recouvrable_h === null ? null : String(pr.sechage_recouvrable_h),
+    sechageDixiemesH: dixiemes(pr.sechage_recouvrable_h),
     usages: pr.usages,
     aVerifier: pr.statut_verification !== 'verifie',
+    archive: !pr.actif,
     formats: lesConditionnements.filter((c) => c.produit_id === pr.id)
       .map((c) => ({ contenanceMl: c.contenance, prixCents: c.prix_achat_ht_cents === null ? null : BigInt(c.prix_achat_ht_cents), id: c.id })),
   });
@@ -113,6 +117,9 @@ export async function calculerChantier(id: string) {
     minutesParM2Centiemes: centiemes(e.minutes_par_m2) ?? 0,
     produit: e.produit_id ? produitsCalc.get(e.produit_id) ?? null : null,
     consommationE4: e.consommation_par_m2 === null ? null : Number(lireDecimal(String(e.consommation_par_m2), 4) ?? 0n),
+    typeProduit: e.type_produit as TypeProduit | null,
+    couches: e.couches,
+    avecMatiere: e.avec_matiere,
     aVerifier: e.statut_verification !== 'verifie',
   }));
 
@@ -121,10 +128,13 @@ export async function calculerChantier(id: string) {
     coefMargeBp: p.coef_marge_bp,
     tauxHoraireCents: p.taux_horaire_cents === null ? null : BigInt(p.taux_horaire_cents),
     formatsDefautMl: p.formats_pots_ml,
-    coefSupportBp: Object.fromEntries(verifier(coefficients, 'coefficients').map((c) => [c.support, c.coef_rendement_bp])),
+    formatsDefautG: p.formats_sacs_g,
+    hauteurAlerteMm: p.hauteur_alerte_mm,
+    coefSupport: Object.fromEntries(verifier(coefficients, 'coefficients').map((c) => [c.support, { bp: c.coef_rendement_bp, aVerifier: c.statut_verification !== 'verifie' }])),
     referentiel: Object.fromEntries(verifier(referentiel, 'référentiel').map((r) => [r.type_produit, {
-      rendementMinCentiemes: centiemes(r.rendement_min)!,
+      rendementMinCentiemes: centiemes(r.rendement_min),
       minutesParM2CoucheCentiemes: centiemes(r.minutes_par_m2_couche),
+      sechageDixiemesH: dixiemes(r.sechage_recouvrable_h),
       aVerifier: r.statut_verification !== 'verifie',
     }])),
   };
@@ -153,7 +163,8 @@ export async function calculerChantier(id: string) {
       id: poste.id,
       libelle: `${piece.nom}${piece.multiplicateur > 1 ? ` (× ${piece.multiplicateur})` : ''} : ${cibleLibelle}`,
       surface, cible: poste.cible as PosteCalc['cible'], support: poste.support as Support,
-      zoneHumide: poste.zone_humide, taches: poste.taches,
+      cleSurface: `${poste.piece_id}|${poste.cible}|${poste.element_id ?? ''}`, hauteurMm: piece.hauteur_mm,
+      zoneHumide: poste.zone_humide, taches: poste.taches, exterieur: poste.exterieur,
       etapes: etapesCalc.filter((e) => lesPrepas.some((x) => x.poste_id === poste.id && x.etape_id === e.id)),
       produit: poste.produit_id ? produitsCalc.get(poste.produit_id) ?? null : null,
       typeProduit: poste.type_produit as TypeProduit | null,
@@ -176,8 +187,16 @@ export async function calculerChantier(id: string) {
   } satisfies Record<string, unknown> & { postes: { poste: PosteCalc; resultat: ResultatPoste }[] };
 }
 
+/** numeric(5,1) en heures -> dixièmes d'heure entiers (6,5 h -> 65), lu sans calcul flottant. */
+function dixiemes(v: number | null): number | null {
+  if (v === null) return null;
+  const d = lireDecimal(String(v), 1);
+  if (d === null) throw new Error(`Durée invalide : ${v}`);
+  return Number(d);
+}
+
 const LIBELLES_ELEMENT: Record<string, string> = {
   plinthe: 'plinthes', corniche: 'corniches', porte: 'portes', fenetre: 'fenêtres', radiateur: 'radiateurs',
-  volet: 'volets', escalier: 'escalier', rambarde: 'rambarde', autre: 'autre élément',
+  volet: 'volets', escalier: 'escalier', rambarde: 'rambarde', facade: 'façade', autre: 'autre élément',
 };
 export const libelleElement = (t: string) => LIBELLES_ELEMENT[t] ?? t;

@@ -44,6 +44,17 @@ describe('pots : départage (R3)', () => {
     expect(resume(c.retenue)).toBe('1×5000 + 1×2500');
     expect(c.retenue.coutCents).toBeNull();
   });
+  it('sans prix : le moins de pots, reste inférieur au plus petit format (audit métier)', () => {
+    // 9,2 L -> 10 L (reste 0,8 < 1 L) ; 14,2 L -> 15 L ; 2,64 L -> 2,5 + 1 L (3,5 L, 2 pots) ;
+    // 6,42 L -> 5 + 1 + 1 L (7 L, 3 pots ; 7,5 L dépasserait le reste toléré de 1 L).
+    const sans = formats([null, null, null, null, null]);
+    expect(resume(choisirPots(9_200n, sans).retenue)).toBe('1×10000');
+    expect(resume(choisirPots(14_200n, sans).retenue)).toBe('1×15000');
+    expect(resume(choisirPots(2_640n, sans).retenue)).toBe('1×2500 + 1×1000');
+    const c = choisirPots(6_420n, sans);
+    expect(resume(c.retenue)).toBe('1×5000 + 2×1000');
+    expect(c.retenue.resteMl).toBe(580n);
+  });
   it('besoin pile sur un format : 5 000 ml -> 1 pot de 5 L, reste 0', () => {
     const c = choisirPots(5_000n, formats([null, null, null, null, null]));
     expect(resume(c.retenue)).toBe('1×5000');

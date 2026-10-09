@@ -18,6 +18,9 @@ export function centiemes(v: number | string | null | undefined): number | null 
   // Les colonnes numeric(…, 2) arrivent en nombre JSON : toFixed(2) redonne
   // leur écriture décimale exacte (2 décimales au plus). Conversion seulement :
   // aucun calcul n'est fait en flottant.
+  if (typeof v === 'number' && Math.abs(v * 100 - Math.round(v * 100)) > 1e-6) {
+    throw new ErreurCalcul(`Nombre à plus de 2 décimales : ${v}`);
+  }
   const s = typeof v === 'number' ? v.toFixed(2) : v.trim();
   const m = /^(\d+)(?:[.,](\d{1,2}))?$/.exec(s);
   if (!m) throw new ErreurCalcul(`Nombre décimal invalide : ${v}`);
@@ -46,6 +49,11 @@ export function calculerTemps(e: EntreeTemps): Temps {
   if (e.surfaceMm2 < 0n) throw new ErreurCalcul('Surface négative.');
   if (!Number.isSafeInteger(e.majorationBp) || e.majorationBp < 0 || e.majorationBp > 50_000) {
     throw new ErreurCalcul('Majoration de temps invalide.');
+  }
+  if (!Number.isSafeInteger(e.couches) || e.couches < 1 || e.couches > 10) throw new ErreurCalcul('Nombre de couches invalide (1 à 10).');
+  const valide = (m: number | null) => m === null || (Number.isSafeInteger(m) && m >= 0 && m <= 1_000_000);
+  if (!valide(e.minutesParM2CoucheCentiemes) || !e.preparationsCentiemes.every(valide)) {
+    throw new ErreurCalcul('Temps par m² invalide (nombre positif attendu).');
   }
   const finition = e.minutesParM2CoucheCentiemes === null ? 0n : BigInt(e.minutesParM2CoucheCentiemes) * BigInt(e.couches);
   const prepa = e.preparationsCentiemes.reduce((a, p) => a + BigInt(p), 0n);

@@ -41,7 +41,7 @@ export function FormulaireClient({ id, client = VIDE }: { id?: string; client?: 
         <legend className="mb-1 font-semibold">Type de client</legend>
         <div className="grid grid-cols-2 gap-2">
           {(['particulier', 'professionnel'] as const).map((t) => (
-            <label key={t} className={`flex min-h-12 cursor-pointer items-center justify-center rounded-xl border-2 px-3 font-semibold ${type === t ? 'border-anthracite bg-anthracite text-creme' : 'border-trait bg-white'}`}>
+            <label key={t} className={`flex min-h-12 cursor-pointer items-center justify-center rounded-xl border-2 px-3 font-semibold has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-or-fonce ${type === t ? 'border-anthracite bg-anthracite text-creme' : 'border-trait bg-white'}`}>
               {/* Non contrôlé : React 19 réinitialise le formulaire après chaque envoi ;
                   defaultChecked suit l'état, la réinitialisation remet donc le bon choix. */}
               <input type="radio" name="type" value={t} defaultChecked={type === t} onChange={() => setType(t)} className="sr-only" />

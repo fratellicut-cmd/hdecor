@@ -23,7 +23,7 @@ export default async function PageNouveauPoste({ params, searchParams }: PagePro
       </div>
       <FormulairePoste chantierId={id.data} options={options} poste={{
         piece_id: piece.success && options.pieces.some((p) => p.id === piece.data) ? piece.data : options.pieces[0]?.id ?? '',
-        cible: 'murs', element_id: null, support: 'ancienne_peinture', zone_humide: false, taches: false, produit_id: null,
+        cible: 'murs', element_id: null, support: 'ancienne_peinture', zone_humide: false, taches: false, exterieur: false, produit_id: null,
         type_produit: 'acrylique', teinte_id: null, finition: null, couches: 2, rendement_force: null, marge_perte_bp: null,
         majoration_temps_bp: 0, etapes: [],
       }} />

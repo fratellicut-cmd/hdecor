@@ -127,6 +127,7 @@ export const schemaPoste = z.object({
   support: z.enum(SUPPORTS, { error: 'Choisissez le support.' }),
   zone_humide: caseCochee,
   taches: caseCochee,
+  exterieur: caseCochee,
   produit_id: uuidFacultatif,
   type_produit: z.preprocess((v) => (vide(v) ? null : v), z.enum(TYPES_PRODUIT, { error: 'Type de produit invalide.' }).nullable()),
   teinte_id: uuidFacultatif,

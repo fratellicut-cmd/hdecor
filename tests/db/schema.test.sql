@@ -1361,7 +1361,19 @@ select tests.echoue($$select public.purger_prospects_inactifs()$$, 'permission d
 -- -----------------------------------------------------------------------------
 -- Phase 2 : valeurs de départ du calcul, toutes À VÉRIFIER, créées pour chaque organisation.
 select tests.egal((select count(*) from public.referentiel_calcul where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and statut_verification = 'a_verifier'),
-  8::bigint, 'calcul : 8 fourchettes de rendement du cahier des charges, À VÉRIFIER');
+  13::bigint, 'calcul : une ligne par type de produit (13), toutes À VÉRIFIER');
+select tests.egal((select string_agg(type_produit, ',' order by type_produit) from public.referentiel_calcul
+                   where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and rendement_min is null),
+  'anti_humidite,anti_rouille,autre,facade,sous_couche_bloquante', 'calcul : sans fourchette au cahier des charges, rendement vide (rien d''inventé)');
+select tests.egal((select count(*) from public.referentiel_calcul where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and sechage_recouvrable_h is not null),
+  0::bigint, 'calcul : aucun temps de séchage inventé');
+select tests.egal((select string_agg(code || ':' || type_produit || ':' || couches, ',' order by code) from public.etapes_preparation
+                   where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and type_produit is not null),
+  'enduit_1_passe:enduit:1,enduit_2_passes:enduit:2,impression:impression:1,sous_couche_bloquante:sous_couche_bloquante:1',
+  'préparation : matière des étapes par type de produit (impression, bloquante, enduit)');
+select tests.echoue($$update public.referentiel_calcul set rendement_min = 12, rendement_max = 10
+  where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and type_produit = 'laque'$$, 'referentiel_rendements',
+  'référentiel : minimum supérieur au maximum refusé');
 select tests.egal((select rendement_min::text || '-' || rendement_max::text from public.referentiel_calcul
                    where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and type_produit = 'acrylique'),
   '10.00-12.00', 'calcul : acrylique 10 à 12 m²/L (cahier des charges §5.4)');

@@ -7,6 +7,12 @@
 export type Support = 'platre_neuf' | 'ancienne_peinture' | 'beton' | 'enduit' | 'bois_brut'
   | 'bois_vernis' | 'metal' | 'papier_peint' | 'carrelage' | 'autre';
 
+/** Libellés des supports (partagés : écrans serveur et client). */
+export const LIBELLES_SUPPORT: Record<Support, string> = {
+  platre_neuf: 'Plâtre neuf', ancienne_peinture: 'Ancienne peinture', beton: 'Béton', enduit: 'Enduit', bois_brut: 'Bois brut',
+  bois_vernis: 'Bois verni', metal: 'Métal', papier_peint: 'Papier peint', carrelage: 'Carrelage', autre: 'Autre',
+};
+
 export type TypeProduit = 'sous_couche' | 'impression' | 'acrylique' | 'glycero' | 'laque' | 'facade'
   | 'lasure' | 'vernis' | 'enduit' | 'anti_humidite' | 'anti_rouille' | 'sous_couche_bloquante' | 'autre';
 
@@ -15,6 +21,7 @@ export type EntreeSysteme = {
   support: Support;
   zoneHumide: boolean;
   taches: boolean;
+  exterieur: boolean;
   /** Codes des étapes de préparation cochées. */
   preparations: string[];
   typeProduit: TypeProduit | null;
@@ -37,8 +44,12 @@ export function avertissementsSysteme(e: EntreeSysteme): string[] {
   if (e.support === 'platre_neuf' && !impression) {
     a.push('Plâtre neuf : prévoir une impression (couche d’impression) avant la finition.');
   }
-  if (e.support === 'ancienne_peinture' && !prepa.has('lessivage')) {
-    a.push('Ancienne peinture : prévoir un lessivage, et un ponçage ou une sous-couche d’accrochage si elle est brillante.');
+  if (e.support === 'ancienne_peinture') {
+    if (!prepa.has('lessivage')) a.push('Ancienne peinture : prévoir un lessivage.');
+    // L'aspect (brillant, satiné) n'est pas saisi : rappel tant qu'aucun accrochage n'est prévu.
+    if (!prepa.has('poncage') && !impression) {
+      a.push('Ancienne peinture brillante ou satinée : prévoir un ponçage (égrenage) ou une sous-couche d’accrochage.');
+    }
   }
   if (e.support === 'bois_brut') {
     if (!prepa.has('poncage')) a.push('Bois brut : prévoir un ponçage.');
@@ -59,6 +70,14 @@ export function avertissementsSysteme(e: EntreeSysteme): string[] {
   if (e.taches && !prepa.has('sous_couche_bloquante') && e.typeProduit !== 'sous_couche_bloquante') {
     a.push('Taches (eau, fumée, nicotine) : prévoir une sous-couche bloquante, sinon elles ressortent.');
   }
+  if (e.exterieur) {
+    const exterieurOk = e.usagesProduit.includes('exterieur')
+      || (e.typeProduit !== null && ['facade', 'lasure', 'vernis', 'glycero', 'laque', 'anti_rouille'].includes(e.typeProduit));
+    if (!exterieurOk) a.push('Extérieur : le produit doit être prévu pour l’extérieur (peinture façade, ou usage « extérieur » au catalogue).');
+    a.push('Extérieur : respecter les conditions d’application de la fiche technique (température, pluie, humidité, plein soleil).');
+  } else if (e.typeProduit === 'facade') {
+    a.push('Peinture façade utilisée en intérieur : vérifiez que c’est voulu.');
+  }
   if (e.zoneHumide && e.typeProduit !== 'anti_humidite') {
     a.push('Pièce humide : vérifiez que le produit convient aux pièces humides (fiche technique).');
   }
@@ -66,8 +85,8 @@ export function avertissementsSysteme(e: EntreeSysteme): string[] {
     const usage = e.cible === 'murs' ? 'mur' : e.cible === 'plafond' ? 'plafond' : null;
     if (usage && !e.usagesProduit.includes(usage)) a.push(`Le produit n’est pas déclaré pour un usage « ${usage} » dans le catalogue.`);
   }
-  if (e.cible === 'element' && e.typeProduit !== null && !FINITIONS_BOIS.includes(e.typeProduit)
-      && !IMPRESSIONS.includes(e.typeProduit) && e.typeProduit !== 'anti_rouille') {
+  if (e.cible === 'element' && !e.exterieur && e.typeProduit !== null && !FINITIONS_BOIS.includes(e.typeProduit)
+      && !IMPRESSIONS.includes(e.typeProduit) && e.typeProduit !== 'anti_rouille' && e.typeProduit !== 'facade') {
     a.push('Boiseries et menuiseries : vérifiez que le produit convient (laque, glycéro, lasure, vernis ou acrylique boiserie).');
   }
   if (e.couchesRecommandees !== null && e.couches < e.couchesRecommandees) {

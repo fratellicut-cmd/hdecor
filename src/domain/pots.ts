@@ -1,8 +1,11 @@
 /**
- * Choix des pots (règle R3 du cadrage) : la combinaison qui COUVRE le besoin
- * au COÛT MINIMAL. À coût égal : le moins de reste, puis le moins de pots.
- * Si un prix manque, on ne compare pas des coûts partiels : le moins de reste,
- * puis le moins de pots (et le coût est signalé inconnu).
+ * Choix des pots (règle R3 du cadrage, révisée après l'audit métier) : la
+ * combinaison qui COUVRE le besoin au COÛT MINIMAL. À coût égal : le moins de
+ * reste, puis le moins de pots.
+ * Si un prix manque, on ne compare pas des coûts partiels : le MOINS DE POTS
+ * parmi les combinaisons dont le reste est inférieur au plus petit format,
+ * puis le moins de reste (coût signalé inconnu). Les petits pots coûtant plus
+ * cher au litre, « 10 L » vaut mieux que « 5 + 2,5 + 1 + 1 L » pour 9,2 L.
  *
  * Méthode exacte (programmation dynamique) sur les volumes totaux possibles,
  * par pas du PGCD des contenances, jusqu'à besoin + plus grand format.
@@ -98,13 +101,23 @@ export function choisirPots(besoinMl: bigint, formatsBruts: Format[]): ChoixPots
     }
   }
 
-  // Parmi les totaux qui couvrent : coût (si connu), puis reste, puis pots.
   let meilleur = -1;
-  for (let t = besoinPas; t <= borne; t += 1) {
-    if (cout[t] === null) continue;
-    if (meilleur < 0) { meilleur = t; continue; }
-    const plusCher = choixAuCout ? cout[t]! - cout[meilleur]! : 0n;
-    if (plusCher < 0n || (plusCher === 0n && (t < meilleur || (t === meilleur && nb[t]! < nb[meilleur]!)))) meilleur = t;
+  if (choixAuCout) {
+    // Parmi les totaux qui couvrent : coût, puis reste, puis pots.
+    for (let t = besoinPas; t <= borne; t += 1) {
+      if (cout[t] === null) continue;
+      if (meilleur < 0) { meilleur = t; continue; }
+      const plusCher = cout[t]! - cout[meilleur]!;
+      if (plusCher < 0n || (plusCher === 0n && (t < meilleur || (t === meilleur && nb[t]! < nb[meilleur]!)))) meilleur = t;
+    }
+  } else {
+    // Sans prix : reste < plus petit format (toujours atteignable avec ce seul
+    // format), puis le moins de pots, puis le moins de reste.
+    const plusPetit = formats[0]!.contenanceMl / pas;
+    for (let t = besoinPas; t < besoinPas + plusPetit && t <= borne; t += 1) {
+      if (cout[t] === null) continue;
+      if (meilleur < 0 || nb[t]! < nb[meilleur]!) meilleur = t;
+    }
   }
   if (meilleur < 0) throw new ErreurPots('Aucune combinaison de pots ne couvre le besoin.');
 
