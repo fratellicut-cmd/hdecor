@@ -1,9 +1,9 @@
 import 'server-only';
 import QRCode from 'qrcode';
 import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
-import type { Regime } from '@/domain/devis';
+import type { Regime, Ventilation } from '@/domain/devis';
 import {
-  formaterIban, libelleDatesPrestation, LIBELLES_TYPE_FACTURE, MENTION_AUTOLIQUIDATION, mentionIndemnite, mentionPenalites, totalLigneFacture, totauxFacture,
+  formaterIban, libelleDatesPrestation, netParTaux, LIBELLES_TYPE_FACTURE, MENTION_AUTOLIQUIDATION, mentionIndemnite, mentionPenalites, totalLigneFacture, totauxFacture,
   type CopieEmetteurFacture, type Deduction, type LigneFacture, type TypeFacture,
 } from '@/domain/factures';
 import { formaterQuantiteE4, identiteEmetteur, lignesAdresse, nomAvecForme, texteAssurance, UNITES, type CopieChantier, type CopieClient } from '@/domain/devis-document';
@@ -33,6 +33,8 @@ export type DonneesPdfFacture = {
   remiseGlobaleBp: number;
   lignes: LigneFacture[];
   deductions: Deduction[];
+  /** Ventilation par taux de chaque facture déduite (même ordre) : TVA nette par taux d'un avoir d'annulation. */
+  ventilationsDeduites?: Ventilation[];
   notesClient: string | null;
   urlConfidentialite?: string | null;
   /** Contrat hors établissement émis pendant le délai de rétractation : premier jour où un paiement peut être demandé (pas de QR). */
@@ -169,20 +171,35 @@ export async function pdfFacture(d: DonneesPdfFacture): Promise<Uint8Array> {
     lignesTotaux.push(['Total des lignes HT', formaterEuros(totaux.sommeLignesCents), false]);
     lignesTotaux.push([`Remise globale ${formaterTaux(d.remiseGlobaleBp)}`, `-${formaterEuros(totaux.remiseGlobaleCents)}`, false]);
   }
-  lignesTotaux.push([avoir ? 'Total HT de l’avoir' : 'Total HT', formaterEuros(totaux.totalHtCents), true]);
+  // Avoir d'annulation d'une facture qui déduisait des acomptes : les totaux bruts sont ceux de la facture corrigée,
+  // seul « Montant de l'avoir » (net, avec sa TVA nette par taux) porte ce qui est réellement crédité.
+  const avoirNet = avoir && d.deductions.length > 0;
+  const suffixe = avoirNet ? ' de la facture corrigée' : avoir ? ' de l’avoir' : '';
+  lignesTotaux.push([`Total HT${suffixe}`, formaterEuros(totaux.totalHtCents), !avoirNet]);
   if (!sansTva) {
     for (const v of totaux.ventilation) {
       lignesTotaux.push([`TVA ${formaterTaux(v.taux_bp)} sur ${formaterEuros(v.base_ht_cents)}`, formaterEuros(v.tva_cents), false]);
     }
     lignesTotaux.push(['Total TVA', formaterEuros(totaux.totalTvaCents), false]);
-    lignesTotaux.push([avoir ? 'Total TTC de l’avoir' : 'Total TTC', formaterEuros(totaux.totalTtcCents), true]);
+    lignesTotaux.push([`Total TTC${suffixe}`, formaterEuros(totaux.totalTtcCents), !avoirNet]);
   }
   for (const x of d.deductions) {
     // Avoir d'annulation d'une facture qui déduisait des acomptes : ces acomptes restent dus, ils ne sont pas crédités.
-    lignesTotaux.push([avoir ? `Acompte ${x.numero} non repris (reste acquis)` : `Acompte ${x.numero} déduit`, `-${formaterEuros(x.ttc)}`, false,
+    lignesTotaux.push([avoir ? `Acompte ${x.numero} : facture distincte, non reprise` : `Acompte ${x.numero} déduit`, `-${formaterEuros(x.ttc)}`, false,
       sansTva ? undefined : `dont HT ${formaterEuros(x.ht)}, TVA ${formaterEuros(x.tva)}`]);
   }
-  if (avoir && d.deductions.length) lignesTotaux.push(['Montant de l’avoir (net)', formaterEuros(net), true]);
+  if (avoirNet) {
+    let detail = `dont HT ${formaterEuros(totaux.totalHtCents - d.deductions.reduce((a, x) => a + x.ht, 0n))}`;
+    if (!sansTva) {
+      try {
+        const nets = netParTaux(totaux.ventilation, d.ventilationsDeduites ?? []);
+        detail += `, TVA ${nets.map((v) => `${formaterTaux(v.taux_bp)} : ${formaterEuros(v.tva_cents)}`).join(' ; ')}`;
+      } catch {
+        detail += `, TVA ${formaterEuros(totaux.totalTvaCents - d.deductions.reduce((a, x) => a + x.tva, 0n))}`;
+      }
+    }
+    lignesTotaux.push(['Montant de l’avoir', formaterEuros(net), true, detail]);
+  }
   if (!avoir && (d.deductions.length || sansTva)) lignesTotaux.push(['Net à payer', formaterEuros(net), true]);
   place(c, lignesTotaux.length * 16 + d.deductions.length * 11 + 30);
   const xLib = A4.l - MARGE - 300;

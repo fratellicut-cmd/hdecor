@@ -51,6 +51,8 @@ export type FactureComplete = {
   chantier: Ligne<'chantiers'> | null;
   devis: Ligne<'devis'> | null;
   origine: Ligne<'factures'> | null;
+  /** Ventilation de chaque facture déduite, dans l'ordre des déductions. */
+  ventilationsDeduites: Ventilation[];
 };
 
 /** Facture, lignes, client, chantier, devis et facture d'origine (RLS : organisation de la session). */
@@ -67,9 +69,13 @@ export async function chargerFacture(id: string, supabase?: Client): Promise<Fac
     f.devis_id ? sb.from('devis').select('*').eq('id', f.devis_id).maybeSingle() : Promise.resolve({ data: null }),
     f.facture_origine_id ? sb.from('factures').select('*').eq('id', f.facture_origine_id).maybeSingle() : Promise.resolve({ data: null }),
   ]);
+  const ids = deductionsDomaine(f.deductions).map((d) => d.facture_id);
+  const { data: deduites, error: eDed } = ids.length ? await sb.from('factures').select('id, ventilation_tva').in('id', ids) : { data: [], error: null };
+  if (eDed || (deduites ?? []).length !== ids.length) throw new Error('Lecture impossible : factures déduites.');
   return {
     facture: f as FactureComplete['facture'], lignes: verifier(lignes, 'lignes de la facture'),
     client: client.data, chantier: chantier.data, devis: devis.data, origine: origine.data,
+    ventilationsDeduites: ids.map((i) => ventilationDomaine(deduites!.find((x) => x.id === i)!.ventilation_tva)),
   };
 }
 
@@ -165,7 +171,7 @@ export function donneesPdfFacture(c: FactureComplete, prep: Pick<PreparationFact
     origine: c.origine?.numero && c.origine.date_emission ? { numero: c.origine.numero, dateEmission: c.origine.date_emission } : null,
     natureAvoir: (f.nature_avoir as 'correction' | 'reduction' | null) ?? null, avancementBp: f.avancement_bp,
     regime: f.regime_tva, autoliquidation: f.autoliquidation!, remiseGlobaleBp: f.remise_globale_bp!,
-    lignes: c.lignes.map(ligneFactureDomaine), deductions: deductionsDomaine(f.deductions), notesClient: f.notes_client,
+    lignes: c.lignes.map(ligneFactureDomaine), deductions: deductionsDomaine(f.deductions), ventilationsDeduites: c.ventilationsDeduites, notesClient: f.notes_client,
     paiementApresLe: prep.retractationJusquau ? ajouterJours(prep.retractationJusquau, 1) : null,
     urlConfidentialite: `${envPublique.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '')}/confidentialite`,
   };
