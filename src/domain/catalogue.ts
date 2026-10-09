@@ -47,26 +47,31 @@ export const COLONNES = [
 ] as const;
 type CleColonne = (typeof COLONNES)[number]['cle'];
 
+/**
+ * Ligne d'import. Une clé ABSENTE (colonne absente ou cellule vide) = valeur
+ * conservée lors d'une mise à jour (vide à la création) : un fichier partiel
+ * n'efface rien. Marque, désignation et type sont toujours présents.
+ */
 export type ProduitImport = {
   marque: string;
-  gamme: string | null;
-  reference_fabricant: string | null;
   designation: string;
   type: TypeProduit;
-  usages: Usage[];
-  finition: FinitionProduit | null;
-  unite_mesure: 'L' | 'kg';
-  /** Nombres décimaux en texte (« 10.5 ») : lus exactement par la base. */
-  rendement: string | null;
-  couches: number | null;
-  sechage_h: string | null;
-  fournisseur: string | null;
-  fiche_technique_url: string | null;
+  reference_fabricant?: string;
+  gamme?: string;
+  usages?: Usage[];
+  finition?: FinitionProduit;
+  unite_mesure?: 'L' | 'kg';
+  /** Nombres décimaux en texte (« 10.50 ») : lus exactement par la base. */
+  rendement?: string;
+  couches?: number;
+  sechage_h?: string;
+  fournisseur?: string;
+  fiche_technique_url?: string;
   /** Contenance en ml (ou g) ; prix null : prix existant conservé. */
   formats: { contenance: number; prix_cents: number | null }[];
 };
 
-export type LigneAnalysee = { numero: number; produit: ProduitImport | null; erreurs: string[]; cle: string | null };
+export type LigneAnalysee = { numero: number; produit: ProduitImport | null; erreurs: string[]; avertissements: string[]; cle: string | null };
 export type AnalyseImport = { lignes: LigneAnalysee[]; erreursFichier: string[]; colonnesIgnorees: string[] };
 
 /** Comparaison tolérante : casse, accents, espaces et ponctuation ignorés. */
@@ -75,14 +80,41 @@ const simplifier = (t: string) => t.normalize('NFD').replace(/\p{Diacritic}/gu, 
 const vide = (v: string | undefined) => (v ?? '').trim() === '';
 const liste = (v: string) => v.split('/').map((x) => x.trim());
 
+/** Unité usuelle d'un type : l'enduit au kg, le reste au litre. */
+export const uniteParDefaut = (type: TypeProduit): 'L' | 'kg' => (type === 'enduit' ? 'kg' : 'L');
+
+/** Fourchette indicative de rendement par type (centièmes de m² par L ou kg), quand elle est renseignée. */
+export type FourchettesRendement = Partial<Record<TypeProduit, { min: number; max: number }>>;
+
+/**
+ * Alertes de plausibilité (jamais bloquantes) : unité inhabituelle pour le
+ * type, rendement très loin de la fourchette indicative (moins de la moitié du
+ * minimum ou plus du double du maximum), ou hors de 0,5 à 30 m² par L ou kg sans fourchette.
+ */
+export function alertesProduit(p: { type: TypeProduit; unite: 'L' | 'kg'; rendementCentiemes: number | null }, fourchette: { min: number; max: number } | null): string[] {
+  const a: string[] = [];
+  if (p.type === 'enduit' && p.unite === 'L') a.push('Enduit vendu au litre : vérifiez l’unité (en général au kg).');
+  if (p.type !== 'enduit' && p.unite === 'kg') a.push('Produit au kg : vérifiez l’unité (une peinture se vend en général au litre).');
+  const r = p.rendementCentiemes;
+  if (r !== null) {
+    const texte = (c: number) => `${Math.trunc(c / 100)}${c % 100 ? `,${String(c % 100).padStart(2, '0').replace(/0$/, '')}` : ''}`;
+    if (fourchette && (r * 2 < fourchette.min || r > fourchette.max * 2)) {
+      a.push(`Rendement ${texte(r)} m²/${p.unite} très loin de la fourchette indicative du type (${texte(fourchette.min)} à ${texte(fourchette.max)}) : vérifiez la fiche technique.`);
+    } else if (!fourchette && (r < 50 || r > 3000)) {
+      a.push(`Rendement ${texte(r)} m²/${p.unite} inhabituel : vérifiez la fiche technique.`);
+    }
+  }
+  return a;
+}
+
 /** Clé d'un produit : marque + référence, sinon marque + désignation (comme la base). */
-export const cleProduit = (marque: string, reference: string | null, designation: string) =>
+export const cleProduit = (marque: string, reference: string | null | undefined, designation: string) =>
   `${marque.trim().toLowerCase()}|${reference ? `r:${reference.trim().toLowerCase()}` : `d:${designation.trim().toLowerCase()}`}`;
 
 const MAX_LIGNES = 2000;
 
 /** Lit et contrôle tout le fichier ; aucune écriture. */
-export function analyserImport(texte: string): AnalyseImport {
+export function analyserImport(texte: string, referentiel?: FourchettesRendement): AnalyseImport {
   let tableau: string[][];
   try { tableau = lireCsv(texte); } catch (e) {
     if (e instanceof ErreurCsv) return { lignes: [], erreursFichier: [e.message], colonnesIgnorees: [] };
@@ -111,11 +143,18 @@ export function analyserImport(texte: string): AnalyseImport {
     if (r.produit) {
       const cle = cleProduit(r.produit.marque, r.produit.reference_fabricant, r.produit.designation);
       const deja = vues.get(cle);
-      if (deja !== undefined) return { numero, produit: null, cle: null, erreurs: [`Même produit qu’à la ligne ${deja} (marque et référence ou désignation).`] };
+      if (deja !== undefined) {
+        return { numero, produit: null, cle: null, avertissements: [], erreurs: [`Même produit qu’à la ligne ${deja} (marque et référence ou désignation).`] };
+      }
       vues.set(cle, numero);
-      return { numero, produit: r.produit, erreurs: [], cle };
+      const p = r.produit;
+      const avertissements = alertesProduit({
+        type: p.type, unite: p.unite_mesure ?? uniteParDefaut(p.type),
+        rendementCentiemes: p.rendement === undefined ? null : Number(lireDecimal(p.rendement, 2)),
+      }, referentiel?.[p.type] ?? null);
+      return { numero, produit: p, erreurs: [], avertissements, cle };
     }
-    return { numero, produit: null, erreurs: r.erreurs, cle: null };
+    return { numero, produit: null, erreurs: r.erreurs, avertissements: [], cle: null };
   });
   return { lignes, erreursFichier: [], colonnesIgnorees };
 }
@@ -151,8 +190,9 @@ function lireLigne(lire: (cle: CleColonne) => string): { produit: ProduitImport 
   if (finitionBrute && !finition) erreurs.push(`Finition « ${finitionBrute} » inconnue (mat, velours, satin ou brillant).`);
 
   const uniteBrute = lire('unite');
-  const unite = !uniteBrute ? (type === 'enduit' ? 'kg' : 'L') : simplifier(uniteBrute) === 'l' ? 'L' : simplifier(uniteBrute) === 'kg' ? 'kg' : null;
-  if (!unite) erreurs.push(`Unité « ${uniteBrute} » : L ou kg.`);
+  const unite = !uniteBrute ? undefined : simplifier(uniteBrute) === 'l' ? 'L' as const : simplifier(uniteBrute) === 'kg' ? 'kg' as const : null;
+  if (unite === null) erreurs.push(`Unité « ${uniteBrute} » : L ou kg.`);
+  const uniteEffective = unite ?? (type ? uniteParDefaut(type) : 'L');
 
   const decimal = (cle: CleColonne, titre: string, dec: number, min: bigint, max: bigint) => {
     const v = lire(cle);
@@ -164,7 +204,7 @@ function lireLigne(lire: (cle: CleColonne) => string): { produit: ProduitImport 
     return `${n / f}.${(n % f).toString().padStart(dec, '0')}`;
   };
   const rendement = decimal('rendement', 'Rendement', 2, 1n, 999_999n);
-  const sechage = decimal('sechage', 'Séchage', 1, 0n, 9999n);
+  const sechage = decimal('sechage', 'Séchage', 1, 0n, 99_999n);
   const couchesBrutes = lire('couches');
   let couches: number | null = null;
   if (couchesBrutes) {
@@ -182,8 +222,11 @@ function lireLigne(lire: (cle: CleColonne) => string): { produit: ProduitImport 
   if (prixBruts.length > formatsBruts.length) erreurs.push('Prix : plus de prix que de formats.');
   if (formatsBruts.length > 10) erreurs.push('Formats : 10 au maximum.');
   formatsBruts.forEach((f, i) => {
+    const suffixe = /(l|kg)$/i.exec(f.trim())?.[1]?.toLowerCase();
+    if (suffixe && (suffixe === 'kg') !== (uniteEffective === 'kg')) { erreurs.push(`Format « ${f} » : l’unité ne correspond pas au produit (${uniteEffective}).`); return; }
     const ml = lireDecimal(f.replace(/\s*(l|kg)$/i, ''), 3);
-    if (ml === null || ml < 1n || ml > 100_000n) { erreurs.push(`Format « ${f} » invalide (exemple : 2,5).`); return; }
+    // Moins de 0,1 L (ou kg) : erreur de saisie probable (« 0,001 » au lieu de « 1 »).
+    if (ml === null || ml < 100n || ml > 100_000n) { erreurs.push(`Format « ${f} » invalide : de 0,1 à 100 (exemple : 2,5).`); return; }
     if (formats.some((x) => x.contenance === Number(ml))) { erreurs.push(`Format « ${f} » en double.`); return; }
     const p = prixBruts[i] ?? '';
     let prix: number | null = null;
@@ -194,14 +237,20 @@ function lireLigne(lire: (cle: CleColonne) => string): { produit: ProduitImport 
     formats.push({ contenance: Number(ml), prix_cents: prix });
   });
 
-  if (erreurs.length || !marque || !designation || !type || !unite) return { produit: null, erreurs };
-  return {
-    erreurs: [],
-    produit: {
-      marque, gamme, reference_fabricant: reference, designation, type, usages, finition, unite_mesure: unite,
-      rendement, couches, sechage_h: sechage, fournisseur, fiche_technique_url: fiche || null, formats,
-    },
-  };
+  if (erreurs.length || !marque || !designation || !type || unite === null) return { produit: null, erreurs };
+  // Seules les valeurs données sont transmises : une cellule vide ne remplace rien.
+  const produit: ProduitImport = { marque, designation, type, formats };
+  if (reference) produit.reference_fabricant = reference;
+  if (gamme) produit.gamme = gamme;
+  if (usages.length) produit.usages = usages;
+  if (finition) produit.finition = finition;
+  if (unite) produit.unite_mesure = unite;
+  if (rendement) produit.rendement = rendement;
+  if (couches !== null) produit.couches = couches;
+  if (sechage) produit.sechage_h = sechage;
+  if (fournisseur) produit.fournisseur = fournisseur;
+  if (fiche) produit.fiche_technique_url = fiche;
+  return { erreurs: [], produit };
 }
 
 /** Décimal exact « 10.5 » (base) -> « 10,5 » (Excel en français). */

@@ -285,14 +285,30 @@ describe('catalogue (Phase 3)', () => {
     ...acryliqueCatalogue, id: 'e', libelle: 'Enduit de lissage (fictif)', type: 'enduit', unite: 'kg', rendementCentiemes: null,
     formats: [{ contenanceMl: 5000, prixCents: 1000n }, { contenanceMl: 25_000, prixCents: 3000n }],
   };
-  it('étape avec produit du catalogue : consommation × passes, corrigée du support', () => {
-    // 10 m² × 0,5 kg/m² × 2 passes = 10 kg ; support à 80 % : 10 ÷ 0,8 = 12,5 kg.
+  it('étape avec produit du catalogue : consommation × passes ; le support ne corrige pas un enduit (audit peinture)', () => {
+    // 10 m² × 0,5 kg/m² × 2 passes = 10 kg, même sur plâtre neuf à 80 % (l'enduit ne dépend pas de la porosité).
     const r = calculerPoste({
       ...posteMurs, surface: { mm2: 10_000_000n }, support: 'platre_neuf',
       etapes: [etape('enduit_2_passes', 'Enduit (deux passes)', 10, { produit: enduitCatalogue, consommationE4: 5000, couches: 2 })],
     }, params);
     expect(r.matierePreparation).toHaveLength(1);
-    expect(formaterQuantiteCourte(quantiteDepuisFraction(r.matierePreparation[0]!.quantite))).toBe('12,50');
+    expect(formaterQuantiteCourte(quantiteDepuisFraction(r.matierePreparation[0]!.quantite))).toBe('10,00');
+  });
+  it('étape avec une impression du catalogue (au litre) : corrigée du support', () => {
+    // 10 m² × 0,1 L/m² × 1 passe = 1 L ; plâtre neuf à 80 % : 1 ÷ 0,8 = 1,25 L.
+    const impression: ProduitCalc = { ...acryliqueCatalogue, id: 'i', type: 'impression', unite: 'L' };
+    const r = calculerPoste({
+      ...posteMurs, surface: { mm2: 10_000_000n }, support: 'platre_neuf',
+      etapes: [etape('impression', 'Impression', 5, { produit: impression, consommationE4: 1000, couches: 1 })],
+    }, params);
+    expect(formaterQuantiteCourte(quantiteDepuisFraction(r.matierePreparation[0]!.quantite))).toBe('1,25');
+  });
+  it('poste d’enduit (type, au kg) : pas de coefficient de support', () => {
+    const p2: ParametresCalcul = { ...params, referentiel: { ...params.referentiel, enduit: { rendementMinCentiemes: 100, minutesParM2CoucheCentiemes: null, sechageDixiemesH: null, aVerifier: true } } };
+    // 10 m² ÷ 1 m²/kg × 1 passe × 1,1 = 11 kg, même sur plâtre neuf.
+    const r = calculerPoste({ ...posteMurs, surface: { mm2: 10_000_000n }, support: 'platre_neuf', produit: null, typeProduit: 'enduit', couches: 1 }, p2);
+    expect(formaterQuantiteCourte(r.quantite!)).toBe('11,00');
+    expect(r.aVerifier).not.toContain('coefficient du support');
   });
   it('formats par type : sans produit, une laque prend les formats de la laque', () => {
     const p2: ParametresCalcul = { ...params, formatsParType: { laque: [500, 1000, 2500] },
@@ -320,3 +336,22 @@ describe('catalogue (Phase 3)', () => {
     expect(r.avertissements).toContain('Carrelage : dégraissage et primaire d’accrochage spécifique au carrelage (une impression ordinaire ne suffit pas).');
   });
 });
+
+describe('avertissements façade et hauteur (boucle 1 de la Phase 3)', () => {
+  it('élément façade sans « Extérieur » : fixateur rappelé, pas d’alerte « façade en intérieur » en double', () => {
+    const r = calculerPoste({ ...posteMurs, cible: 'element', typeElement: 'facade', exterieur: false, support: 'enduit', produit: null, typeProduit: 'facade' }, params);
+    expect(r.avertissements).toContain('Façade sur béton ou enduit : prévoir un fixateur ou une impression adaptée (support poreux ou farinant).');
+    expect(r.avertissements).not.toContain('Peinture façade utilisée en intérieur : vérifiez que c’est voulu.');
+  });
+  it('ancienne peinture en extérieur : test de farinage rappelé', () => {
+    const r = calculerPoste({ ...posteMurs, exterieur: true }, params);
+    expect(r.avertissements).toContain('Ancienne peinture en extérieur : faire le test de farinage (passer la main) ; si elle farine, lessiver et appliquer un fixateur.');
+  });
+  it('escalier et rambarde dans une pièce haute : alerte de hauteur ; porte : non', () => {
+    const haut = (typeElement: string) => calculerPoste({ ...posteMurs, cible: 'element', typeElement, hauteurMm: 6000 }, params).avertissements.some((a) => a.startsWith('Hauteur'));
+    expect(haut('escalier')).toBe(true);
+    expect(haut('rambarde')).toBe(true);
+    expect(haut('porte')).toBe(false);
+  });
+});
+

@@ -164,3 +164,30 @@ test('nuancier et prestation ; teinte proposée sur la pièce et le poste ; prix
   await expect(carte.getByText('choix au moindre coût')).toBeVisible();
   await expect(carte.getByText(/80,00\s*€/)).toBeVisible();
 });
+
+test('import d’un CSV Excel en Windows-1252 : accents intacts ; colonnes absentes conservées', async ({ page }) => {
+  const marque = `Ansi-${unique()}`;
+  const texte = `Marque;Référence fabricant;Désignation;Type;Usages;Finition;Rendement (m² par L ou kg, par couche)\r\n${marque};A-1;Laque satinée façade;Laque;boiserie, extérieur;satin;12,5\r\n`;
+  // Encodage Windows-1252 (un octet par caractère, « ² » = 0xB2).
+  const octets = Buffer.from([...texte].map((c) => (c === '²' ? 0xb2 : c.charCodeAt(0))));
+  await page.goto('/catalogue/import');
+  await page.locator('input[type="file"]').setInputFiles({ name: 'excel.csv', mimeType: 'text/csv', buffer: octets });
+  await expect(page.getByText(/Fichier : excel\.csv \(Windows-1252\)/)).toBeVisible();
+  await expect(page.getByText('1 création(s), 0 mise(s) à jour, 0 ligne(s) en erreur.')).toBeVisible();
+  await page.getByRole('button', { name: 'Valider l’import' }).click();
+  await expect(page.getByText(/1 produit\(s\) créé\(s\)/)).toBeVisible();
+  // Aperçu relu après l'import : la ligne devient une mise à jour.
+  await expect(page.getByText('0 création(s), 1 mise(s) à jour, 0 ligne(s) en erreur.')).toBeVisible();
+
+  // Fichier partiel (marque, référence, désignation, type, formats, prix) : le rendement n'est pas effacé.
+  const partiel = `Marque;Référence fabricant;Désignation;Type;Formats (L ou kg);Prix d’achat HT par format (€)\r\n${marque};A-1;Laque satinée façade;Laque;0,5;14,90\r\n`;
+  await page.locator('input[type="file"]').setInputFiles({ name: 'prix.csv', mimeType: 'text/csv', buffer: Buffer.from(partiel) });
+  await expect(page.getByText('0 création(s), 1 mise(s) à jour, 0 ligne(s) en erreur.')).toBeVisible();
+  await expect(page.getByText(/1 produit\(s\) créé\(s\)/)).toHaveCount(0); // ancien message effacé
+  await page.getByRole('button', { name: 'Valider l’import' }).click();
+  await expect(page.getByText(/0 produit\(s\) créé\(s\), 1 mis à jour/)).toBeVisible();
+  const { data } = await adminTests().from('produits').select('designation, usages, rendement_m2_par_unite, finition, conditionnements (contenance, prix_achat_ht_cents)').eq('marque', marque).single();
+  expect(data).toEqual({ designation: 'Laque satinée façade', usages: ['boiserie', 'exterieur'], rendement_m2_par_unite: 12.5, finition: 'satin',
+    conditionnements: [{ contenance: 500, prix_achat_ht_cents: 1490 }] });
+});
+

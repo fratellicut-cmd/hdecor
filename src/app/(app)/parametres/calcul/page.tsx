@@ -32,9 +32,15 @@ export default async function PageReglagesCalcul() {
     supabase.from('etapes_preparation').select('*').eq('actif', true).order('ordre'),
     supabase.from('consommables').select('*').eq('actif', true).order('libelle'),
     supabase.from('parametres_entreprise').select('porte_largeur_mm, porte_hauteur_mm, formats_pots_ml, formats_sacs_g, hauteur_alerte_mm, minutes_par_jour, tolerance_reste_bp').eq('organisation_id', session.organisationId).single(),
-    supabase.from('produits').select('id, marque, gamme, designation, unite_mesure, actif').order('marque').order('designation').limit(1000),
+    supabase.from('produits').select('id, marque, gamme, designation, unite_mesure, actif').order('marque').order('designation').limit(2000),
   ]);
   if (ref.error || coefs.error || etapes.error || conso.error || param.error || produits.error) throw new Error('Lecture impossible : réglages de calcul.');
+  // Produits déjà liés à une étape : toujours présents dans la liste (archivés ou au-delà de la limite).
+  const manquants = [...new Set(etapes.data.map((e) => e.produit_id).filter((x): x is string => !!x && !produits.data.some((p) => p.id === x)))];
+  if (manquants.length) {
+    const { data } = await supabase.from('produits').select('id, marque, gamme, designation, unite_mesure, actif').in('id', manquants);
+    produits.data.push(...(data ?? []));
+  }
   const produitsAuChoix = (choisi: string | null) => produits.data.filter((p) => p.actif || p.id === choisi)
     .map((p) => ({ id: p.id, libelle: `${[p.marque, p.gamme, p.designation].filter(Boolean).join(' ')}${p.actif ? '' : ' (archivé)'}`, unite: p.unite_mesure }));
   const coefDe = new Map(coefs.data.map((c) => [c.support, c]));

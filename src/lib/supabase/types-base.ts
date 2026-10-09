@@ -1271,14 +1271,14 @@ isOneToOne: false
                   ]
                 },"teintes": {
                   Row: {
-                    "actif": boolean,"apercu_hex": string | null,"code_fabricant": string | null,"code_ncs": string | null,"code_ral": string | null,"created_at": string,"id": string,"marque": string | null,"nom": string,"organisation_id": string,"statut_verification": Database["public"]['Enums']["statut_verification"],"updated_at": string
+                    "actif": boolean,"apercu_hex": string | null,"code_fabricant": string | null,"code_ncs": string | null,"code_ral": string | null,"created_at": string,"id": string,"marque": string | null,"nom": string,"organisation_id": string,"source_verification": string | null,"statut_verification": Database["public"]['Enums']["statut_verification"],"updated_at": string,"verifie_le": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "actif"?: boolean,"apercu_hex"?: string | null,"code_fabricant"?: string | null,"code_ncs"?: string | null,"code_ral"?: string | null,"created_at"?: string,"id"?: string,"marque"?: string | null,"nom": string,"organisation_id": string,"statut_verification"?: Database["public"]['Enums']["statut_verification"],"updated_at"?: string
+                    "actif"?: boolean,"apercu_hex"?: string | null,"code_fabricant"?: string | null,"code_ncs"?: string | null,"code_ral"?: string | null,"created_at"?: string,"id"?: string,"marque"?: string | null,"nom": string,"organisation_id": string,"source_verification"?: string | null,"statut_verification"?: Database["public"]['Enums']["statut_verification"],"updated_at"?: string,"verifie_le"?: string | null
                   }
                   Update: {
-                    "actif"?: boolean,"apercu_hex"?: string | null,"code_fabricant"?: string | null,"code_ncs"?: string | null,"code_ral"?: string | null,"created_at"?: string,"id"?: string,"marque"?: string | null,"nom"?: string,"organisation_id"?: string,"statut_verification"?: Database["public"]['Enums']["statut_verification"],"updated_at"?: string
+                    "actif"?: boolean,"apercu_hex"?: string | null,"code_fabricant"?: string | null,"code_ncs"?: string | null,"code_ral"?: string | null,"created_at"?: string,"id"?: string,"marque"?: string | null,"nom"?: string,"organisation_id"?: string,"source_verification"?: string | null,"statut_verification"?: Database["public"]['Enums']["statut_verification"],"updated_at"?: string,"verifie_le"?: string | null
                   }
                   Relationships: [
                     {

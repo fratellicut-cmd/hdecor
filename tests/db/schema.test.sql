@@ -1490,6 +1490,35 @@ select tests.egal((select count(*) from public.historique_prix h join public.con
   join public.produits p on p.id = c.produit_id where p.reference_fabricant = 'REF-1'), 3::bigint, 'import : changement de prix historisé (3 entrées)');
 select tests.echoue($$insert into public.produits (organisation_id, marque, reference_fabricant, designation, type)
   values ('aaaaaaaa-0000-0000-0000-00000000000a', 'MARQUE TEST', 'Ref-1', 'Doublon', 'acrylique')$$, 'duplicate key', 'produit : même référence dans la même marque refusée');
+-- Mise à jour partielle : colonnes absentes conservées ; rien de technique changé -> « vérifié » conservé.
+update public.produits set rendement_m2_par_unite = 11, couches_recommandees = 2, sechage_recouvrable_h = 6, fournisseur = 'Négoce',
+  statut_verification = 'verifie', verifie_le = '2026-10-01', source_verification = 'fiche' where reference_fabricant = 'REF-1';
+select public.importer_produits('aaaaaaaa-0000-0000-0000-00000000000a', '[
+  {"marque": "Marque Test", "reference_fabricant": "REF-1", "designation": "Acrylique test v2", "type": "acrylique",
+   "formats": [{"contenance": 2500, "prix_cents": 3200}]}
+]');
+select tests.egal((select concat_ws(' ', rendement_m2_par_unite, couches_recommandees, sechage_recouvrable_h, fournisseur, array_to_string(usages, ','), statut_verification, verifie_le)
+  from public.produits where reference_fabricant = 'REF-1'), '11.00 2 6.0 Négoce mur,plafond verifie 2026-10-01',
+  'import partiel (prix seuls) : rien d''effacé, vérification conservée');
+select public.importer_produits('aaaaaaaa-0000-0000-0000-00000000000a', '[
+  {"marque": "Marque Test", "reference_fabricant": "REF-1", "designation": "Acrylique test v2", "type": "acrylique", "rendement": "12.00"}
+]');
+select tests.egal((select statut_verification::text || ' ' || rendement_m2_par_unite from public.produits where reference_fabricant = 'REF-1'),
+  'a_verifier 12.00', 'import : rendement changé -> À VÉRIFIER');
+select tests.echoue($$select public.importer_produits('aaaaaaaa-0000-0000-0000-00000000000a', '[
+  {"marque": "Marque Test", "reference_fabricant": "REF-1", "designation": "Acrylique test v2", "type": "acrylique", "unite_mesure": "kg"}]')$$,
+  'changement d''unité refusé', 'import : changement d''unité refusé quand le produit a des formats');
+select tests.echoue($$select public.importer_produits('aaaaaaaa-0000-0000-0000-00000000000a', '[
+  {"marque": "Marque Test", "reference_fabricant": "REF-1", "designation": "Acrylique test v2", "type": "acrylique", "rendement": "10.555"}]')$$,
+  'décimales en trop', 'import : pas d''arrondi silencieux');
+insert into public.produits (organisation_id, marque, designation, type) values
+  ('aaaaaaaa-0000-0000-0000-00000000000a', 'Double', 'Sans ref', 'acrylique'), ('aaaaaaaa-0000-0000-0000-00000000000a', 'Double', 'Sans ref', 'acrylique');
+select tests.echoue($$select public.importer_produits('aaaaaaaa-0000-0000-0000-00000000000a', '[{"marque": "Double", "designation": "Sans ref", "type": "acrylique"}]')$$,
+  'plusieurs produits', 'import : correspondance ambiguë refusée (pas de mise à jour au hasard)');
+select tests.echoue($$insert into public.conditionnements (organisation_id, produit_id, contenance)
+  select organisation_id, id, 1 from public.produits where reference_fabricant = 'REF-1'$$, 'conditionnements_contenance_min', 'format de moins de 100 ml refusé');
+select tests.echoue($$insert into public.teintes (organisation_id, nom, statut_verification) values ('aaaaaaaa-0000-0000-0000-00000000000a', 'T', 'verifie')$$,
+  'teintes_verification', 'teinte « vérifiée » sans date ni source refusée');
 select tests.echoue($$select public.importer_produits('aaaaaaaa-0000-0000-0000-00000000000a', '[{"marque": "X", "designation": "Y", "type": "inconnu", "usages": [], "unite_mesure": "L"}]')$$,
   'check', 'import : type invalide refusé par la base (toute la transaction)');
 select tests.egal((select count(*) from public.produits where marque = 'X'), 0::bigint, 'import : rien d''écrit après une ligne refusée');

@@ -12,7 +12,14 @@
 alter table public.teintes
   add column actif boolean not null default true,
   add column updated_at timestamptz not null default now(),
-  add constraint teintes_nom check (length(trim(nom)) between 1 and 100);
+  -- Un code de teinte est une référence : « vérifié » exige une date et une source, comme un produit.
+  add column verifie_le date,
+  add column source_verification text,
+  add constraint teintes_nom check (length(trim(nom)) between 1 and 100),
+  add constraint teintes_verification check (statut_verification <> 'verifie' or (verifie_le is not null and source_verification is not null));
+
+-- Un format de moins de 100 ml (ou 100 g) est une erreur de saisie (« 0,001 » au lieu de « 1 ») : 10 000 pots.
+alter table public.conditionnements add constraint conditionnements_contenance_min check (contenance >= 100);
 create trigger teintes_updated_at before update on public.teintes
   for each row execute function public.maj_updated_at();
 
@@ -79,10 +86,13 @@ select public.initialiser_catalogue(id) from public.organisations;
 
 -- 4. Import CSV -------------------------------------------------------------------
 -- p_lignes : tableau JSON déjà validé par le serveur (zod) ; les contraintes de
--- la base revalident tout. Clé : marque + référence fabricant, sinon marque +
--- désignation. Une ligne importée n'est jamais « vérifiée » : statut À VÉRIFIER.
--- Prix vide : le prix existant est conservé (jamais effacé par un import).
--- SECURITY INVOKER : la RLS de la session s'applique à chaque écriture.
+-- la base revalident les bornes. Clé : marque + référence fabricant, sinon
+-- marque + désignation. Une clé (colonne) ABSENTE de la ligne = valeur
+-- conservée : un fichier « marque, référence, prix » ne vide pas le reste de
+-- la fiche ; de même un prix vide garde le prix actuel. Le statut « vérifié »
+-- n'est retiré que si une valeur technique change réellement ; un produit
+-- créé par import est « À VÉRIFIER ». Un produit archivé réimporté revient au
+-- catalogue. SECURITY INVOKER : la RLS de la session s'applique.
 create or replace function public.importer_produits(p_organisation_id uuid, p_lignes jsonb)
 returns jsonb
 language plpgsql
@@ -93,11 +103,15 @@ declare
   v_ligne jsonb;
   v_format jsonb;
   v_id uuid;
+  v_avant public.produits;
+  v_apres public.produits;
   v_crees integer := 0;
   v_maj integer := 0;
   v_marque text;
   v_ref text;
   v_designation text;
+  v_usages text[];
+  v_nb integer;
 begin
   if not public.est_membre(p_organisation_id) then
     raise exception 'Organisation introuvable.' using errcode = 'P0002';
@@ -109,30 +123,61 @@ begin
     v_marque := trim(v_ligne ->> 'marque');
     v_ref := nullif(trim(coalesce(v_ligne ->> 'reference_fabricant', '')), '');
     v_designation := trim(v_ligne ->> 'designation');
-    select id into v_id from public.produits
+    -- Décimaux exacts : aucun arrondi silencieux par la colonne numeric.
+    if (v_ligne ? 'rendement' and (v_ligne ->> 'rendement')::numeric <> round((v_ligne ->> 'rendement')::numeric, 2))
+       or (v_ligne ? 'sechage_h' and (v_ligne ->> 'sechage_h')::numeric <> round((v_ligne ->> 'sechage_h')::numeric, 1)) then
+      raise exception 'Import : « % » : décimales en trop.', v_designation using errcode = 'P0001';
+    end if;
+    v_usages := case when v_ligne ? 'usages' then
+      array(select distinct u from jsonb_array_elements_text(v_ligne -> 'usages') u order by u) end;
+
+    select count(*), min(id::text)::uuid into v_nb, v_id from public.produits
     where organisation_id = p_organisation_id and lower(trim(marque)) = lower(v_marque)
       and case when v_ref is not null then lower(trim(reference_fabricant)) = lower(v_ref)
-               else reference_fabricant is null and lower(trim(designation)) = lower(v_designation) end
-    limit 1;
+               else reference_fabricant is null and lower(trim(designation)) = lower(v_designation) end;
+    if v_nb > 1 then
+      raise exception 'Import : plusieurs produits « % % » sans référence : ajoutez la référence fabricant.', v_marque, v_designation using errcode = 'P0001';
+    end if;
+
     if v_id is null then
       insert into public.produits (organisation_id, marque, gamme, reference_fabricant, designation, type, usages, finition,
         unite_mesure, rendement_m2_par_unite, couches_recommandees, sechage_recouvrable_h, fournisseur, fiche_technique_url, statut_verification)
-      values (p_organisation_id, v_marque, nullif(trim(v_ligne ->> 'gamme'), ''), v_ref, v_designation, v_ligne ->> 'type',
-        array(select jsonb_array_elements_text(v_ligne -> 'usages')), nullif(v_ligne ->> 'finition', ''),
-        v_ligne ->> 'unite_mesure', (v_ligne ->> 'rendement')::numeric, (v_ligne ->> 'couches')::smallint,
-        (v_ligne ->> 'sechage_h')::numeric, nullif(trim(v_ligne ->> 'fournisseur'), ''), nullif(trim(v_ligne ->> 'fiche_technique_url'), ''),
-        'a_verifier')
+      values (p_organisation_id, v_marque, v_ligne ->> 'gamme', v_ref, v_designation, v_ligne ->> 'type',
+        coalesce(v_usages, '{}'), v_ligne ->> 'finition',
+        coalesce(v_ligne ->> 'unite_mesure', case when v_ligne ->> 'type' = 'enduit' then 'kg' else 'L' end),
+        (v_ligne ->> 'rendement')::numeric, (v_ligne ->> 'couches')::smallint, (v_ligne ->> 'sechage_h')::numeric,
+        v_ligne ->> 'fournisseur', v_ligne ->> 'fiche_technique_url', 'a_verifier')
       returning id into v_id;
       v_crees := v_crees + 1;
     else
+      select * into v_avant from public.produits where id = v_id;
+      if v_ligne ? 'unite_mesure' and v_ligne ->> 'unite_mesure' <> v_avant.unite_mesure
+         and exists (select 1 from public.conditionnements where produit_id = v_id) then
+        raise exception 'Import : « % » : changement d''unité refusé (ses formats sont en %).', v_designation, v_avant.unite_mesure using errcode = 'P0001';
+      end if;
       update public.produits set
-        gamme = nullif(trim(v_ligne ->> 'gamme'), ''), designation = v_designation, type = v_ligne ->> 'type',
-        usages = array(select jsonb_array_elements_text(v_ligne -> 'usages')), finition = nullif(v_ligne ->> 'finition', ''),
-        unite_mesure = v_ligne ->> 'unite_mesure', rendement_m2_par_unite = (v_ligne ->> 'rendement')::numeric,
-        couches_recommandees = (v_ligne ->> 'couches')::smallint, sechage_recouvrable_h = (v_ligne ->> 'sechage_h')::numeric,
-        fournisseur = nullif(trim(v_ligne ->> 'fournisseur'), ''), fiche_technique_url = nullif(trim(v_ligne ->> 'fiche_technique_url'), ''),
-        statut_verification = 'a_verifier', verifie_le = null, source_verification = null, actif = true
-      where id = v_id;
+        designation = v_designation,
+        type = v_ligne ->> 'type',
+        gamme = case when v_ligne ? 'gamme' then v_ligne ->> 'gamme' else gamme end,
+        usages = coalesce(v_usages, usages),
+        finition = case when v_ligne ? 'finition' then v_ligne ->> 'finition' else finition end,
+        unite_mesure = coalesce(v_ligne ->> 'unite_mesure', unite_mesure),
+        rendement_m2_par_unite = case when v_ligne ? 'rendement' then (v_ligne ->> 'rendement')::numeric else rendement_m2_par_unite end,
+        couches_recommandees = case when v_ligne ? 'couches' then (v_ligne ->> 'couches')::smallint else couches_recommandees end,
+        sechage_recouvrable_h = case when v_ligne ? 'sechage_h' then (v_ligne ->> 'sechage_h')::numeric else sechage_recouvrable_h end,
+        fournisseur = case when v_ligne ? 'fournisseur' then v_ligne ->> 'fournisseur' else fournisseur end,
+        fiche_technique_url = case when v_ligne ? 'fiche_technique_url' then v_ligne ->> 'fiche_technique_url' else fiche_technique_url end,
+        actif = true
+      where id = v_id
+      returning * into v_apres;
+      -- Valeur technique changée : la vérification ne vaut plus.
+      if (v_apres.designation, v_apres.type, (select array_agg(u order by u) from unnest(v_apres.usages) u), v_apres.finition,
+          v_apres.unite_mesure, v_apres.rendement_m2_par_unite, v_apres.couches_recommandees, v_apres.sechage_recouvrable_h, v_apres.gamme)
+         is distinct from
+         (v_avant.designation, v_avant.type, (select array_agg(u order by u) from unnest(v_avant.usages) u), v_avant.finition,
+          v_avant.unite_mesure, v_avant.rendement_m2_par_unite, v_avant.couches_recommandees, v_avant.sechage_recouvrable_h, v_avant.gamme) then
+        update public.produits set statut_verification = 'a_verifier', verifie_le = null, source_verification = null where id = v_id;
+      end if;
       v_maj := v_maj + 1;
     end if;
     for v_format in select * from jsonb_array_elements(coalesce(v_ligne -> 'formats', '[]')) loop

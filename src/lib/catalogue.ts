@@ -11,6 +11,12 @@ export async function marquesConnues(): Promise<string[]> {
 /** Teintes du nuancier proposées dans les choix ; une teinte archivée déjà choisie reste affichée. */
 export async function teintesAuChoix(dejaChoisie?: string | null): Promise<{ id: string; nom: string }[]> {
   const supabase = await clientServeur();
-  const { data } = await supabase.from('teintes').select('id, nom, actif').order('nom').limit(500);
-  return (data ?? []).filter((t) => t.actif || t.id === dejaChoisie).map((t) => ({ id: t.id, nom: t.actif ? t.nom : `${t.nom} (archivée)` }));
+  const { data } = await supabase.from('teintes').select('id, nom, actif').eq('actif', true).order('nom').limit(500);
+  const liste = data ?? [];
+  // La teinte déjà choisie reste dans la liste, même archivée ou au-delà de la limite : sinon un nouvel enregistrement l'effacerait.
+  if (dejaChoisie && !liste.some((t) => t.id === dejaChoisie)) {
+    const { data: choisie } = await supabase.from('teintes').select('id, nom, actif').eq('id', dejaChoisie).maybeSingle();
+    if (choisie) liste.unshift(choisie);
+  }
+  return liste.map((t) => ({ id: t.id, nom: t.actif ? t.nom : `${t.nom} (archivée)` }));
 }

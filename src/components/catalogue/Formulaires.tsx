@@ -5,7 +5,8 @@ import {
   ajouterFormat, apercuImport, enregistrerMatiereEtape, enregistrerPrestation, enregistrerTeinte, modifierPrixFormat, validerImport,
   type EtatImport,
 } from '@/app/(app)/catalogue/actions';
-import { TAILLE_MAX_CSV } from '@/domain/csv';
+import { decoderCsv, TAILLE_MAX_CSV } from '@/domain/csv';
+import { formaterDate } from '@/domain/formats';
 import { UNITES_PRESTATION } from '@/lib/validation/catalogue';
 import { useFormulaire } from '@/components/formulaire/useFormulaire';
 import { AlerteHorsLigne, MessagesGarde, RappelEnvoi } from '@/components/formulaire/MessagesGarde';
@@ -63,7 +64,7 @@ export function FormulairePrixFormat({ id, libelle, prix }: { id: string; libell
 
 export type TeinteSaisie = {
   id?: string; nom: string; marque: string | null; code_ral: string | null; code_ncs: string | null; code_fabricant: string | null;
-  apercu_hex: string | null; statut_verification: string;
+  apercu_hex: string | null; statut_verification: string; verifie_le?: string | null; source_verification?: string | null;
 };
 
 export function FormulaireTeinte({ teinte }: { teinte: TeinteSaisie }) {
@@ -72,6 +73,13 @@ export function FormulaireTeinte({ teinte }: { teinte: TeinteSaisie }) {
   const e = etat.erreurs ?? {};
   const v = (cle: keyof TeinteSaisie) => (etat.succes ? null : etat.valeurs?.[cle]) ?? (teinte[cle] as string | null) ?? '';
   const [couleur, setCouleur] = useState(v('apercu_hex') || '');
+  const [confirme, setConfirme] = useState(etat.valeurs?.confirme === 'on');
+  // Après un ajout, le formulaire est vidé : la couleur et la case suivent (état suivi pendant le rendu).
+  const [vu, setVu] = useState(etat);
+  if (vu !== etat) {
+    setVu(etat);
+    if (etat.succes && !teinte.id) { setCouleur(''); setConfirme(false); }
+  }
   return (
     <form ref={formRef} action={action} onSubmit={surEnvoi} className="flex flex-col gap-3" noValidate>
       {teinte.id ? <input type="hidden" name="id" value={teinte.id} /> : null}
@@ -93,7 +101,19 @@ export function FormulaireTeinte({ teinte }: { teinte: TeinteSaisie }) {
             className="h-10 w-10 cursor-pointer border-0 bg-transparent" />
         </label>
       </div>
-      <CaseACocher nom="confirme" libelle="Codes vérifiés sur le nuancier du fabricant" />
+      <p className="text-sm text-encre-douce">
+        {teinte.statut_verification === 'verifie' && teinte.verifie_le
+          ? `Codes vérifiés le ${formaterDate(teinte.verifie_le)} (${teinte.source_verification ?? 'source non indiquée'}).`
+          : 'Codes À VÉRIFIER sur le nuancier du fabricant.'}
+      </p>
+      <CaseACocher nom="confirme" libelle="Codes vérifiés sur le nuancier du fabricant" checked={confirme} onChange={(ev) => setConfirme(ev.target.checked)} />
+      {confirme ? (
+        <div className="grid grid-cols-2 gap-3">
+          <Champ libelle="Vérifié le" nom="verifie_le" type="date" defaultValue={etat.valeurs?.verifie_le ?? ''} erreur={e.verifie_le} />
+          <Champ libelle="Source" nom="source_verification" defaultValue={etat.valeurs?.source_verification ?? ''} erreur={e.source_verification}
+            placeholder="Nuancier, fiche fabricant…" />
+        </div>
+      ) : null}
       <RappelEnvoi garde={garde} etat={etat} />
       <Bouton type="submit" variante={teinte.id ? 'principal' : 'secondaire'} disabled={enCours}>{enCours ? 'Enregistrement…' : teinte.id ? 'Enregistrer' : 'Ajouter la teinte'}</Bouton>
     </form>
@@ -185,21 +205,26 @@ function useEtapeImport(action: (e: EtatImport, f: FormData) => Promise<EtatImpo
 
 export function ImportCatalogue() {
   const [contenu, setContenu] = useState<string | null>(null);
-  const [nomFichier, setNomFichier] = useState('');
+  const [fichier, setFichier] = useState<{ nom: string; encodage: string; numero: number } | null>(null);
   const [lecture, setLecture] = useState<string | null>(null);
   const [apercu, demanderApercu, enApercu] = useEtapeImport(apercuImport);
   const [resultat, valider, enImport] = useEtapeImport(validerImport);
   const [ignorer, setIgnorer] = useState(false);
   const [horsLigne, setHorsLigne] = useState(false);
+  // Numéro du fichier dont le résultat d'import est affiché : un nouveau fichier efface l'ancien message.
+  const [importDe, setImportDe] = useState<number | null>(null);
 
   const choisir = async (ev: ChangeEvent<HTMLInputElement>) => {
     const f = ev.target.files?.[0];
     setContenu(null);
     setLecture(null);
+    setIgnorer(false);
+    setImportDe(null);
     if (!f) return;
     if (f.size > TAILLE_MAX_CSV) { setLecture('Fichier trop volumineux (1 Mo au maximum).'); return; }
-    setNomFichier(f.name);
-    const texte = await f.text();
+    // Excel en français enregistre le CSV en Windows-1252 : décodage sans perte des accents.
+    const { texte, encodage } = decoderCsv(new Uint8Array(await f.arrayBuffer()));
+    setFichier((x) => ({ nom: f.name, encodage, numero: (x?.numero ?? 0) + 1 }));
     setContenu(texte);
     const fd = new FormData();
     fd.set('contenu', texte);
@@ -209,23 +234,27 @@ export function ImportCatalogue() {
     ev.preventDefault();
     if (!navigator.onLine) { setHorsLigne(true); return; }
     setHorsLigne(false);
-    if (contenu === null) return;
+    if (contenu === null || !fichier) return;
     const fd = new FormData();
     fd.set('contenu', contenu);
     if (ignorer) fd.set('ignorer_erreurs', 'on');
+    setImportDe(fichier.numero);
     startTransition(() => valider(fd));
   };
 
-  const a = apercu.apercu;
+  const resultatAffiche = importDe !== null && importDe === fichier?.numero ? resultat : {};
+  // Après un import réussi, l'aperçu relu par le serveur remplace l'ancien (les créations deviennent des mises à jour).
+  const a = resultatAffiche.apercu ?? apercu.apercu;
   const enErreur = a?.lignes.filter((l) => l.erreurs.length) ?? [];
   const valides = a?.lignes.filter((l) => !l.erreurs.length) ?? [];
+  const aSurveiller = valides.filter((l) => l.avertissements.length);
   const peutImporter = a && !a.erreursFichier.length && valides.length > 0 && (!enErreur.length || ignorer);
 
   return (
     <div className="flex flex-col gap-4">
       <label className="flex min-h-16 cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-trait bg-white p-4 text-center has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-or-fonce">
-        <span className="font-semibold">{nomFichier ? `Fichier : ${nomFichier}` : 'Choisir le fichier CSV'}</span>
-        <span className="text-sm text-encre-douce">Enregistré depuis Excel « CSV (séparateur : point-virgule) », 1 Mo au maximum</span>
+        <span className="font-semibold">{fichier ? `Fichier : ${fichier.nom} (${fichier.encodage})` : 'Choisir le fichier CSV'}</span>
+        <span className="text-sm text-encre-douce">Enregistré depuis Excel « CSV (séparateur : point-virgule) » ou « CSV UTF-8 », 1 Mo au maximum</span>
         <input type="file" accept=".csv,text/csv" onChange={choisir} className="sr-only" />
       </label>
       {lecture ? <Message type="erreur">{lecture}</Message> : null}
@@ -253,6 +282,16 @@ export function ImportCatalogue() {
               ))}
             </ul>
           ) : null}
+          {aSurveiller.length ? (
+            <ul className="flex flex-col gap-2">
+              {aSurveiller.map((l) => (
+                <li key={l.numero} className="rounded-xl border-2 border-alerte bg-alerte-fond p-3 text-alerte">
+                  <p className="font-bold">Ligne {l.numero} (importable, à vérifier) : {l.libelle}</p>
+                  <ul className="list-disc pl-5 text-sm">{l.avertissements.map((m) => <li key={m}>{m}</li>)}</ul>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           {valides.length ? (
             <details>
               <summary className="inline-flex min-h-12 cursor-pointer items-center font-semibold underline underline-offset-4">Voir les {valides.length} ligne(s) valide(s)</summary>
@@ -272,13 +311,14 @@ export function ImportCatalogue() {
                 onChange={(ev) => setIgnorer(ev.target.checked)} />
             ) : null}
             <p className="text-sm text-encre-douce">
-              Les produits importés sont « À VÉRIFIER ». Une mise à jour remplace les informations du produit ; un prix vide garde le prix actuel ;
-              un prix changé est daté dans l’historique.
+              Les produits créés sont « À VÉRIFIER ». Une mise à jour ne remplace que les cellules remplies : une cellule vide ou une colonne absente
+              garde la valeur actuelle (un prix vide garde le prix actuel). Une valeur technique modifiée repasse le produit « À VÉRIFIER ».
+              Un prix changé est daté dans l’historique ; un produit archivé réimporté revient au catalogue.
             </p>
             {horsLigne ? <AlerteHorsLigne sansBrouillon /> : null}
-            {resultat.message ? <Message type="erreur">{resultat.message}</Message> : null}
-            {resultat.succes ? <Message type="succes">{resultat.succes}</Message> : null}
-            <Bouton type="submit" disabled={!peutImporter || enImport}>{enImport ? 'Import…' : 'Valider l’import'}</Bouton>
+            {resultatAffiche.message ? <Message type="erreur">{resultatAffiche.message}</Message> : null}
+            {resultatAffiche.succes ? <Message type="succes">{resultatAffiche.succes}</Message> : null}
+            <Bouton type="submit" disabled={!peutImporter || enImport || enApercu}>{enImport ? 'Import…' : 'Valider l’import'}</Bouton>
           </form>
         </section>
       ) : null}

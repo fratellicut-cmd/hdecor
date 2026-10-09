@@ -38,7 +38,7 @@ Points relevés par les agents de contrôle, acceptés pour la phase en cours ma
 | Point | État |
 |---|---|
 | Matière d'étape avec produit du catalogue (couches, coefficient de support) | **Fait** : Réglages de calcul > Temps de préparation > « Matière par produit du catalogue ». |
-| Rebouchage et bande à joint non chiffrables | **Fait** : produit du catalogue + consommation par m² et par passe sur l'étape. |
+| Rebouchage et bande à joint non chiffrables | **En partie** : enduit de rebouchage ou à joint chiffré par produit du catalogue + consommation par m² et par passe. La bande (vendue au mètre) relève des consommables. |
 | Formats par type de produit | **Fait** : Réglages de calcul > Rendements par type > « Formats usuels ». |
 | Teinte libre -> catalogue | **Fait** : nuancier ; teinte associable à la pièce et au chantier, proposée d'office sur un nouveau poste. La saisie libre reste possible. |
 | Contrôles finition produit / poste, façade sans « Extérieur », façade sur béton ou enduit, carrelage, hauteur des éléments | **Fait**. |
@@ -48,3 +48,7 @@ Points relevés par les agents de contrôle, acceptés pour la phase en cours ma
 | Recherche dans la liste des clients (création de chantier) | Reporté : 4 (devis : même sélecteur). |
 | Renvoi après réponse perdue avec une saisie corrigée | Reporté : 4. |
 | Phase 3 (relecture interne) | L'alerte de prix compare le prix retenu dans un devis au prix actuel : effective quand les devis existeront (Phase 4) ; testée en SQL. |
+| Phase 3 (audits, boucle 1) | Codes RAL et NCS : texte libre, sans contrôle de format (RAL Classic à 4 chiffres, NCS « S 0502-Y »). | 8 (recette) |
+| Phase 3 (audits, boucle 1) | Formats usuels par type : choix d'achat, sans effet sur le statut « À VÉRIFIER » du référentiel (ce ne sont pas des données techniques). | Décision |
+| Phase 3 (audits, boucle 1) | Matière d'étape portée par un produit : consommation saisie « pertes comprises », sans marge de perte ajoutée (la marge s'applique au chemin « type de produit »). | Décision, à confirmer par Yorick |
+

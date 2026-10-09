@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { analyserImport, COLONNES, exporterProduits, modeleImport } from '../catalogue';
-import { celluleCsv, fichierCsv, lireCsv } from '../csv';
+import { alertesProduit, analyserImport, COLONNES, exporterProduits, modeleImport } from '../catalogue';
+import { celluleCsv, decoderCsv, fichierCsv, lireCsv } from '../csv';
 
 const TITRES = COLONNES.map((c) => c.titre).join(';');
 
@@ -36,10 +36,10 @@ describe('import du catalogue', () => {
       formats: [{ contenance: 1000, prix_cents: 1590 }, { contenance: 2500, prix_cents: 3350 }, { contenance: 10000, prix_cents: 8900 }],
     });
   });
-  it('libellés français acceptés (accents, casse) ; enduit au kg par défaut ; prix vide permis', () => {
+  it('libellés français acceptés (accents, casse) ; unité absente non transmise ; prix vide permis', () => {
     const a = analyserImport(fichier('Marque;;;Enduit de lissage;ENDUIT;métal, Extérieur;;;;;;5 / 25;/ 30'));
     const p = a.lignes[0]!.produit!;
-    expect(p.unite_mesure).toBe('kg');
+    expect(p.unite_mesure).toBeUndefined(); // unité absente : kg par défaut pour un enduit (base), conservée à la mise à jour
     expect(p.usages).toEqual(['metal', 'exterieur']);
     expect(p.formats).toEqual([{ contenance: 5000, prix_cents: null }, { contenance: 25000, prix_cents: 3000 }]);
   });
@@ -97,3 +97,43 @@ describe('import du catalogue', () => {
     expect(lireCsv(modeleImport())).toEqual([COLONNES.map((c) => c.titre)]);
   });
 });
+
+describe('import du catalogue : corrections de la boucle 1 (audits)', () => {
+  const fichier = (...lignes: string[]) => [TITRES, ...lignes].join('\r\n');
+
+  it('fichier Excel en Windows-1252 : accents lus correctement ; UTF-8 reconnu', () => {
+    const texte = `${TITRES}\r\nMarque;;R;Laque satinée;Laque;;;;;;;;;;`;
+    // Encodage Windows-1252 : un octet par caractère latin (é = 0xE9, ’ = 0x92).
+    const octets = Uint8Array.from([...texte].map((c) => (c === '’' ? 0x92 : c === '²' ? 0xb2 : c.charCodeAt(0))));
+    const d = decoderCsv(octets);
+    expect(d.encodage).toBe('Windows-1252');
+    const a = analyserImport(d.texte);
+    expect(a.erreursFichier).toEqual([]);
+    expect(a.lignes[0]!.produit?.designation).toBe('Laque satinée');
+    expect(decoderCsv(new TextEncoder().encode(texte)).encodage).toBe('UTF-8');
+  });
+  it('cellules vides et colonnes absentes : non transmises (valeur conservée à la mise à jour)', () => {
+    const p = analyserImport('Marque;Référence fabricant;Désignation;Type;Formats (L ou kg);Prix d’achat HT par format (€)\nM;R1;D;acrylique;2,5;30').lignes[0]!.produit!;
+    expect(p).toEqual({ marque: 'M', reference_fabricant: 'R1', designation: 'D', type: 'acrylique', formats: [{ contenance: 2500, prix_cents: 3000 }] });
+    expect(Object.keys(p)).not.toContain('rendement');
+  });
+  it('format de moins de 0,1 L refusé ; unité du format contrôlée ; séchage jusqu’à 9 999,9 h', () => {
+    const a = analyserImport(fichier('M;;;D;acrylique;;;L;;;9999,9;0,001 / 2,5 kg'));
+    expect(a.lignes[0]!.erreurs).toEqual(['Format « 0,001 » invalide : de 0,1 à 100 (exemple : 2,5).', 'Format « 2,5 kg » : l’unité ne correspond pas au produit (L).']);
+    expect(analyserImport(fichier('M;;;D;acrylique;;;;;;1000;2,5 L')).lignes[0]!.produit?.sechage_h).toBe('1000.0');
+  });
+  it('alertes de plausibilité : unité et rendement hors de l’ordinaire (non bloquantes)', () => {
+    expect(alertesProduit({ type: 'enduit', unite: 'L', rendementCentiemes: null }, null)).toEqual(['Enduit vendu au litre : vérifiez l’unité (en général au kg).']);
+    expect(alertesProduit({ type: 'acrylique', unite: 'L', rendementCentiemes: 1 }, { min: 1000, max: 1200 })[0]).toMatch(/Rendement 0,01 m²\/L très loin de la fourchette indicative du type \(10 à 12\)/);
+    expect(alertesProduit({ type: 'acrylique', unite: 'L', rendementCentiemes: 1100 }, { min: 1000, max: 1200 })).toEqual([]);
+    const a = analyserImport(fichier('M;;;D;acrylique;;;;0,01'), { acrylique: { min: 1000, max: 1200 } });
+    expect(a.lignes[0]!.erreurs).toEqual([]);
+    expect(a.lignes[0]!.avertissements).toHaveLength(1);
+  });
+  it('export -> import : un séchage de 9 999,9 h repasse', () => {
+    const csv = exporterProduits([{ marque: 'M', gamme: null, reference_fabricant: 'R', designation: 'D', type: 'lasure', usages: [], finition: null,
+      unite_mesure: 'L', rendement_m2_par_unite: null, couches_recommandees: null, sechage_recouvrable_h: 9999.9, fournisseur: null, fiche_technique_url: null, formats: [] }]);
+    expect(analyserImport(csv).lignes[0]!.produit?.sechage_h).toBe('9999.9');
+  });
+});
+

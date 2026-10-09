@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { verifierSession } from '@/lib/dal';
 import { clientServeur } from '@/lib/supabase/serveur';
 import { erreursParChamp, valeursTexte, type EtatFormulaire } from '@/lib/etat-formulaire';
-import { analyserImport, cleProduit, type AnalyseImport } from '@/domain/catalogue';
+import { analyserImport, cleProduit, type AnalyseImport, type FourchettesRendement } from '@/domain/catalogue';
 import { TAILLE_MAX_CSV } from '@/domain/csv';
 import { schemaFormat, schemaPrestation, schemaProduit, schemaTeinte } from '@/lib/validation/catalogue';
 import { montantFacultatif } from '@/lib/validation/champs';
@@ -14,7 +14,7 @@ import { montantFacultatif } from '@/lib/validation/champs';
 const ECHEC = 'L’enregistrement a échoué. Vérifiez la connexion et réessayez.';
 const REFUS = 'Ces informations ont été refusées (valeur hors limites ou incohérente). Vérifiez la saisie.';
 const FORMULAIRE_INCOMPLET = 'Formulaire incomplet : rechargez la page.';
-const messageErreur = (code: string | undefined) => (code?.startsWith('23') || code === 'P0001' ? REFUS : ECHEC);
+const messageErreur = (code: string | undefined) => (code?.startsWith('23') || code?.startsWith('22') || code === 'P0001' ? REFUS : ECHEC);
 const identifiant = z.uuid();
 const idDe = (formData: FormData, cle: string) => identifiant.safeParse(formData.get(cle));
 
@@ -52,9 +52,18 @@ export async function enregistrerProduit(_: EtatFormulaire, formData: FormData):
   const { data: actuel } = await supabase.from('produits').select('*').eq('id', idLu.data).maybeSingle();
   if (idSaisi && !actuel) return { message: 'Produit introuvable.' };
 
+  // Comparaison par nature de champ : nombres comparés en valeur (« 10.50 » = 10.5), textes à l'identique
+  // (« 0123 » ≠ « 123 » pour une référence), listes sans tenir compte de l'ordre.
+  const NUMERIQUES = ['rendement_m2_par_unite', 'couches_recommandees', 'sechage_recouvrable_h'];
+  const normal = (k: string, v: unknown) => (v === null || v === undefined ? ''
+    : Array.isArray(v) ? [...v].sort().join(',') : NUMERIQUES.includes(k) ? String(Number(v)) : String(v));
   const champs = Object.keys(produit) as (keyof typeof produit)[];
-  const normal = (v: unknown) => (Array.isArray(v) ? [...v].sort().join(',') : v === null || v === undefined ? '' : String(Number.isNaN(Number(v)) ? v : Number(v)));
-  const modifie = !actuel || champs.some((k) => normal(produit[k]) !== normal(actuel[k]));
+  const modifie = !actuel || champs.some((k) => normal(k, produit[k]) !== normal(k, actuel[k]));
+  // Les contenances sont dans l'unité du produit : pas de changement d'unité tant qu'il a des formats.
+  if (actuel && actuel.unite_mesure !== produit.unite_mesure) {
+    const { count } = await supabase.from('conditionnements').select('id', { count: 'exact', head: true }).eq('produit_id', actuel.id);
+    if (count) return { erreurs: { unite_mesure: `Ce produit a des formats en ${actuel.unite_mesure} : retirez-les ou créez un autre produit.` }, valeurs: saisie() };
+  }
   const statut = statutVerification(confirme, modifie, actuel?.statut_verification ?? null);
   const verification = statut === 'verifie'
     ? { verifie_le: confirme ? verifie_le : actuel?.verifie_le ?? null, source_verification: confirme ? source_verification : actuel?.source_verification ?? null }
@@ -148,7 +157,7 @@ export async function enregistrerTeinte(_: EtatFormulaire, formData: FormData): 
   const session = await verifierSession();
   const lu = schemaTeinte.safeParse(lireChamps(formData));
   if (!lu.success) return { erreurs: erreursParChamp(lu.error), valeurs: valeursTexte(formData) };
-  const { confirme, ...teinte } = lu.data;
+  const { confirme, verifie_le, source_verification, ...teinte } = lu.data;
   const supabase = await clientServeur();
   const idSaisi = formData.get('id');
   const idLu = idSaisi ? identifiant.safeParse(idSaisi) : idDe(formData, 'id_nouveau');
@@ -156,7 +165,13 @@ export async function enregistrerTeinte(_: EtatFormulaire, formData: FormData): 
   const { data: actuel } = await supabase.from('teintes').select('*').eq('id', idLu.data).maybeSingle();
   if (idSaisi && !actuel) return { message: 'Teinte introuvable.' };
   const modifie = !actuel || (Object.keys(teinte) as (keyof typeof teinte)[]).some((k) => (teinte[k] ?? '') !== (actuel[k] ?? ''));
-  const ligne = { ...teinte, statut_verification: statutVerification(confirme, modifie, actuel?.statut_verification ?? null) };
+  const statut = statutVerification(confirme, modifie, actuel?.statut_verification ?? null);
+  const ligne = {
+    ...teinte, statut_verification: statut,
+    ...(statut === 'verifie'
+      ? { verifie_le: confirme ? verifie_le : actuel?.verifie_le ?? null, source_verification: confirme ? source_verification : actuel?.source_verification ?? null }
+      : { verifie_le: null, source_verification: null }),
+  };
   const { error } = actuel
     ? await supabase.from('teintes').update(ligne).eq('id', idLu.data)
     : await supabase.from('teintes').upsert({ ...ligne, id: idLu.data, organisation_id: session.organisationId }, { onConflict: 'id', ignoreDuplicates: true });
@@ -225,19 +240,27 @@ export type EtatImport = {
   apercu?: {
     erreursFichier: string[];
     colonnesIgnorees: string[];
-    lignes: { numero: number; libelle: string; action: 'creation' | 'mise_a_jour' | null; erreurs: string[]; formats: number }[];
+    lignes: { numero: number; libelle: string; action: 'creation' | 'mise_a_jour' | null; erreurs: string[]; avertissements: string[]; formats: number }[];
   };
 };
 
 const schemaContenu = z.string().min(1, { error: 'Choisissez un fichier CSV.' }).max(TAILLE_MAX_CSV, { error: 'Fichier trop volumineux (1 Mo au maximum).' });
 
-async function analyser(texte: string): Promise<{ analyse: AnalyseImport; existants: Set<string> }> {
-  const analyse = analyserImport(texte);
+/** Fourchettes indicatives du référentiel (alertes de plausibilité de l'aperçu). */
+async function fourchettes(): Promise<FourchettesRendement> {
+  const supabase = await clientServeur();
+  const { data } = await supabase.from('referentiel_calcul').select('type_produit, rendement_min, rendement_max');
+  return Object.fromEntries((data ?? []).filter((r) => r.rendement_min !== null && r.rendement_max !== null)
+    .map((r) => [r.type_produit, { min: Math.round(Number(r.rendement_min) * 100), max: Math.round(Number(r.rendement_max) * 100) }]));
+}
+
+async function analyser(texte: string): Promise<{ analyse: AnalyseImport; existants: Set<string> } | null> {
+  const analyse = analyserImport(texte, await fourchettes());
   const supabase = await clientServeur();
   const existants = new Set<string>();
   for (let debut = 0; ; debut += 1000) {
     const { data, error } = await supabase.from('produits').select('marque, reference_fabricant, designation').order('id').range(debut, debut + 999);
-    if (error) throw new Error('Lecture impossible : produits.');
+    if (error) return null;
     for (const p of data) existants.add(cleProduit(p.marque, p.reference_fabricant, p.designation));
     if (data.length < 1000) break;
   }
@@ -249,7 +272,13 @@ export async function apercuImport(_: EtatImport, formData: FormData): Promise<E
   await verifierSession();
   const contenu = schemaContenu.safeParse(formData.get('contenu'));
   if (!contenu.success) return { message: contenu.error.issues[0]?.message ?? 'Fichier illisible.' };
-  const { analyse, existants } = await analyser(contenu.data);
+  return construireApercu(contenu.data);
+}
+
+async function construireApercu(texte: string): Promise<EtatImport> {
+  const lu = await analyser(texte);
+  if (!lu) return { message: 'Le catalogue n’a pas pu être lu pour comparer : réessayez dans un instant.' };
+  const { analyse, existants } = lu;
   return {
     apercu: {
       erreursFichier: analyse.erreursFichier,
@@ -259,6 +288,7 @@ export async function apercuImport(_: EtatImport, formData: FormData): Promise<E
         libelle: l.produit ? [l.produit.marque, l.produit.reference_fabricant, l.produit.designation].filter(Boolean).join(' · ') : '',
         action: l.cle === null ? null : existants.has(l.cle) ? 'mise_a_jour' : 'creation',
         erreurs: l.erreurs,
+        avertissements: l.avertissements,
         formats: l.produit?.formats.length ?? 0,
       })),
     },
@@ -279,10 +309,18 @@ export async function validerImport(_: EtatImport, formData: FormData): Promise<
   if (!valides.length) return { message: 'Aucune ligne valide à importer.' };
   const supabase = await clientServeur();
   const { data, error } = await supabase.rpc('importer_produits', { p_organisation_id: session.organisationId, p_lignes: valides });
-  if (error) return { message: error.code?.startsWith('23') ? `${REFUS} Rien n’a été importé.` : `${ECHEC} Rien n’a été importé.` };
+  if (error) {
+    // P0001 : refus explicite de la fonction d'import (message rédigé en français, sans donnée sensible).
+    if (error.code === 'P0001') return { message: `${error.message} Rien n’a été importé.` };
+    const refus = error.code?.startsWith('23') || error.code?.startsWith('22') || error.code === 'P0002';
+    return { message: `${refus ? REFUS : ECHEC} Rien n’a été importé.` };
+  }
   const r = data as { crees: number; mis_a_jour: number };
   rafraichir();
+  // Aperçu relu après l'import : ce que montre l'écran correspond au catalogue.
+  const relu = await construireApercu(contenu.data);
   return {
+    apercu: relu.apercu,
     succes: `Import terminé : ${r.crees} produit(s) créé(s), ${r.mis_a_jour} mis à jour${enErreur ? `, ${enErreur} ligne(s) en erreur ignorée(s)` : ''}. Les produits importés sont « À VÉRIFIER ».`,
   };
 }

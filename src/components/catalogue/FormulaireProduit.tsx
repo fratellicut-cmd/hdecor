@@ -3,6 +3,7 @@
 import { useId, useState } from 'react';
 import { enregistrerProduit } from '@/app/(app)/catalogue/actions';
 import { FINITIONS, MARQUES_SUGGEREES, TYPES, USAGES } from '@/domain/catalogue';
+import { formaterDate } from '@/domain/formats';
 import { useFormulaire } from '@/components/formulaire/useFormulaire';
 import { MessagesGarde, RappelEnvoi } from '@/components/formulaire/MessagesGarde';
 import { RetourFormulaire } from '@/components/parametres/RetourFormulaire';
@@ -87,7 +88,7 @@ export function FormulaireProduit({ produit, marques }: { produit: ProduitSaisi;
         <legend className="px-1 font-semibold">Vérification</legend>
         <p className="text-sm">
           {produit.statut_verification === 'verifie'
-            ? `Vérifié le ${produit.verifie_le ?? '?'} (${produit.source_verification ?? 'source non indiquée'}). Une modification sans nouvelle confirmation le repasse « À VÉRIFIER ».`
+            ? `Vérifié le ${produit.verifie_le ? formaterDate(produit.verifie_le) : '?'} (${produit.source_verification ?? 'source non indiquée'}). Une modification sans nouvelle confirmation le repasse « À VÉRIFIER ».`
             : produit.statut_verification === 'fictif' ? 'Exemple FICTIF : remplacez-le par un vrai produit.' : 'Valeurs À VÉRIFIER sur la fiche technique du fabricant.'}
         </p>
         <CaseACocher nom="confirme" libelle="J’ai vérifié ces valeurs sur la fiche technique" checked={confirme} onChange={(ev) => setConfirme(ev.target.checked)} />

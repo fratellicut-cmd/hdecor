@@ -66,3 +66,16 @@ export function lireCsv(texte: string): string[][] {
     .filter((l) => l.some((v) => v.trim() !== ''))
     .map((l) => l.map((v) => (/^'[=+\-@]/.test(v) ? v.slice(1) : v)));
 }
+
+/**
+ * Décode un fichier CSV : UTF-8 (avec ou sans BOM) si l'octet le permet,
+ * sinon Windows-1252, l'encodage du « CSV (séparateur : point-virgule) »
+ * d'Excel en français. Jamais de caractère remplacé en silence.
+ */
+export function decoderCsv(octets: Uint8Array): { texte: string; encodage: 'UTF-8' | 'Windows-1252' } {
+  try {
+    return { texte: new TextDecoder('utf-8', { fatal: true }).decode(octets), encodage: 'UTF-8' };
+  } catch {
+    return { texte: new TextDecoder('windows-1252').decode(octets), encodage: 'Windows-1252' };
+  }
+}

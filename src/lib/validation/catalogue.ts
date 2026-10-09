@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { FINITIONS, TYPES, USAGES } from '@/domain/catalogue';
+import { aujourdHuiParis } from '@/domain/dates';
 import { lireDecimal } from '@/domain/saisie';
 import { caseACocher, dateFacultative, montantFacultatif, montantObligatoire, texteFacultatif, texteObligatoire } from './champs';
 
@@ -49,12 +50,16 @@ export const schemaProduit = z.object({
   confirme: caseACocher,
   verifie_le: dateFacultative,
   source_verification: texteFacultatif(300),
-}).superRefine((v, ctx) => {
+}).superRefine(verification);
+
+/** « Vérifié » : case + date (pas dans le futur) + source ; la base refuse « vérifié » sans les deux. */
+function verification(v: { confirme: boolean; verifie_le: string | null; source_verification: string | null }, ctx: z.RefinementCtx) {
   if (v.confirme && !v.verifie_le) ctx.addIssue({ code: 'custom', path: ['verifie_le'], message: 'Date de vérification : obligatoire pour « vérifié ».' });
+  if (v.verifie_le && v.verifie_le > aujourdHuiParis()) ctx.addIssue({ code: 'custom', path: ['verifie_le'], message: 'Date de vérification : pas dans le futur.' });
   if (v.confirme && !v.source_verification) {
-    ctx.addIssue({ code: 'custom', path: ['source_verification'], message: 'Source : obligatoire pour « vérifié » (fiche technique, fournisseur…).' });
+    ctx.addIssue({ code: 'custom', path: ['source_verification'], message: 'Source : obligatoire pour « vérifié » (fiche technique, fournisseur, nuancier…).' });
   }
-});
+}
 
 export const schemaFormat = z.object({
   contenance,
@@ -70,7 +75,9 @@ export const schemaTeinte = z.object({
   apercu_hex: z.preprocess((v) => (vide(v) ? null : String(v).trim().toUpperCase()),
     z.string().regex(/^#[0-9A-F]{6}$/, { error: 'Couleur : code du type #A1B2C3.' }).nullable()),
   confirme: caseACocher,
-});
+  verifie_le: dateFacultative,
+  source_verification: texteFacultatif(300),
+}).superRefine(verification);
 
 export const UNITES_PRESTATION = { m2: 'm²', ml: 'mètre linéaire', u: 'unité', h: 'heure', forfait: 'forfait' } as const;
 

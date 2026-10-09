@@ -75,11 +75,15 @@ export function avertissementsSysteme(e: EntreeSysteme): string[] {
   if (e.taches && !prepa.has('sous_couche_bloquante') && e.typeProduit !== 'sous_couche_bloquante') {
     a.push('Taches (eau, fumée, nicotine) : prévoir une sous-couche bloquante, sinon elles ressortent.');
   }
+  const facade = e.exterieur || e.typeElement === 'facade';
   if (e.typeElement === 'facade' && !e.exterieur) {
     a.push('Façade : cochez « Extérieur » sur le poste (produit et conditions d’application d’extérieur).');
   }
-  if (e.exterieur && (e.support === 'beton' || e.support === 'enduit') && !impression) {
+  if (facade && (e.support === 'beton' || e.support === 'enduit') && !impression) {
     a.push('Façade sur béton ou enduit : prévoir un fixateur ou une impression adaptée (support poreux ou farinant).');
+  }
+  if (facade && e.support === 'ancienne_peinture') {
+    a.push('Ancienne peinture en extérieur : faire le test de farinage (passer la main) ; si elle farine, lessiver et appliquer un fixateur.');
   }
   if (e.finitionProduit && e.finitionPoste && e.finitionProduit !== e.finitionPoste) {
     a.push(`Finition demandée « ${e.finitionPoste} », mais le produit choisi est « ${e.finitionProduit} » : vérifiez le produit.`);
@@ -96,7 +100,7 @@ export function avertissementsSysteme(e: EntreeSysteme): string[] {
       a.push('Extérieur : vérifiez sur la fiche technique que le produit choisi est prévu pour l’extérieur.');
     }
     a.push('Extérieur : respecter les conditions d’application de la fiche technique (température, pluie, humidité, plein soleil).');
-  } else if (e.typeProduit === 'facade') {
+  } else if (e.typeProduit === 'facade' && e.typeElement !== 'facade') {
     a.push('Peinture façade utilisée en intérieur : vérifiez que c’est voulu.');
   }
   if (e.zoneHumide && e.typeProduit !== 'anti_humidite') {

@@ -4,7 +4,8 @@ import { notFound } from 'next/navigation';
 import { z } from 'zod';
 import { verifierSession } from '@/lib/dal';
 import { clientServeur } from '@/lib/supabase/serveur';
-import { FINITIONS, TYPES, USAGES } from '@/domain/catalogue';
+import { alertesProduit, FINITIONS, TYPES, USAGES } from '@/domain/catalogue';
+import type { TypeProduit } from '@/domain/systemes';
 import { formaterDate, formaterEuros, montantVersSaisie } from '@/domain/formats';
 import { formaterContenance } from '@/domain/peinture';
 import { actionFormat, actionProduit } from '../../actions';
@@ -26,11 +27,17 @@ export default async function PageProduit({ params, searchParams }: PageProps<'/
   const { data: p } = await supabase.from('produits').select('*, conditionnements (id, contenance, prix_achat_ht_cents, actif)').eq('id', id.data).maybeSingle();
   if (!p) notFound();
   const ids = p.conditionnements.map((c) => c.id);
-  const [historique, alertes] = await Promise.all([
+  const [historique, alertes, fourchette] = await Promise.all([
     ids.length ? supabase.from('historique_prix').select('conditionnement_id, prix_achat_ht_cents, date_effet, created_at').in('conditionnement_id', ids)
       .order('created_at', { ascending: false }).limit(100) : Promise.resolve({ data: [] }),
     supabase.from('v_alertes_prix').select('devis_id, numero, contenance, prix_achat_retenu_cents, prix_actuel_cents').eq('produit_id', p.id),
+    supabase.from('referentiel_calcul').select('rendement_min, rendement_max').eq('type_produit', p.type).maybeSingle(),
   ]);
+  const f = fourchette.data;
+  const plausibilite = alertesProduit({
+    type: p.type as TypeProduit, unite: p.unite_mesure === 'kg' ? 'kg' : 'L',
+    rendementCentiemes: p.rendement_m2_par_unite === null ? null : Math.round(Number(p.rendement_m2_par_unite) * 100),
+  }, f?.rendement_min != null && f.rendement_max != null ? { min: Math.round(Number(f.rendement_min) * 100), max: Math.round(Number(f.rendement_max) * 100) } : null);
   const unite = p.unite_mesure === 'kg' ? 'kg' : 'L';
   const formats = [...p.conditionnements].sort((a, b) => a.contenance - b.contenance);
   const contenanceDe = new Map(formats.map((c) => [c.id, c.contenance]));
@@ -61,11 +68,12 @@ export default async function PageProduit({ params, searchParams }: PageProps<'/
       {sp.enregistre === '1' ? <Message type="succes">Produit enregistré.</Message> : null}
       {alertes.data?.length ? (
         <Message type="alerte">
-          Prix changé depuis le chiffrage de {alertes.data.length} devis en cours :{' '}
+          Prix changé depuis le chiffrage de {new Set(alertes.data.map((a) => a.devis_id)).size} devis en cours :{' '}
           {alertes.data.map((a) => `${a.numero ?? 'brouillon'} (${formaterContenance(a.contenance!, unite)} : ${a.prix_achat_retenu_cents === null ? '?' : formaterEuros(a.prix_achat_retenu_cents)} → ${a.prix_actuel_cents === null ? '?' : formaterEuros(a.prix_actuel_cents)})`).join(' ; ')}.
         </Message>
       ) : null}
 
+      {plausibilite.map((m) => <Message key={m} type="alerte">{m}</Message>)}
       <Carte titre="Caractéristiques" action={<Link href={`/catalogue/produits/${p.id}/modifier`} className="inline-flex min-h-12 items-center px-2 font-semibold underline underline-offset-4">Modifier</Link>}>
         <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {details.map(([t, v]) => <div key={t}><dt className="text-sm text-encre-douce">{t}</dt><dd className="font-semibold">{v}</dd></div>)}

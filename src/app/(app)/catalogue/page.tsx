@@ -38,8 +38,8 @@ export default async function PageCatalogue() {
       {alertes.data?.length ? (
         <Carte titre="Prix d’achat changés sur des devis en cours">
           <ul className="flex flex-col gap-2 text-sm">
-            {alertes.data.map((a) => (
-              <li key={`${a.devis_id}-${a.conditionnement_id}`} className="rounded-lg bg-alerte-fond px-3 py-2 font-semibold text-alerte">
+            {alertes.data.map((a, i) => (
+              <li key={`${a.devis_id}-${a.conditionnement_id}-${i}`} className="rounded-lg bg-alerte-fond px-3 py-2 font-semibold text-alerte">
                 Devis {a.numero ?? '(brouillon)'} : {a.marque} {a.designation} ({formaterContenance(a.contenance!, a.unite_mesure === 'kg' ? 'kg' : 'L')}) chiffré à{' '}
                 {a.prix_achat_retenu_cents === null ? 'prix inconnu' : formaterEuros(a.prix_achat_retenu_cents)}, prix actuel{' '}
                 {a.prix_actuel_cents === null ? 'non renseigné' : formaterEuros(a.prix_actuel_cents)}.
