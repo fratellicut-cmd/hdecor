@@ -12,6 +12,7 @@ import { supprimerChantier } from '../actions';
 import { ChoixStatut } from '@/components/chantiers/ChoixStatut';
 import { ActionConfirmee } from '@/components/formulaire/ActionConfirmee';
 import { EffacerBrouillon } from '@/components/formulaire/EffacerBrouillon';
+import { CartesPilotage } from '@/components/chantiers/CartesPilotage';
 import { Carte } from '@/components/ui/Carte';
 import { Message } from '@/components/ui/Message';
 
@@ -97,6 +98,8 @@ export default async function PageChantier({ params, searchParams }: PageProps<'
           </p>
         ) : null}
       </Carte>
+
+      <CartesPilotage chantier={{ id: chantier.id!, date_debut_prevue: chantier.date_debut_prevue, duree_estimee_jours: chantier.duree_estimee_jours }} />
 
       <Carte titre="Statut"><ChoixStatut id={chantier.id!} statut={chantier.statut as 'a_planifier'} /></Carte>
 
