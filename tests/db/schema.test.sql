@@ -717,8 +717,14 @@ values ('aaaaaaaa-0000-0000-0000-0000000f0f01', 'aaaaaaaa-0000-0000-0000-0000000
         'aaaaaaaa-0000-0000-0000-00000000000a/chantiers/aaaaaaaa-0000-0000-0000-0000000ca0f1/p.jpg');
 select tests.echoue($$update public.photos set chemin = 'aaaaaaaa-0000-0000-0000-00000000000a/f7.pdf' where id = 'aaaaaaaa-0000-0000-0000-0000000f0f01'$$,
   'permission denied', 'H1 : le chemin d''une photo n''est plus modifiable par une session');
-delete from public.photos where id = 'aaaaaaaa-0000-0000-0000-0000000f0f01';
-delete from public.chantiers where id = 'aaaaaaaa-0000-0000-0000-0000000ca0f1';
+-- Phase 2 : un chantier ne se supprime plus directement (fichiers orphelins) ;
+-- la fonction dédiée met ses fichiers en file dans la même transaction.
+select tests.echoue($$delete from public.chantiers where id = 'aaaaaaaa-0000-0000-0000-0000000ca0f1'$$,
+  'permission denied', 'chantier : pas de suppression directe par une session');
+select tests.egal(public.supprimer_chantier('aaaaaaaa-0000-0000-0000-0000000ca0f1'), 1,
+  'chantier sans document supprimé, sa photo mise en file de suppression');
+select tests.echoue($$select public.supprimer_chantier('aaaaaaaa-0000-0000-0000-0000000ca002')$$,
+  'ne peut pas être supprimé', 'chantier avec devis ou factures : suppression refusée');
 reset role;
 insert into public.fichiers_a_supprimer (organisation_id, espace, chemin)
 values ('aaaaaaaa-0000-0000-0000-00000000000a', 'documents', 'aaaaaaaa-0000-0000-0000-00000000000a/f7.pdf');
@@ -769,13 +775,13 @@ select tests.egal((select copie_client ->> 'nom_affiche' from public.factures wh
 select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prosecdef and has_function_privilege('authenticated', p.oid, 'execute')),
-  'effacer_client,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,refuser_devis,signer_devis_sur_place',
+  'effacer_client,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,refuser_devis,signer_devis_sur_place,supprimer_chantier',
   'sécurité : liste exacte des fonctions SECURITY DEFINER appelables par une session');
 select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prokind = 'f' and p.prorettype <> 'trigger'::regtype
      and has_function_privilege('authenticated', p.oid, 'execute')),
-  'aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,deductions_bien_formees,effacer_client,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,organisation_du_chemin,rechercher_clients,refuser_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,texte_recherche,ventilation_attendue,ventilation_bien_formee',
+  'aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,deductions_bien_formees,effacer_client,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,organisation_du_chemin,rechercher_clients,refuser_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,ventilation_attendue,ventilation_bien_formee',
   'sécurité : liste COMPLÈTE des fonctions appelables par une session');
 select tests.echoue($$select public.purger_journal_audit(now() - interval '20 years')$$, 'permission denied',
   'sécurité : purge du journal réservée au serveur');
@@ -1353,9 +1359,37 @@ select tests.echoue($$select public.purger_prospects_inactifs()$$, 'permission d
 -- -----------------------------------------------------------------------------
 -- 4. Utilisateur B : ne voit ni ne touche rien de A
 -- -----------------------------------------------------------------------------
+-- Phase 2 : valeurs de départ du calcul, toutes À VÉRIFIER, créées pour chaque organisation.
+select tests.egal((select count(*) from public.referentiel_calcul where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and statut_verification = 'a_verifier'),
+  8::bigint, 'calcul : 8 fourchettes de rendement du cahier des charges, À VÉRIFIER');
+select tests.egal((select rendement_min::text || '-' || rendement_max::text from public.referentiel_calcul
+                   where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and type_produit = 'acrylique'),
+  '10.00-12.00', 'calcul : acrylique 10 à 12 m²/L (cahier des charges §5.4)');
+select tests.egal((select count(*) from public.referentiel_calcul where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and minutes_par_m2_couche is not null),
+  0::bigint, 'calcul : aucun temps de pose inventé');
+select tests.egal((select count(*) from public.coefficients_support where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and coef_rendement_bp = 10000 and statut_verification = 'a_verifier'),
+  10::bigint, 'calcul : 10 supports, coefficient neutre 1,00 À VÉRIFIER');
+select tests.egal((select count(*) from public.etapes_preparation where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and minutes_par_m2 = 0 and statut_verification = 'a_verifier'),
+  11::bigint, 'calcul : 11 étapes de préparation, temps à renseigner');
+select tests.egal((select porte_largeur_mm || 'x' || porte_hauteur_mm || ' ' || array_to_string(formats_pots_ml, ',') from public.parametres_entreprise
+                   where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'),
+  '830x2040 1000,2500,5000,10000,15000', 'paramètres : porte 83 × 204 cm, pots 1 / 2,5 / 5 / 10 / 15 L');
+select tests.echoue($$update public.parametres_entreprise set formats_pots_ml = array[1000, 0] where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'$$,
+  'check', 'paramètres : format de pot nul refusé');
+select tests.echoue($$insert into public.postes_travaux (organisation_id, piece_id, cible, support)
+  select organisation_id, id, 'murs', 'beton' from public.pieces where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' limit 1$$,
+  'poste_produit_ou_type', 'poste : un produit ou un type de produit est exigé');
+select tests.echoue($$insert into public.consommables (organisation_id, libelle, mode, prix_ht_cents)
+  values ('aaaaaaaa-0000-0000-0000-00000000000a', 'Bâches', 'par_m2', -1)$$, 'check', 'consommable : prix négatif refusé');
+insert into public.consommables (organisation_id, libelle, mode, prix_ht_cents)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'Bâches et adhésif', 'par_chantier', 2500);
+
 set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000001';
 select tests.egal((select count(*) from public.clients), 0::bigint, 'B ne voit pas les clients de A');
 select tests.egal((select count(*) from public.rechercher_clients('helene')), 0::bigint, 'B ne trouve pas les clients de A par la recherche');
+select tests.egal((select count(*) from public.consommables), 0::bigint, 'B ne voit pas les consommables de A');
+select tests.egal((select count(*) from public.referentiel_calcul where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'), 0::bigint,
+  'B ne voit pas le référentiel de calcul de A');
 select tests.egal(public.confirmer_valeurs('aaaaaaaa-0000-0000-0000-00000000000a', array['validite_devis_jours']), false,
   'B ne peut pas confirmer les valeurs de A');
 select tests.echoue($$select public.effacer_client('aaaaaaaa-0000-0000-0000-0000000c0001')$$, 'introuvable', 'B ne peut pas effacer un client de A (identifiant deviné)');
@@ -1367,7 +1401,9 @@ select tests.egal((select count(*) from public.journal_audit), 0::bigint, 'B ne 
 select tests.egal((select count(*) from public.temps_passes) + (select count(*) from public.rappels) + (select count(*) from public.devis_achats) + (select count(*) from public.devis_echeances), 0::bigint, 'B ne voit ni temps, ni rappels, ni achats, ni échéancier de A');
 select tests.egal((select count(*) from storage.objects), 0::bigint, 'B ne voit pas les fichiers de A');
 select tests.egal(tests.lignes($$update public.clients set nom = 'pirate'$$), 0::bigint, 'B ne modifie pas les clients de A');
-select tests.egal(tests.lignes($$delete from public.chantiers$$), 0::bigint, 'B ne supprime pas les chantiers de A');
+select tests.echoue($$delete from public.chantiers$$, 'permission denied', 'B ne supprime pas les chantiers de A (aucune suppression directe)');
+select tests.echoue($$select public.supprimer_chantier('aaaaaaaa-0000-0000-0000-0000000ca002')$$, 'introuvable',
+  'B ne supprime pas un chantier de A par la fonction');
 select tests.echoue(
   $$select public.emettre_facture('aaaaaaaa-0000-0000-0000-0000000f0001', '{}', '{}', '{}', 'x', repeat('a', 64))$$,
   'introuvable', 'B ne peut pas émettre une facture de A');
