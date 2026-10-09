@@ -10,6 +10,7 @@ const params: ParametresCalcul = {
   formatsDefautG: [5000, 15_000, 25_000],
   hauteurAlerteMm: 3000,
   toleranceResteBp: 1000,
+  formatsParType: {},
   coefSupport: { ancienne_peinture: { bp: 10_000, aVerifier: true }, platre_neuf: { bp: 8000, aVerifier: true } },
   referentiel: {
     acrylique: { rendementMinCentiemes: 1000, minutesParM2CoucheCentiemes: 15, sechageDixiemesH: null, aVerifier: true },
@@ -20,7 +21,7 @@ const params: ParametresCalcul = {
 
 const acryliqueCatalogue: ProduitCalc = {
   id: 'p1', libelle: 'Acrylique mat (fictif)', reference: null, type: 'acrylique', unite: 'L', rendementCentiemes: 1000,
-  couchesRecommandees: 2, sechageDixiemesH: 60, usages: ['mur', 'plafond'], aVerifier: true, archive: false,
+  couchesRecommandees: 2, sechageDixiemesH: 60, usages: ['mur', 'plafond'], finition: null, aVerifier: true, archive: false,
   formats: [
     { contenanceMl: 1000, prixCents: 1500n }, { contenanceMl: 2500, prixCents: 3000n }, { contenanceMl: 5000, prixCents: 5000n },
     { contenanceMl: 10_000, prixCents: 9000n }, { contenanceMl: 15_000, prixCents: 13_000n },
@@ -33,7 +34,7 @@ const etape = (code: string, libelle: string, minutes: number, autres: Partial<E
 });
 
 const posteMurs: PosteCalc = {
-  id: 'm', libelle: 'Chambre : murs', surface: { mm2: 31_926_800n }, cleSurface: 'chambre|murs|', hauteurMm: 2500, cible: 'murs',
+  id: 'm', libelle: 'Chambre : murs', surface: { mm2: 31_926_800n }, cleSurface: 'chambre|murs|', hauteurMm: 2500, cible: 'murs', typeElement: null,
   support: 'ancienne_peinture', zoneHumide: false, taches: false, exterieur: false, etapes: [etape('lessivage', 'Lessivage', 5)],
   produit: acryliqueCatalogue, typeProduit: null, teinte: { id: 't1', nom: 'Blanc (fictif)' }, finition: null, couches: 2,
   rendementForceCentiemes: null, margePerteBp: null, majorationTempsBp: 0,
@@ -275,6 +276,82 @@ describe('teinte libre et coût indicatif (boucle 3)', () => {
     expect(l.lignes[0]!.coutIndicatif).toBe(true);
     expect(l.coutComplet).toBe(false);
     expect(l.prixVenteHtCents).toBeNull();
+  });
+});
+
+
+describe('catalogue (Phase 3)', () => {
+  const enduitCatalogue: ProduitCalc = {
+    ...acryliqueCatalogue, id: 'e', libelle: 'Enduit de lissage (fictif)', type: 'enduit', unite: 'kg', rendementCentiemes: null,
+    formats: [{ contenanceMl: 5000, prixCents: 1000n }, { contenanceMl: 25_000, prixCents: 3000n }],
+  };
+  it('étape avec produit du catalogue : consommation × passes ; le support ne corrige pas un enduit (audit peinture)', () => {
+    // 10 m² × 0,5 kg/m² × 2 passes = 10 kg, même sur plâtre neuf à 80 % (l'enduit ne dépend pas de la porosité).
+    const r = calculerPoste({
+      ...posteMurs, surface: { mm2: 10_000_000n }, support: 'platre_neuf',
+      etapes: [etape('enduit_2_passes', 'Enduit (deux passes)', 10, { produit: enduitCatalogue, consommationE4: 5000, couches: 2 })],
+    }, params);
+    expect(r.matierePreparation).toHaveLength(1);
+    expect(formaterQuantiteCourte(quantiteDepuisFraction(r.matierePreparation[0]!.quantite))).toBe('10,00');
+  });
+  it('étape avec une impression du catalogue (au litre) : corrigée du support', () => {
+    // 10 m² × 0,1 L/m² × 1 passe = 1 L ; plâtre neuf à 80 % : 1 ÷ 0,8 = 1,25 L.
+    const impression: ProduitCalc = { ...acryliqueCatalogue, id: 'i', type: 'impression', unite: 'L' };
+    const r = calculerPoste({
+      ...posteMurs, surface: { mm2: 10_000_000n }, support: 'platre_neuf',
+      etapes: [etape('impression', 'Impression', 5, { produit: impression, consommationE4: 1000, couches: 1 })],
+    }, params);
+    expect(formaterQuantiteCourte(quantiteDepuisFraction(r.matierePreparation[0]!.quantite))).toBe('1,25');
+  });
+  it('poste d’enduit (type, au kg) : pas de coefficient de support', () => {
+    const p2: ParametresCalcul = { ...params, referentiel: { ...params.referentiel, enduit: { rendementMinCentiemes: 100, minutesParM2CoucheCentiemes: null, sechageDixiemesH: null, aVerifier: true } } };
+    // 10 m² ÷ 1 m²/kg × 1 passe × 1,1 = 11 kg, même sur plâtre neuf.
+    const r = calculerPoste({ ...posteMurs, surface: { mm2: 10_000_000n }, support: 'platre_neuf', produit: null, typeProduit: 'enduit', couches: 1 }, p2);
+    expect(formaterQuantiteCourte(r.quantite!)).toBe('11,00');
+    expect(r.aVerifier).not.toContain('coefficient du support');
+  });
+  it('formats par type : sans produit, une laque prend les formats de la laque', () => {
+    const p2: ParametresCalcul = { ...params, formatsParType: { laque: [500, 1000, 2500] },
+      referentiel: { ...params.referentiel, laque: { rendementMinCentiemes: 1200, minutesParM2CoucheCentiemes: null, sechageDixiemesH: null, aVerifier: true } } };
+    // 10 m² ÷ 12 × 2 × 1,1 = 1,8334 L -> parmi 0,5 / 1 / 2,5 L (pas de 15 L) : 1 × 2,5 L (reste 0,667 L > 0,5 L et > 10 %) exclu ;
+    // 1 + 1 L (reste 0,167 L) : 2 pots.
+    const r = calculerPoste({ ...posteMurs, surface: { mm2: 10_000_000n }, produit: null, typeProduit: 'laque', cible: 'element', typeElement: 'porte' }, p2);
+    expect(r.pots?.retenue.pots.map((x) => `${x.nombre}×${x.contenanceMl}`)).toEqual(['2×1000']);
+  });
+  it('finition du produit différente de celle du poste : signalée', () => {
+    const r = calculerPoste({ ...posteMurs, produit: { ...acryliqueCatalogue, finition: 'mat' }, finition: 'satin' }, params);
+    expect(r.avertissements).toContain('Finition demandée « satin », mais le produit choisi est « mat » : vérifiez le produit.');
+  });
+  it('façade sans « Extérieur » ; façade sur béton sans fixateur ; hauteur de pièce ignorée pour une plinthe', () => {
+    const facade = calculerPoste({ ...posteMurs, cible: 'element', typeElement: 'facade', exterieur: false, hauteurMm: 6000 }, params);
+    expect(facade.avertissements).toContain('Façade : cochez « Extérieur » sur le poste (produit et conditions d’application d’extérieur).');
+    expect(facade.avertissements.some((a) => a.startsWith('Hauteur'))).toBe(true);
+    const beton = calculerPoste({ ...posteMurs, support: 'beton', exterieur: true, etapes: [] }, params);
+    expect(beton.avertissements).toContain('Façade sur béton ou enduit : prévoir un fixateur ou une impression adaptée (support poreux ou farinant).');
+    const plinthe = calculerPoste({ ...posteMurs, cible: 'element', typeElement: 'plinthe', hauteurMm: 4000 }, params);
+    expect(plinthe.avertissements.some((a) => a.startsWith('Hauteur'))).toBe(false);
+  });
+  it('carrelage : primaire spécifique rappelé même avec une impression cochée', () => {
+    const r = calculerPoste({ ...posteMurs, support: 'carrelage', etapes: [etape('impression', 'Impression', 5)] }, params);
+    expect(r.avertissements).toContain('Carrelage : dégraissage et primaire d’accrochage spécifique au carrelage (une impression ordinaire ne suffit pas).');
+  });
+});
+
+describe('avertissements façade et hauteur (boucle 1 de la Phase 3)', () => {
+  it('élément façade sans « Extérieur » : fixateur rappelé, pas d’alerte « façade en intérieur » en double', () => {
+    const r = calculerPoste({ ...posteMurs, cible: 'element', typeElement: 'facade', exterieur: false, support: 'enduit', produit: null, typeProduit: 'facade' }, params);
+    expect(r.avertissements).toContain('Façade sur béton ou enduit : prévoir un fixateur ou une impression adaptée (support poreux ou farinant).');
+    expect(r.avertissements).not.toContain('Peinture façade utilisée en intérieur : vérifiez que c’est voulu.');
+  });
+  it('ancienne peinture en extérieur : test de farinage rappelé', () => {
+    const r = calculerPoste({ ...posteMurs, exterieur: true }, params);
+    expect(r.avertissements).toContain('Ancienne peinture en extérieur : faire le test de farinage (passer la main) ; si elle farine, lessiver et appliquer un fixateur.');
+  });
+  it('escalier et rambarde dans une pièce haute : alerte de hauteur ; porte : non', () => {
+    const haut = (typeElement: string) => calculerPoste({ ...posteMurs, cible: 'element', typeElement, hauteurMm: 6000 }, params).avertissements.some((a) => a.startsWith('Hauteur'));
+    expect(haut('escalier')).toBe(true);
+    expect(haut('rambarde')).toBe(true);
+    expect(haut('porte')).toBe(false);
   });
 });
 

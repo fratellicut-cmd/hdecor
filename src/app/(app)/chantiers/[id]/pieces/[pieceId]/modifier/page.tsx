@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { z } from 'zod';
 import { verifierSession } from '@/lib/dal';
 import { clientServeur } from '@/lib/supabase/serveur';
+import { teintesAuChoix } from '@/lib/catalogue';
 import { FormulairePiece } from '@/components/chantiers/FormulairePiece';
 
 export const metadata: Metadata = { title: 'Modifier la pièce' };
@@ -24,7 +25,7 @@ export default async function PageModifierPiece({ params }: PageProps<'/chantier
         <Link href={`/chantiers/${id.data}/pieces/${piece.id}`} className="inline-flex min-h-12 items-center underline underline-offset-4">← {piece.nom}</Link>
         <h1 className="text-2xl font-bold">Modifier la pièce</h1>
       </div>
-      <FormulairePiece chantierId={id.data} piece={piece} />
+      <FormulairePiece chantierId={id.data} piece={piece} teintes={await teintesAuChoix(piece.teinte_id)} />
     </>
   );
 }

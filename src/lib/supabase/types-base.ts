@@ -47,6 +47,12 @@ isOneToOne: false
       foreignKeyName: "attestations_tva_organisation_id_devis_id_fkey"
       columns: ["organisation_id","devis_id"]
 isOneToOne: false
+      referencedRelation: "v_alertes_prix"
+      referencedColumns: ["organisation_id","devis_id"]
+    },{
+      foreignKeyName: "attestations_tva_organisation_id_devis_id_fkey"
+      columns: ["organisation_id","devis_id"]
+isOneToOne: false
       referencedRelation: "v_devis"
       referencedColumns: ["organisation_id","id"]
     },{
@@ -311,6 +317,12 @@ isOneToOne: false
       foreignKeyName: "devis_organisation_id_devis_precedent_id_fkey"
       columns: ["organisation_id","devis_precedent_id"]
 isOneToOne: false
+      referencedRelation: "v_alertes_prix"
+      referencedColumns: ["organisation_id","devis_id"]
+    },{
+      foreignKeyName: "devis_organisation_id_devis_precedent_id_fkey"
+      columns: ["organisation_id","devis_precedent_id"]
+isOneToOne: false
       referencedRelation: "v_devis"
       referencedColumns: ["organisation_id","id"]
     },{
@@ -349,6 +361,12 @@ isOneToOne: false
       foreignKeyName: "devis_achats_organisation_id_devis_id_fkey"
       columns: ["organisation_id","devis_id"]
 isOneToOne: false
+      referencedRelation: "v_alertes_prix"
+      referencedColumns: ["organisation_id","devis_id"]
+    },{
+      foreignKeyName: "devis_achats_organisation_id_devis_id_fkey"
+      columns: ["organisation_id","devis_id"]
+isOneToOne: false
       referencedRelation: "v_devis"
       referencedColumns: ["organisation_id","id"]
     },{
@@ -381,6 +399,12 @@ isOneToOne: false
       foreignKeyName: "devis_echeances_organisation_id_devis_id_fkey"
       columns: ["organisation_id","devis_id"]
 isOneToOne: false
+      referencedRelation: "v_alertes_prix"
+      referencedColumns: ["organisation_id","devis_id"]
+    },{
+      foreignKeyName: "devis_echeances_organisation_id_devis_id_fkey"
+      columns: ["organisation_id","devis_id"]
+isOneToOne: false
       referencedRelation: "v_devis"
       referencedColumns: ["organisation_id","id"]
     }
@@ -403,6 +427,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "devis"
       referencedColumns: ["organisation_id","id"]
+    },{
+      foreignKeyName: "devis_lignes_organisation_id_devis_id_fkey"
+      columns: ["organisation_id","devis_id"]
+isOneToOne: false
+      referencedRelation: "v_alertes_prix"
+      referencedColumns: ["organisation_id","devis_id"]
     },{
       foreignKeyName: "devis_lignes_organisation_id_devis_id_fkey"
       columns: ["organisation_id","devis_id"]
@@ -613,6 +643,12 @@ isOneToOne: false
       foreignKeyName: "factures_organisation_id_devis_id_fkey"
       columns: ["organisation_id","devis_id"]
 isOneToOne: false
+      referencedRelation: "v_alertes_prix"
+      referencedColumns: ["organisation_id","devis_id"]
+    },{
+      foreignKeyName: "factures_organisation_id_devis_id_fkey"
+      columns: ["organisation_id","devis_id"]
+isOneToOne: false
       referencedRelation: "v_devis"
       referencedColumns: ["organisation_id","id"]
     },{
@@ -713,6 +749,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "devis"
       referencedColumns: ["organisation_id","id"]
+    },{
+      foreignKeyName: "liens_publics_organisation_id_devis_id_fkey"
+      columns: ["organisation_id","devis_id"]
+isOneToOne: false
+      referencedRelation: "v_alertes_prix"
+      referencedColumns: ["organisation_id","devis_id"]
     },{
       foreignKeyName: "liens_publics_organisation_id_devis_id_fkey"
       columns: ["organisation_id","devis_id"]
@@ -1149,14 +1191,14 @@ isOneToOne: false
                   ]
                 },"referentiel_calcul": {
                   Row: {
-                    "minutes_par_m2_couche": number | null,"organisation_id": string,"rendement_max": number | null,"rendement_min": number | null,"sechage_recouvrable_h": number | null,"statut_verification": Database["public"]['Enums']["statut_verification"],"type_produit": string
+                    "formats_ml": (number)[] | null,"minutes_par_m2_couche": number | null,"organisation_id": string,"rendement_max": number | null,"rendement_min": number | null,"sechage_recouvrable_h": number | null,"statut_verification": Database["public"]['Enums']["statut_verification"],"type_produit": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "minutes_par_m2_couche"?: number | null,"organisation_id": string,"rendement_max"?: number | null,"rendement_min"?: number | null,"sechage_recouvrable_h"?: number | null,"statut_verification"?: Database["public"]['Enums']["statut_verification"],"type_produit": string
+                    "formats_ml"?: (number)[] | null,"minutes_par_m2_couche"?: number | null,"organisation_id": string,"rendement_max"?: number | null,"rendement_min"?: number | null,"sechage_recouvrable_h"?: number | null,"statut_verification"?: Database["public"]['Enums']["statut_verification"],"type_produit": string
                   }
                   Update: {
-                    "minutes_par_m2_couche"?: number | null,"organisation_id"?: string,"rendement_max"?: number | null,"rendement_min"?: number | null,"sechage_recouvrable_h"?: number | null,"statut_verification"?: Database["public"]['Enums']["statut_verification"],"type_produit"?: string
+                    "formats_ml"?: (number)[] | null,"minutes_par_m2_couche"?: number | null,"organisation_id"?: string,"rendement_max"?: number | null,"rendement_min"?: number | null,"sechage_recouvrable_h"?: number | null,"statut_verification"?: Database["public"]['Enums']["statut_verification"],"type_produit"?: string
                   }
                   Relationships: [
                     {
@@ -1229,14 +1271,14 @@ isOneToOne: false
                   ]
                 },"teintes": {
                   Row: {
-                    "apercu_hex": string | null,"code_fabricant": string | null,"code_ncs": string | null,"code_ral": string | null,"created_at": string,"id": string,"marque": string | null,"nom": string,"organisation_id": string,"statut_verification": Database["public"]['Enums']["statut_verification"]
+                    "actif": boolean,"apercu_hex": string | null,"code_fabricant": string | null,"code_ncs": string | null,"code_ral": string | null,"created_at": string,"id": string,"marque": string | null,"nom": string,"organisation_id": string,"source_verification": string | null,"statut_verification": Database["public"]['Enums']["statut_verification"],"updated_at": string,"verifie_le": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "apercu_hex"?: string | null,"code_fabricant"?: string | null,"code_ncs"?: string | null,"code_ral"?: string | null,"created_at"?: string,"id"?: string,"marque"?: string | null,"nom": string,"organisation_id": string,"statut_verification"?: Database["public"]['Enums']["statut_verification"]
+                    "actif"?: boolean,"apercu_hex"?: string | null,"code_fabricant"?: string | null,"code_ncs"?: string | null,"code_ral"?: string | null,"created_at"?: string,"id"?: string,"marque"?: string | null,"nom": string,"organisation_id": string,"source_verification"?: string | null,"statut_verification"?: Database["public"]['Enums']["statut_verification"],"updated_at"?: string,"verifie_le"?: string | null
                   }
                   Update: {
-                    "apercu_hex"?: string | null,"code_fabricant"?: string | null,"code_ncs"?: string | null,"code_ral"?: string | null,"created_at"?: string,"id"?: string,"marque"?: string | null,"nom"?: string,"organisation_id"?: string,"statut_verification"?: Database["public"]['Enums']["statut_verification"]
+                    "actif"?: boolean,"apercu_hex"?: string | null,"code_fabricant"?: string | null,"code_ncs"?: string | null,"code_ral"?: string | null,"created_at"?: string,"id"?: string,"marque"?: string | null,"nom"?: string,"organisation_id"?: string,"source_verification"?: string | null,"statut_verification"?: Database["public"]['Enums']["statut_verification"],"updated_at"?: string,"verifie_le"?: string | null
                   }
                   Relationships: [
                     {
@@ -1282,7 +1324,21 @@ isOneToOne: false
                 }
           }
           Views: {
-            "v_chantiers": {
+            "v_alertes_prix": {
+                  Row: {
+                    "conditionnement_id": string | null,"contenance": number | null,"designation": string | null,"devis_id": string | null,"marque": string | null,"numero": string | null,"objet": string | null,"organisation_id": string | null,"prix_achat_retenu_cents": number | null,"prix_actuel_cents": number | null,"produit_id": string | null,"statut": Database["public"]['Enums']["statut_devis"] | null,"unite_mesure": string | null
+                  }
+                  ComputedFields: never
+                  Relationships: [
+                    {
+      foreignKeyName: "devis_organisation_id_fkey"
+      columns: ["organisation_id"]
+isOneToOne: false
+      referencedRelation: "organisations"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"v_chantiers": {
                   Row: {
                     "accepte_ttc_cents": number | null,"adresse_ligne1": string | null,"adresse_ligne2": string | null,"client_id": string | null,"code_postal": string | null,"created_at": string | null,"date_debut_prevue": string | null,"duree_estimee_jours": number | null,"engage_cents": number | null,"id": string | null,"nom": string | null,"notes": string | null,"organisation_id": string | null,"reste_a_facturer_cents": number | null,"reste_a_payer_cents": number | null,"statut": Database["public"]['Enums']["statut_chantier"] | null,"statut_affiche": string | null,"teinte_id": string | null,"updated_at": string | null,"ville": string | null
                   }
@@ -1348,6 +1404,12 @@ isOneToOne: false
       foreignKeyName: "devis_organisation_id_devis_precedent_id_fkey"
       columns: ["organisation_id","devis_precedent_id"]
 isOneToOne: false
+      referencedRelation: "v_alertes_prix"
+      referencedColumns: ["organisation_id","devis_id"]
+    },{
+      foreignKeyName: "devis_organisation_id_devis_precedent_id_fkey"
+      columns: ["organisation_id","devis_precedent_id"]
+isOneToOne: false
       referencedRelation: "v_devis"
       referencedColumns: ["organisation_id","id"]
     },{
@@ -1388,6 +1450,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "devis"
       referencedColumns: ["organisation_id","id"]
+    },{
+      foreignKeyName: "factures_organisation_id_devis_id_fkey"
+      columns: ["organisation_id","devis_id"]
+isOneToOne: false
+      referencedRelation: "v_alertes_prix"
+      referencedColumns: ["organisation_id","devis_id"]
     },{
       foreignKeyName: "factures_organisation_id_devis_id_fkey"
       columns: ["organisation_id","devis_id"]
@@ -1493,7 +1561,13 @@ isOneToOne: false
 "fichier_protege":
 { Args: { "p_chemin": string }; Returns: boolean
                            },
+"importer_produits":
+{ Args: { "p_lignes": Json,"p_organisation_id": string }; Returns: Json
+                           },
 "initialiser_calcul":
+{ Args: { "p_organisation_id": string }; Returns: undefined
+                           },
+"initialiser_catalogue":
 { Args: { "p_organisation_id": string }; Returns: undefined
                            },
 "initialiser_organisation":

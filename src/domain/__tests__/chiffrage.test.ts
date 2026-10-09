@@ -45,7 +45,7 @@ describe('lecture des décimaux de la base', () => {
 describe('cohérence des systèmes (avertissements)', () => {
   const base: EntreeSysteme = {
     cible: 'murs', support: 'ancienne_peinture', zoneHumide: false, taches: false, exterieur: false, preparations: ['lessivage', 'poncage'],
-    typeProduit: 'acrylique', usagesProduit: [], couches: 2, couchesRecommandees: null,
+    typeProduit: 'acrylique', usagesProduit: [], couches: 2, couchesRecommandees: null, typeElement: null, finitionProduit: null, finitionPoste: null,
   };
   it('système correct : aucun avertissement', () => expect(avertissementsSysteme(base)).toEqual([]));
   it.each([

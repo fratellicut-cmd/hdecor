@@ -25,6 +25,8 @@ export type ProduitCalc = {
   /** Séchage avant recouvrement en dixièmes d'heure (6 h -> 60). */
   sechageDixiemesH: number | null;
   usages: string[];
+  /** Finition du produit (catalogue), si renseignée. */
+  finition: Finition | null;
   aVerifier: boolean;
   /** Produit retiré du catalogue (encore utilisé par un poste). */
   archive: boolean;
@@ -63,6 +65,8 @@ export type ParametresCalcul = {
   /** Formats usuels quand aucun produit du catalogue n'est choisi : ml (litres) et g (kg). */
   formatsDefautMl: number[];
   formatsDefautG: number[];
+  /** Formats usuels propres à un type (une laque ne se vend pas en 15 L) ; sinon les formats généraux. */
+  formatsParType: Partial<Record<TypeProduit, number[]>>;
   hauteurAlerteMm: number;
   /** Pots sans prix : reste toléré, en points de base du besoin (R3). */
   toleranceResteBp: number;
@@ -79,6 +83,8 @@ export type PosteCalc = {
   cleSurface: string;
   hauteurMm: number;
   cible: 'murs' | 'plafond' | 'element';
+  /** Type de l'élément peint (« facade », « plinthe »…), null pour murs et plafond. */
+  typeElement: string | null;
   support: Support;
   zoneHumide: boolean;
   taches: boolean;
@@ -152,8 +158,18 @@ export const cleTeinte = (t: string) => t.normalize('NFC').toLocaleLowerCase('fr
 
 const cleAchat = (produit: string, teinte: string | null, finition: string | null) => `${produit}|${teinte ?? ''}|${finition ?? ''}`;
 
-const formatsDefaut = (p: ParametresCalcul, unite: 'L' | 'kg'): Format[] =>
-  (unite === 'kg' ? p.formatsDefautG : p.formatsDefautMl).map((c) => ({ contenanceMl: c, prixCents: null }));
+/**
+ * Le coefficient de support corrige l'ABSORPTION d'une peinture (impression,
+ * sous-couche, finition) par un support poreux. Il ne s'applique pas à un
+ * enduit ni à une matière au kg : sa consommation dépend de l'épaisseur et des
+ * passes, et elle est saisie pertes comprises.
+ */
+const sensibleAuSupport = (type: TypeProduit | null, unite: 'L' | 'kg') => type !== 'enduit' && unite === 'L';
+
+const ELEMENTS_A_HAUTEUR_HOMME = ['plinthe', 'porte', 'fenetre', 'radiateur', 'volet'];
+
+const formatsDefaut = (p: ParametresCalcul, unite: 'L' | 'kg', type: TypeProduit | null): Format[] =>
+  ((type ? p.formatsParType[type] : undefined) ?? (unite === 'kg' ? p.formatsDefautG : p.formatsDefautMl)).map((c) => ({ contenanceMl: c, prixCents: null }));
 
 const heures = (dixiemes: number) => `${Math.trunc(dixiemes / 10)}${dixiemes % 10 ? `,${dixiemes % 10}` : ''} h`;
 
@@ -165,8 +181,9 @@ export function calculerPoste(poste: PosteCalc, p: ParametresCalcul): ResultatPo
   const unite = poste.produit?.unite ?? uniteDuType(type);
   const coef = p.coefSupport[poste.support];
   const coefSupportBp = coef?.bp ?? 10_000;
+  const coefPoste = sensibleAuSupport(type, unite) ? coefSupportBp : 10_000;
   if (!coef) manques.push('Coefficient du support non paramétré (1,00 appliqué).');
-  else if (coef.aVerifier) aVerifier.push('coefficient du support');
+  else if (coef.aVerifier && sensibleAuSupport(type, unite)) aVerifier.push('coefficient du support');
 
   // Surface nulle (ouvertures ≥ murs…) : rien à acheter, le métré est à vérifier.
   const surfaceMm2 = 'mm2' in poste.surface && poste.surface.mm2 > 0n ? poste.surface.mm2 : null;
@@ -196,9 +213,9 @@ export function calculerPoste(poste: PosteCalc, p: ParametresCalcul): ResultatPo
   let pots: ChoixPots | null = null;
   let coutMatiere: bigint | null = null;
   if (surfaceMm2 !== null && rendement !== null) {
-    quantite = calculerQuantite({ surfaceMm2, rendementCentiemes: rendement, coefSupportBp, couches: poste.couches, margePerteBp: marge });
+    quantite = calculerQuantite({ surfaceMm2, rendementCentiemes: rendement, coefSupportBp: coefPoste, couches: poste.couches, margePerteBp: marge });
     try {
-      pots = choisirPots(quantite.aCouvrirMl, poste.produit?.formats.length ? poste.produit.formats : formatsDefaut(p, unite), { toleranceResteBp: p.toleranceResteBp });
+      pots = choisirPots(quantite.aCouvrirMl, poste.produit?.formats.length ? poste.produit.formats : formatsDefaut(p, unite, type), { toleranceResteBp: p.toleranceResteBp });
       coutMatiere = pots.retenue.coutCents;
     } catch (e) {
       if (!(e instanceof ErreurPots)) throw e;
@@ -226,11 +243,16 @@ export function calculerPoste(poste: PosteCalc, p: ParametresCalcul): ResultatPo
       if (e.aVerifier) aVerifier.push(`étape « ${e.libelle} »`);
       if (e.minutesParM2Centiemes === 0) { manques.push(`Temps de l’étape « ${e.libelle} » non renseigné.`); incomplet.temps = true; }
       if (e.produit && e.consommationE4) {
-        // S/1e6 m² × conso/1e4 (L ou kg par m², pertes comprises).
         matierePreparation.push({
           cle: cleAchat(`p:${e.produit.id}`, null, null), libelle: e.produit.libelle, reference: e.produit.reference, unite: e.produit.unite,
-          formats: e.produit.formats.length ? e.produit.formats : formatsDefaut(p, e.produit.unite),
-          quantite: { num: surfaceMm2 * BigInt(e.consommationE4), den: 10_000_000_000n }, aVerifier: e.produit.aVerifier || e.aVerifier,
+          formats: e.produit.formats.length ? e.produit.formats : formatsDefaut(p, e.produit.unite, e.produit.type),
+          // S/1e6 m² × conso/1e4 par m² et par passe (pertes comprises) × passes, corrigé du support
+          // (coef/1e4) seulement pour une peinture : S × conso × passes / (1e6 × coef).
+          quantite: {
+            num: surfaceMm2 * BigInt(e.consommationE4) * BigInt(e.couches),
+            den: 1_000_000n * BigInt(sensibleAuSupport(e.produit.type, e.produit.unite) ? coefSupportBp : 10_000),
+          },
+          aVerifier: e.produit.aVerifier || e.aVerifier,
         });
       } else if (e.typeProduit) {
         const r = p.referentiel[e.typeProduit];
@@ -238,8 +260,11 @@ export function calculerPoste(poste: PosteCalc, p: ParametresCalcul): ResultatPo
           const u = uniteDuType(e.typeProduit);
           matierePreparation.push({
             cle: cleAchat(`t:${e.typeProduit}`, null, null), libelle: `${LIBELLES_TYPE[e.typeProduit]} (produit à choisir)`, reference: null, unite: u,
-            formats: formatsDefaut(p, u), aVerifier: true,
-            quantite: calculerQuantite({ surfaceMm2, rendementCentiemes: r.rendementMinCentiemes, coefSupportBp, couches: e.couches, margePerteBp: marge }).exacte,
+            formats: formatsDefaut(p, u, e.typeProduit), aVerifier: true,
+            quantite: calculerQuantite({
+              surfaceMm2, rendementCentiemes: r.rendementMinCentiemes, couches: e.couches, margePerteBp: marge,
+              coefSupportBp: sensibleAuSupport(e.typeProduit, u) ? coefSupportBp : 10_000,
+            }).exacte,
           });
         } else {
           manques.push(`Matière de l’étape « ${e.libelle} » non comptée : rendement de « ${LIBELLES_TYPE[e.typeProduit]} » à renseigner.`);
@@ -257,10 +282,13 @@ export function calculerPoste(poste: PosteCalc, p: ParametresCalcul): ResultatPo
   const avertissements = type ? avertissementsSysteme({
     cible: poste.cible, support: poste.support, zoneHumide: poste.zoneHumide, taches: poste.taches, exterieur: poste.exterieur,
     preparations: poste.etapes.map((e) => e.code), typeProduit: type, usagesProduit: poste.produit?.usages ?? [],
-    couches: poste.couches, couchesRecommandees: poste.produit?.couchesRecommandees ?? null,
+    couches: poste.couches, couchesRecommandees: poste.produit?.couchesRecommandees ?? null, typeElement: poste.typeElement,
+    finitionProduit: poste.produit?.finition ?? null, finitionPoste: poste.finition,
   }) : [];
   if (poste.produit?.archive) avertissements.push('Ce produit a été retiré du catalogue : choisissez-en un autre ou réactivez-le.');
-  if (poste.hauteurMm > p.hauteurAlerteMm) {
+  // Hauteur de la pièce : vaut pour les murs, le plafond, une façade, un escalier, une rambarde… ;
+  // pas pour un élément posé à hauteur d'homme (plinthe, porte, fenêtre, radiateur, volet).
+  if (poste.hauteurMm > p.hauteurAlerteMm && (poste.cible !== 'element' || !ELEMENTS_A_HAUTEUR_HOMME.includes(poste.typeElement ?? ''))) {
     avertissements.push(`Hauteur ${formaterLongueur(BigInt(poste.hauteurMm))} : prévoir échafaudage ou escabeau adapté${poste.majorationTempsBp ? '' : ', et une majoration du temps (réglages avancés du poste)'}.`);
   }
 
@@ -382,7 +410,7 @@ export function listeAchat(postes: { poste: PosteCalc; resultat: ResultatPoste }
       const type = pr?.type ?? poste.typeProduit!;
       ajouter(cleAchat(pr ? `p:${pr.id}` : `t:${type}`, poste.teinte?.id ?? null, poste.finition), {
         libelle: pr?.libelle ?? `${LIBELLES_TYPE[type]} (produit à choisir)`, reference: pr?.reference ?? null, unite: resultat.unite,
-        formats: pr?.formats.length ? pr.formats : formatsDefaut(p, resultat.unite), aVerifier: pr ? pr.aVerifier : true,
+        formats: pr?.formats.length ? pr.formats : formatsDefaut(p, resultat.unite, type), aVerifier: pr ? pr.aVerifier : true,
         quantite: resultat.quantite.exacte,
       }, poste.teinte?.nom ?? null, poste.finition ? LIBELLES_FINITION[poste.finition] : null, poste.libelle, true);
     } else {

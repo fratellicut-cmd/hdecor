@@ -15,6 +15,9 @@ export default async function PageNouveauPoste({ params, searchParams }: PagePro
   const c = await calculerChantier(id.data);
   if (!c) notFound();
   const options = optionsPoste(c);
+  const pieceId = piece.success && options.pieces.some((p) => p.id === piece.data) ? piece.data : options.pieces[0]?.id ?? '';
+  // Teinte proposée : celle de la pièce, sinon celle du chantier (nuancier).
+  const teinteParDefaut = c.pieces.find((p) => p.id === pieceId)?.teinte_id ?? c.chantier.teinte_id ?? null;
   return (
     <>
       <div className="mb-4 flex flex-col gap-1">
@@ -22,9 +25,9 @@ export default async function PageNouveauPoste({ params, searchParams }: PagePro
         <h1 className="text-2xl font-bold">Nouveau poste de peinture</h1>
       </div>
       <FormulairePoste chantierId={id.data} options={options} poste={{
-        piece_id: piece.success && options.pieces.some((p) => p.id === piece.data) ? piece.data : options.pieces[0]?.id ?? '',
+        piece_id: pieceId,
         cible: 'murs', element_id: null, support: 'ancienne_peinture', zone_humide: false, taches: false, exterieur: false, produit_id: null,
-        type_produit: 'acrylique', teinte_id: null, teinte_libre: null, finition: null, couches: 2, rendement_force: null, marge_perte_bp: null,
+        type_produit: 'acrylique', teinte_id: teinteParDefaut, teinte_libre: null, finition: null, couches: 2, rendement_force: null, marge_perte_bp: null,
         majoration_temps_bp: 0, etapes: [],
       }} />
     </>

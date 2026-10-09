@@ -41,6 +41,8 @@ export const schemaChantier = z.object({
   statut: z.enum(STATUTS_CHANTIER, { error: 'Statut invalide.' }),
   date_debut_prevue: dateFacultative,
   notes: texteFacultatif(2000),
+  /** Teinte du nuancier associée au chantier (facultative). */
+  teinte_id: uuidFacultatif,
 });
 
 export const MURS_MAX = 30;
@@ -58,10 +60,12 @@ export const schemaPiece = z.object({
   multiplicateur: entier(1, 50, 'Nombre de pièces identiques'),
   etat_support: texteFacultatif(200),
   notes: texteFacultatif(2000),
+  /** Teinte du nuancier associée à la pièce (facultative). */
+  teinte_id: uuidFacultatif,
 }).transform((v, ctx) => {
   const commun = {
     nom: v.nom, etage: v.etage, mode_saisie: v.mode_saisie, hauteur_mm: v.hauteur_mm, multiplicateur: v.multiplicateur,
-    etat_support: v.etat_support, notes: v.notes,
+    etat_support: v.etat_support, notes: v.notes, teinte_id: v.teinte_id,
   };
   if (v.mode_saisie === 'rectangle') {
     if (v.longueur_mm === null) ctx.addIssue({ code: 'custom', path: ['longueur_mm'], message: 'Longueur : obligatoire.' });

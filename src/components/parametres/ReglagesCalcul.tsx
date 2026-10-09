@@ -32,8 +32,8 @@ function Ligne({ action, titre, aVerifier, caches, children }: {
   );
 }
 
-export function LigneReferentiel({ type, libelle, min, max, minutes, sechage, aVerifier }: {
-  type: string; libelle: string; min: string; max: string; minutes: string; sechage: string; aVerifier: boolean;
+export function LigneReferentiel({ type, libelle, min, max, minutes, sechage, formats, aVerifier }: {
+  type: string; libelle: string; min: string; max: string; minutes: string; sechage: string; formats: string; aVerifier: boolean;
 }) {
   // Enduit : au kg et par passe (la consommation dépend du produit : lissage, rebouchage…).
   const u = type === 'enduit' ? 'kg par passe' : 'L';
@@ -52,6 +52,8 @@ export function LigneReferentiel({ type, libelle, min, max, minutes, sechage, aV
             <Champ libelle="Séchage avant recouvrement (h)" nom="sechage_recouvrable_h" inputMode="decimal" defaultValue={v.sechage_recouvrable_h ?? sechage}
               erreur={e.sechage_recouvrable_h} aide="Vide : non compté (signalé)." />
           </div>
+          <Champ libelle={`Formats usuels sans produit choisi (${type === 'enduit' ? 'kg' : 'L'}), séparés par « ; »`} nom="formats_ml" defaultValue={v.formats_ml ?? formats}
+            erreur={e.formats_ml} aide="Vide : formats généraux (Métré et pots). Exemple pour une laque : 0,5 ; 1 ; 2,5." />
         </>
       )}
     </Ligne>

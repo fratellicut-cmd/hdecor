@@ -79,7 +79,7 @@ export async function calculerChantier(id: string) {
     // Produits actifs, et produits archivés encore utilisés par un poste (signalés).
     supabase.from('produits').select('*').order('marque').order('designation'),
     supabase.from('conditionnements').select('*').eq('actif', true),
-    supabase.from('teintes').select('id, nom, marque, code_ral, code_ncs, code_fabricant, statut_verification').order('nom'),
+    supabase.from('teintes').select('id, nom, marque, code_ral, code_ncs, code_fabricant, statut_verification, actif').order('nom'),
     supabase.from('referentiel_calcul').select('*'),
     supabase.from('coefficients_support').select('*'),
     supabase.from('etapes_preparation').select('*').eq('actif', true).order('ordre'),
@@ -105,9 +105,11 @@ export async function calculerChantier(id: string) {
     couchesRecommandees: pr.couches_recommandees,
     sechageDixiemesH: dixiemes(pr.sechage_recouvrable_h),
     usages: pr.usages,
+    finition: pr.finition as Finition | null,
     aVerifier: pr.statut_verification !== 'verifie',
     archive: !pr.actif,
-    formats: lesConditionnements.filter((c) => c.produit_id === pr.id)
+    // Formats archivés exclus : on ne propose pas d'acheter un pot qui n'existe plus.
+    formats: lesConditionnements.filter((c) => c.produit_id === pr.id && c.actif)
       .map((c) => ({ contenanceMl: c.contenance, prixCents: c.prix_achat_ht_cents === null ? null : BigInt(c.prix_achat_ht_cents), id: c.id })),
   });
   const produitsCalc = new Map(lesProduits.map((pr) => [pr.id, produitCalc(pr)]));
@@ -131,6 +133,7 @@ export async function calculerChantier(id: string) {
     formatsDefautG: p.formats_sacs_g,
     hauteurAlerteMm: p.hauteur_alerte_mm,
     toleranceResteBp: p.tolerance_reste_bp,
+    formatsParType: Object.fromEntries(verifier(referentiel, 'référentiel').filter((r) => r.formats_ml?.length).map((r) => [r.type_produit, r.formats_ml!])),
     coefSupport: Object.fromEntries(verifier(coefficients, 'coefficients').map((c) => [c.support, { bp: c.coef_rendement_bp, aVerifier: c.statut_verification !== 'verifie' }])),
     referentiel: Object.fromEntries(verifier(referentiel, 'référentiel').map((r) => [r.type_produit, {
       rendementMinCentiemes: centiemes(r.rendement_min),
@@ -146,6 +149,7 @@ export async function calculerChantier(id: string) {
     const mult = BigInt(piece.multiplicateur);
     let surface: PosteCalc['surface'];
     let cibleLibelle: string;
+    let typeElement: string | null = null;
     if (!piece.surfaces) { surface = { manque: piece.erreur ?? 'Pièce incomplète.' }; cibleLibelle = poste.cible; }
     else if (poste.cible === 'murs') { surface = { mm2: piece.surfaces.totalMursMm2 }; cibleLibelle = 'murs'; }
     else if (poste.cible === 'plafond') {
@@ -159,11 +163,12 @@ export async function calculerChantier(id: string) {
       }) : { manque: 'Élément introuvable.' };
       surface = 'mm2' in s ? { mm2: s.mm2 * mult } : s;
       cibleLibelle = el ? libelleElement(el.type) : 'élément';
+      typeElement = el?.type ?? null;
     }
     const posteCalc: PosteCalc = {
       id: poste.id,
       libelle: `${piece.nom}${piece.multiplicateur > 1 ? ` (× ${piece.multiplicateur})` : ''} : ${cibleLibelle}`,
-      surface, cible: poste.cible as PosteCalc['cible'], support: poste.support as Support,
+      surface, cible: poste.cible as PosteCalc['cible'], typeElement, support: poste.support as Support,
       cleSurface: `${poste.piece_id}|${poste.cible}|${poste.element_id ?? ''}`, hauteurMm: piece.hauteur_mm,
       zoneHumide: poste.zone_humide, taches: poste.taches, exterieur: poste.exterieur,
       etapes: etapesCalc.filter((e) => lesPrepas.some((x) => x.poste_id === poste.id && x.etape_id === e.id)),

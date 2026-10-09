@@ -11,16 +11,16 @@ const { pdfListeAchat } = await import('../pdf/liste-achat');
 
 const params: ParametresCalcul = {
   margePerteBp: 1000, coefMargeBp: 13_000, tauxHoraireCents: 4500n, formatsDefautMl: [1000, 2500, 5000, 10_000, 15_000],
-  formatsDefautG: [5000, 15_000, 25_000], hauteurAlerteMm: 3000, toleranceResteBp: 1000, coefSupport: { ancienne_peinture: { bp: 10_000, aVerifier: true } },
+  formatsDefautG: [5000, 15_000, 25_000], hauteurAlerteMm: 3000, toleranceResteBp: 1000, formatsParType: {}, coefSupport: { ancienne_peinture: { bp: 10_000, aVerifier: true } },
   referentiel: { acrylique: { rendementMinCentiemes: 1000, minutesParM2CoucheCentiemes: 15, sechageDixiemesH: null, aVerifier: true } },
 };
 const poste: PosteCalc = {
-  id: 'm', libelle: 'Chambre : murs', surface: { mm2: 31_926_800n }, cleSurface: 'c|murs|', hauteurMm: 2500, cible: 'murs',
+  id: 'm', libelle: 'Chambre : murs', surface: { mm2: 31_926_800n }, cleSurface: 'c|murs|', hauteurMm: 2500, cible: 'murs', typeElement: null,
   support: 'ancienne_peinture', zoneHumide: false, taches: false, exterieur: false,
   etapes: [], couches: 2, rendementForceCentiemes: null, margePerteBp: null, majorationTempsBp: 0, typeProduit: null,
   teinte: { id: 't', nom: 'Blanc cassé (fictif)' }, finition: 'velours',
   produit: { id: 'p', libelle: 'Acrylique mat (fictif)', reference: 'REF-FICTIVE', type: 'acrylique', unite: 'L', rendementCentiemes: 1000,
-    couchesRecommandees: 2, sechageDixiemesH: null, usages: ['mur'], aVerifier: true, archive: false,
+    couchesRecommandees: 2, sechageDixiemesH: null, usages: ['mur'], finition: null, aVerifier: true, archive: false,
     formats: [{ contenanceMl: 2500, prixCents: 3000n }, { contenanceMl: 5000, prixCents: 5000n }, { contenanceMl: 10_000, prixCents: 9000n }] },
 };
 const liste = listeAchat([{ poste, resultat: calculerPoste(poste, params) }],

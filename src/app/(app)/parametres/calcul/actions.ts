@@ -29,6 +29,13 @@ const confirme = z.preprocess((v) => v === 'on', z.boolean());
  */
 const statut = (coche: boolean, modifie: boolean, actuel: string) => (coche ? 'verifie' : modifie ? 'a_verifier' : actuel) as 'verifie' | 'a_verifier' | 'fictif';
 
+/** « 1 ; 2,5 ; 5 » (L ou kg, 3 décimales au plus) -> ml ou g, dédoublonnés et triés. */
+const formats = (libelle: string) => z.preprocess((v) => String(v ?? '').split(';').map((f) => f.trim().replace(/\s*(l|kg)$/i, '')).filter(Boolean)
+  .map((f) => { const ml = lireDecimal(f, 3); return ml === null ? Number.NaN : Number(ml); }),
+z.array(z.number().int().min(100, { error: `${libelle} : format invalide (exemple : 2,5).` }).max(100_000, { error: `${libelle} : format trop grand.` }))
+  .min(1, { error: `${libelle} : au moins un format.` }).max(10, { error: `${libelle} : 10 formats au maximum.` })
+  .transform((l) => [...new Set(l)].sort((a, b) => a - b)));
+
 const schemaReferentiel = z.object({
   type_produit: z.enum(TYPES_PRODUIT),
   // Les deux vides : rendement à renseigner (le calcul le signale) ; jamais un seul.
@@ -36,6 +43,7 @@ const schemaReferentiel = z.object({
   rendement_max: decimal('Rendement maximal', 2, 0.01, 9999, true),
   minutes_par_m2_couche: decimal('Temps par m² et par couche', 2, 0, 999, true),
   sechage_recouvrable_h: decimal('Séchage avant recouvrement', 1, 0, 9999, true),
+  formats_ml: z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? null : v), z.union([z.null(), formats('Formats')])),
   confirme,
 }).superRefine((v, ctx) => {
   if ((v.rendement_min === null) !== (v.rendement_max === null)) {
@@ -61,6 +69,8 @@ export async function enregistrerReferentiel(_: EtatFormulaire, formData: FormDa
     organisation_id: session.organisationId, type_produit: lu.data.type_produit,
     rendement_min: lu.data.rendement_min, rendement_max: lu.data.rendement_max, minutes_par_m2_couche: lu.data.minutes_par_m2_couche,
     sechage_recouvrable_h: lu.data.sechage_recouvrable_h,
+    // Formats usuels : un choix d'achat, pas une donnée technique (sans effet sur « À VÉRIFIER »).
+    formats_ml: lu.data.formats_ml,
     statut_verification: statut(lu.data.confirme, modifie, actuel?.statut_verification ?? 'a_verifier'),
   });
   if (error) return { message: ECHEC, valeurs: valeursTexte(formData) };
@@ -148,13 +158,6 @@ export async function actionConsommable(_: EtatFormulaire, formData: FormData): 
   revalidatePath('/parametres', 'layout');
   return { succes: quoi.data === 'confirmer' ? 'Confirmé.' : 'Retiré.' };
 }
-
-/** « 1 ; 2,5 ; 5 » (L ou kg, 3 décimales au plus) -> ml ou g, dédoublonnés et triés. */
-const formats = (libelle: string) => z.preprocess((v) => String(v ?? '').split(';').map((f) => f.trim().replace(/\s*(l|kg)$/i, '')).filter(Boolean)
-  .map((f) => { const ml = lireDecimal(f, 3); return ml === null ? Number.NaN : Number(ml); }),
-z.array(z.number().int().min(100, { error: `${libelle} : format invalide (exemple : 2,5).` }).max(100_000, { error: `${libelle} : format trop grand.` }))
-  .min(1, { error: `${libelle} : au moins un format.` }).max(10, { error: `${libelle} : 10 formats au maximum.` })
-  .transform((l) => [...new Set(l)].sort((a, b) => a - b)));
 
 const schemaMetre = z.object({
   porte_largeur_mm: z.preprocess((v) => lireLongueurMm(String(v ?? ''), 'cm') ?? Number.NaN,

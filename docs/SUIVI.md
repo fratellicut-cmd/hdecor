@@ -32,3 +32,23 @@ Points relevés par les agents de contrôle, acceptés pour la phase en cours ma
 | Phase 2 (audit métier, boucle 3) | Enduit : valeur de départ 1 m²/kg par passe, probablement prudente pour un lissage (fiches : 0,45 à 0,70 kg/m²). À régler sur la fiche du produit utilisé. | Validation de Yorick |
 | Phase 2 (relecture, boucle 3) | Renvoi après réponse perdue AVEC une saisie corrigée entre-temps : la première version est gardée (upsert sans mise à jour), sans message. Comparer avec la fiche existante et prévenir. | 3 |
 | Phase 2 (relecture, boucle 3) | Migrations 20261010000100 et 0300 modifiées en place avant tout déploiement : toute base locale qui les a appliquées doit être recréée (`npm run local:start`). À partir du premier déploiement, une nouvelle migration pour chaque changement. | Avant mise en production |
+
+## Bilan de la Phase 3 (catalogue) sur les points ci-dessus
+
+| Point | État |
+|---|---|
+| Matière d'étape avec produit du catalogue (couches, coefficient de support) | **Fait** : Réglages de calcul > Temps de préparation > « Matière par produit du catalogue ». |
+| Rebouchage et bande à joint non chiffrables | **En partie** : enduit de rebouchage ou à joint chiffré par produit du catalogue + consommation par m² et par passe. La bande (vendue au mètre) relève des consommables. |
+| Formats par type de produit | **Fait** : Réglages de calcul > Rendements par type > « Formats usuels ». |
+| Teinte libre -> catalogue | **Fait** : nuancier ; teinte associable à la pièce et au chantier, proposée d'office sur un nouveau poste. La saisie libre reste possible. |
+| Contrôles finition produit / poste, façade sans « Extérieur », façade sur béton ou enduit, carrelage, hauteur des éléments | **Fait**. |
+| Pots, petits formats chers | **En partie** : les prix du catalogue font choisir au coût. Alternatives à plusieurs formats affichées : à faire. | 
+| Avertissement métal malgré un poste antirouille sur le même élément | Reporté : 4 (devis, regroupement des postes). |
+| Pièce en L, modification d'une ouverture, alertes d'aperçu, « Pièce humide » au niveau de la pièce, support par défaut selon la cible | Reporté : 8 (recette, confort). |
+| Recherche dans la liste des clients (création de chantier) | Reporté : 4 (devis : même sélecteur). |
+| Renvoi après réponse perdue avec une saisie corrigée | Reporté : 4. |
+| Phase 3 (relecture interne) | L'alerte de prix compare le prix retenu dans un devis au prix actuel : effective quand les devis existeront (Phase 4) ; testée en SQL. |
+| Phase 3 (audits, boucle 1) | Codes RAL et NCS : texte libre, sans contrôle de format (RAL Classic à 4 chiffres, NCS « S 0502-Y »). | 8 (recette) |
+| Phase 3 (audits, boucle 1) | Formats usuels par type : choix d'achat, sans effet sur le statut « À VÉRIFIER » du référentiel (ce ne sont pas des données techniques). | Décision |
+| Phase 3 (audits, boucle 1) | Matière d'étape portée par un produit : consommation saisie « pertes comprises », sans marge de perte ajoutée (la marge s'applique au chemin « type de produit »). | Décision, à confirmer par Yorick |
+

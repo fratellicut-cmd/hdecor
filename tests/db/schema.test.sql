@@ -781,7 +781,7 @@ select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prokind = 'f' and p.prorettype <> 'trigger'::regtype
      and has_function_privilege('authenticated', p.oid, 'execute')),
-  'aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,copier_poste,deductions_bien_formees,definir_preparations,dupliquer_piece,effacer_client,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,organisation_du_chemin,rechercher_clients,refuser_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,ventilation_attendue,ventilation_bien_formee',
+  'aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,copier_poste,deductions_bien_formees,definir_preparations,dupliquer_piece,effacer_client,emettre_devis,emettre_facture,est_membre,importer_produits,marquer_facture_envoyee,nouvelle_version_devis,organisation_du_chemin,rechercher_clients,refuser_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,ventilation_attendue,ventilation_bien_formee',
   'sécurité : liste COMPLÈTE des fonctions appelables par une session');
 select tests.echoue($$select public.purger_journal_audit(now() - interval '20 years')$$, 'permission denied',
   'sécurité : purge du journal réservée au serveur');
@@ -1452,6 +1452,100 @@ select tests.echoue($$select public.copier_poste('aaaaaaaa-0000-0000-0000-000000
 select tests.echoue($$update public.postes_travaux set teinte_libre = '  ' where id = 'aaaaaaaa-0000-0000-0000-0000000d1e04'$$,
   'check', 'teinte libre : texte vide refusé');
 
+-- -----------------------------------------------------------------------------
+-- Phase 3 : catalogue
+-- -----------------------------------------------------------------------------
+select tests.egal((select count(*) from public.produits where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'
+  and marque = 'Exemple fictif' and statut_verification = 'fictif' and rendement_m2_par_unite is null and reference_fabricant is null), 2::bigint,
+  'catalogue : 2 produits d''exemple FICTIFS, sans référence ni rendement');
+select tests.egal((select count(*) from public.conditionnements c join public.produits p on p.id = c.produit_id
+  where p.marque = 'Exemple fictif' and c.prix_achat_ht_cents is not null), 0::bigint, 'catalogue : aucun prix inventé sur les exemples');
+select tests.egal((select count(*) from public.teintes where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and statut_verification = 'fictif'), 1::bigint,
+  'nuancier : une teinte d''exemple FICTIVE');
+select tests.echoue($$select public.initialiser_catalogue('aaaaaaaa-0000-0000-0000-00000000000a')$$, 'permission denied',
+  'catalogue : une session ne peut pas réinitialiser les exemples');
+
+-- Import : création, puis mise à jour (prix vide conservé, nouveau prix historisé, statut À VÉRIFIER).
+select set_config('tests.import', public.importer_produits('aaaaaaaa-0000-0000-0000-00000000000a', '[
+  {"marque": "Marque Test", "reference_fabricant": "REF-1", "designation": "Acrylique test", "type": "acrylique", "usages": ["mur"],
+   "finition": "mat", "unite_mesure": "L", "rendement": 10.5, "couches": 2, "sechage_h": 6,
+   "formats": [{"contenance": 2500, "prix_cents": 3000}, {"contenance": 10000, "prix_cents": 9000}]},
+  {"marque": "Marque Test", "designation": "Enduit sans référence", "type": "enduit", "usages": ["mur"], "unite_mesure": "kg",
+   "formats": [{"contenance": 5000, "prix_cents": null}]}
+]')::text, false);
+select tests.egal(current_setting('tests.import')::jsonb, '{"crees": 2, "mis_a_jour": 0}'::jsonb, 'import : 2 produits créés');
+select tests.egal((select statut_verification::text from public.produits where reference_fabricant = 'REF-1'), 'a_verifier', 'import : statut À VÉRIFIER');
+update public.produits set statut_verification = 'verifie', verifie_le = '2026-10-01', source_verification = 'fiche technique'
+where reference_fabricant = 'REF-1';
+select set_config('tests.import', public.importer_produits('aaaaaaaa-0000-0000-0000-00000000000a', '[
+  {"marque": " marque test ", "reference_fabricant": "ref-1", "designation": "Acrylique test v2", "type": "acrylique", "usages": ["mur", "plafond"],
+   "unite_mesure": "L", "formats": [{"contenance": 2500, "prix_cents": 3200}, {"contenance": 10000, "prix_cents": null}]}
+]')::text, false);
+select tests.egal(current_setting('tests.import')::jsonb, '{"crees": 0, "mis_a_jour": 1}'::jsonb, 'import : même marque + référence (casse, espaces) -> mise à jour');
+select tests.egal((select designation || ' ' || statut_verification::text || ' ' || coalesce(verifie_le::text, '-') from public.produits where reference_fabricant = 'REF-1'),
+  'Acrylique test v2 a_verifier -', 'import : une valeur importée redevient À VÉRIFIER');
+select tests.egal((select string_agg(c.contenance || '=' || c.prix_achat_ht_cents, ',' order by c.contenance) from public.conditionnements c
+  join public.produits p on p.id = c.produit_id where p.reference_fabricant = 'REF-1'), '2500=3200,10000=9000', 'import : prix vide conservé, prix changé appliqué');
+select tests.egal((select count(*) from public.historique_prix h join public.conditionnements c on c.id = h.conditionnement_id
+  join public.produits p on p.id = c.produit_id where p.reference_fabricant = 'REF-1'), 3::bigint, 'import : changement de prix historisé (3 entrées)');
+select tests.echoue($$insert into public.produits (organisation_id, marque, reference_fabricant, designation, type)
+  values ('aaaaaaaa-0000-0000-0000-00000000000a', 'MARQUE TEST', 'Ref-1', 'Doublon', 'acrylique')$$, 'duplicate key', 'produit : même référence dans la même marque refusée');
+-- Mise à jour partielle : colonnes absentes conservées ; rien de technique changé -> « vérifié » conservé.
+update public.produits set rendement_m2_par_unite = 11, couches_recommandees = 2, sechage_recouvrable_h = 6, fournisseur = 'Négoce',
+  statut_verification = 'verifie', verifie_le = '2026-10-01', source_verification = 'fiche' where reference_fabricant = 'REF-1';
+select public.importer_produits('aaaaaaaa-0000-0000-0000-00000000000a', '[
+  {"marque": "Marque Test", "reference_fabricant": "REF-1", "designation": "Acrylique test v2", "type": "acrylique",
+   "formats": [{"contenance": 2500, "prix_cents": 3200}]}
+]');
+select tests.egal((select concat_ws(' ', rendement_m2_par_unite, couches_recommandees, sechage_recouvrable_h, fournisseur, array_to_string(usages, ','), statut_verification, verifie_le)
+  from public.produits where reference_fabricant = 'REF-1'), '11.00 2 6.0 Négoce mur,plafond verifie 2026-10-01',
+  'import partiel (prix seuls) : rien d''effacé, vérification conservée');
+select public.importer_produits('aaaaaaaa-0000-0000-0000-00000000000a', '[
+  {"marque": "Marque Test", "reference_fabricant": "REF-1", "designation": "Acrylique test v2", "type": "acrylique", "rendement": "12.00"}
+]');
+select tests.egal((select statut_verification::text || ' ' || rendement_m2_par_unite from public.produits where reference_fabricant = 'REF-1'),
+  'a_verifier 12.00', 'import : rendement changé -> À VÉRIFIER');
+update public.produits set statut_verification = 'verifie', verifie_le = '2026-10-01', source_verification = 'fiche' where reference_fabricant = 'REF-1';
+select public.importer_produits('aaaaaaaa-0000-0000-0000-00000000000a', '[
+  {"marque": "Marque Test", "reference_fabricant": "REF-1", "designation": "Acrylique test v2", "type": "acrylique", "fiche_technique_url": " https://exemple.fr/nouvelle.pdf "}]');
+select tests.egal((select statut_verification::text || ' ' || fiche_technique_url from public.produits where reference_fabricant = 'REF-1'),
+  'a_verifier https://exemple.fr/nouvelle.pdf', 'import : lien de fiche changé (espaces retirés) -> À VÉRIFIER');
+select tests.echoue($$select public.importer_produits('aaaaaaaa-0000-0000-0000-00000000000a', '[
+  {"marque": "Marque Test", "reference_fabricant": "REF-1", "designation": "Acrylique test v2", "type": "acrylique", "unite_mesure": "kg"}]')$$,
+  'changement d''unité refusé', 'import : changement d''unité refusé quand le produit a des formats');
+select tests.echoue($$select public.importer_produits('aaaaaaaa-0000-0000-0000-00000000000a', '[
+  {"marque": "Marque Test", "reference_fabricant": "REF-1", "designation": "Acrylique test v2", "type": "acrylique", "rendement": "10.555"}]')$$,
+  'décimales en trop', 'import : pas d''arrondi silencieux');
+insert into public.produits (organisation_id, marque, designation, type) values
+  ('aaaaaaaa-0000-0000-0000-00000000000a', 'Double', 'Sans ref', 'acrylique'), ('aaaaaaaa-0000-0000-0000-00000000000a', 'Double', 'Sans ref', 'acrylique');
+select tests.echoue($$select public.importer_produits('aaaaaaaa-0000-0000-0000-00000000000a', '[{"marque": "Double", "designation": "Sans ref", "type": "acrylique"}]')$$,
+  'plusieurs produits', 'import : correspondance ambiguë refusée (pas de mise à jour au hasard)');
+select tests.echoue($$insert into public.conditionnements (organisation_id, produit_id, contenance)
+  select organisation_id, id, 1 from public.produits where reference_fabricant = 'REF-1'$$, 'conditionnements_contenance_min', 'format de moins de 100 ml refusé');
+select tests.echoue($$insert into public.teintes (organisation_id, nom, statut_verification) values ('aaaaaaaa-0000-0000-0000-00000000000a', 'T', 'verifie')$$,
+  'teintes_verification', 'teinte « vérifiée » sans date ni source refusée');
+select tests.echoue($$select public.importer_produits('aaaaaaaa-0000-0000-0000-00000000000a', '[{"marque": "X", "designation": "Y", "type": "inconnu", "usages": [], "unite_mesure": "L"}]')$$,
+  'check', 'import : type invalide refusé par la base (toute la transaction)');
+select tests.egal((select count(*) from public.produits where marque = 'X'), 0::bigint, 'import : rien d''écrit après une ligne refusée');
+select tests.echoue($$select public.importer_produits('aaaaaaaa-0000-0000-0000-00000000000a', '[]')$$, '1 à 2 000', 'import : vide refusé');
+
+-- Alerte de prix : devis brouillon chiffré à 32,00 € ; prix passé à 34,00 € ensuite.
+insert into public.devis (id, organisation_id, client_id, validite_jours, regime_tva, total_ht_cents, total_tva_cents, total_ttc_cents, ventilation_tva)
+values ('aaaaaaaa-0000-0000-0000-0000000d0a01', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000c0001', 30, 'franchise', 0, 0, 0, '[]');
+insert into public.devis_achats (organisation_id, devis_id, conditionnement_id, nombre, prix_achat_retenu_cents)
+select 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000d0a01', c.id, 1, 3200
+from public.conditionnements c join public.produits p on p.id = c.produit_id where p.reference_fabricant = 'REF-1' and c.contenance = 2500;
+select tests.egal((select count(*) from public.v_alertes_prix where devis_id = 'aaaaaaaa-0000-0000-0000-0000000d0a01'), 0::bigint, 'alerte de prix : rien tant que le prix n''a pas changé');
+update public.conditionnements set prix_achat_ht_cents = 3400
+where produit_id = (select id from public.produits where reference_fabricant = 'REF-1') and contenance = 2500;
+select tests.egal((select string_agg(prix_achat_retenu_cents || '->' || prix_actuel_cents, ',') from public.v_alertes_prix
+  where devis_id = 'aaaaaaaa-0000-0000-0000-0000000d0a01'), '3200->3400', 'alerte de prix : devis en cours, prix changé');
+
+-- Formats par type : bornés.
+select tests.echoue($$update public.referentiel_calcul set formats_ml = array[50] where type_produit = 'laque'$$, 'check', 'formats par type : format de moins de 100 ml refusé');
+update public.referentiel_calcul set formats_ml = array[500, 1000, 2500] where type_produit = 'laque';
+
+
 set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000001';
 select tests.egal((select count(*) from public.clients), 0::bigint, 'B ne voit pas les clients de A');
 select tests.egal((select count(*) from public.rechercher_clients('helene')), 0::bigint, 'B ne trouve pas les clients de A par la recherche');
@@ -1459,6 +1553,9 @@ select tests.egal((select count(*) from public.consommables), 0::bigint, 'B ne v
 select tests.echoue($$select public.dupliquer_piece('aaaaaaaa-0000-0000-0000-0000000d1e01', 'Vol')$$, 'introuvable', 'B ne duplique pas une pièce de A');
 select tests.echoue($$select public.definir_preparations('aaaaaaaa-0000-0000-0000-0000000d1e03', '{}')$$, 'introuvable', 'B ne modifie pas les préparations de A');
 select tests.echoue($$select public.copier_poste('aaaaaaaa-0000-0000-0000-0000000d1e04', '{}')$$, 'introuvable', 'B ne copie pas un poste de A');
+select tests.echoue($$select public.importer_produits('aaaaaaaa-0000-0000-0000-00000000000a', '[{"marque": "X", "designation": "Y", "type": "acrylique", "usages": [], "unite_mesure": "L"}]')$$,
+  'introuvable', 'B n''importe pas dans le catalogue de A');
+select tests.egal((select count(*) from public.v_alertes_prix), 0::bigint, 'B ne voit pas les alertes de prix de A');
 select tests.egal((select count(*) from public.referentiel_calcul where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'), 0::bigint,
   'B ne voit pas le référentiel de calcul de A');
 select tests.egal(public.confirmer_valeurs('aaaaaaaa-0000-0000-0000-00000000000a', array['validite_devis_jours']), false,
