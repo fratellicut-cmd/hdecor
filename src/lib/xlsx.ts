@@ -21,7 +21,6 @@ export const entier = (v: number | null | undefined): Cellule => ({ t: 'entier',
 
 const xml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
   // Caractères de contrôle interdits en XML 1.0 (sauf tabulation et retours à la ligne).
-  // eslint-disable-next-line no-control-regex
   .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '');
 
 /** Lettres de colonne : 0 -> A, 25 -> Z, 26 -> AA. */
