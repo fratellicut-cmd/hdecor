@@ -82,12 +82,14 @@ export async function enregistrerDepense(_: EtatFormulaire, fd: FormData): Promi
   if (eAvant) return { message: ECHEC, valeurs: valeursTexte(fd) };
   if (existant && !avant) return { message: 'Achat introuvable.' };
   const ecrire = async () => (avant
-    ? sb.from('depenses').update(lu.data).eq('id', id)
-    : sb.from('depenses').insert({ ...lu.data, id, organisation_id: session.organisationId }));
-  let { error } = await ecrire();
+    ? sb.from('depenses').update(lu.data).eq('id', id).select('id')
+    : sb.from('depenses').insert({ ...lu.data, id, organisation_id: session.organisationId }).select('id'));
+  let { data: ecrit, error } = await ecrire();
   // Deux envois simultanés de la même création : le second met à jour l'achat créé par le premier.
-  if (error?.code === '23505' && !avant) ({ error } = await sb.from('depenses').update(lu.data).eq('id', id));
+  if (error?.code === '23505' && !avant) ({ data: ecrit, error } = await sb.from('depenses').update(lu.data).eq('id', id).select('id'));
   if (error) return { message: messageErreur(error.code), valeurs: valeursTexte(fd) };
+  // Aucune ligne écrite (identifiant d'une autre organisation, invisible sous RLS) : jamais « enregistré ».
+  if (!ecrit?.length) return { message: 'Achat introuvable : rechargez la page.', valeurs: valeursTexte(fd) };
   const avertissement = fichier ? await attacher(session.organisationId, id, fichier, avant?.justificatif_chemin ?? null) : null;
   revalider(lu.data.chantier_id);
   if (avant?.chantier_id && avant.chantier_id !== lu.data.chantier_id) revalider(avant.chantier_id);

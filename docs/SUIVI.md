@@ -132,6 +132,9 @@ Avertissements des contrôles (boucle 1), laissés ouverts :
 - **Matière prévue** : `cout_matiere_prevu_cents` des devis est un coût d'achat HT (catalogue) ; en franchise, il est comparé à des achats TTC. À VÉRIFIER.
 - **Suppression d'un achat** : le justificatif est retiré (trace d'audit conservée). Durée de conservation des pièces justificatives à confirmer (auditeur-legal, comptable).
 - **Jauge à exactement 100 %** : « critique », pas « dépassé » (dépassement strict). À confirmer.
+- **Email de facture en échec** : l'ancien et le nouveau lien restent valables (rien n'a été transmis) ; le prochain envoi réussi ne garde que le sien.
+- **Deux « Planifier » simultanés** sur le même chantier peuvent doubler les plages (bouton désactivé pendant l'envoi ; RPC transactionnelle si besoin).
+- **Plannings antérieurs à la Phase 6 (boucle 1)** : un chantier enregistré en un seul bloc s'affiche aussi le week-end ; le replanifier une fois suffit.
 - **Base existante** : la contrainte `justificatif_chemin_depense` est posée sans `NOT VALID` (aucune base de production à ce jour).
 
 Toujours ouverts depuis la Phase 5 : suspension des relances par facture, recherche dans la liste des factures, message « réseau revenu », taux de TVA par défaut, liste des chantiers limitée à 200.

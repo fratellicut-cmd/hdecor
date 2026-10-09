@@ -65,7 +65,9 @@ function arrondiSigne(num: bigint, den: bigint): bigint {
  * part n = arrondi(cumul n × HT/TTC) − arrondi(cumul n−1 × HT/TTC), de sorte que
  * les parts totalisent exactement le HT net de la facture (pas de dérive
  * d'arrondi : 3 × 40 € sur 100 € HT / 120 € TTC -> 33,33 + 33,34 + 33,33).
- * Règle reprise par la vue v_livre_recettes (part_ht_cents). À VÉRIFIER avec
+ * Référence de la règle : en production, la part est calculée par la vue
+ * v_livre_recettes (part_ht_cents, testée dans tests/db) ; cette fonction en
+ * fixe les cas attendus côté tests. À VÉRIFIER avec
  * le comptable : CA « encaissé HT » d'une entreprise soumise à la TVA.
  */
 export function repartirHt(montants: bigint[], netHtCents: bigint, netTtcCents: bigint, regime: Regime): bigint[] {

@@ -51,8 +51,14 @@ test('tableau de bord et planning : événement, rappel, export ICS', async ({ p
   await page.getByLabel('Me rappeler de').fill(rappel);
   await page.getByRole('button', { name: 'Ajouter le rappel' }).click();
   await expect(page.getByText(/Rappel noté pour le/)).toBeVisible();
-  await page.goto('/');
-  await expect(page.getByText(rappel)).toBeVisible();
+  await page.reload();
+  const leRappel = page.getByRole('listitem').filter({ hasText: rappel });
+  await expect(leRappel).toBeVisible();
+  // « C’est fait » : le rappel quitte le planning (et « À faire »).
+  await leRappel.getByRole('button', { name: 'C’est fait' }).click();
+  await expect(page.getByRole('listitem').filter({ hasText: rappel })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole('listitem').filter({ hasText: rappel })).toHaveCount(0);
 
   const ics = await page.request.get('/planning/agenda.ics');
   expect(ics.status()).toBe(200);
