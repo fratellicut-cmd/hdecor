@@ -117,6 +117,7 @@ export default async function PageDevis({ params, searchParams }: PageProps<'/de
         {sp.cree === '1' ? <Message type="succes">Brouillon créé. Vérifiez chaque ligne, puis émettez le devis.</Message> : null}
         {sp.duplique === '1' ? <Message type="succes">Copie créée (nouveau brouillon, nouveau numéro à l’émission).</Message> : null}
         {sp.regime === '1' ? <Message type="alerte">Votre régime de TVA a changé depuis le devis copié : vérifiez le taux de TVA de chaque ligne.</Message> : null}
+        {sp.totaux === 'echec' ? <Message type="alerte">Copie créée, mais les totaux n’ont pas pu être recalculés : ils le seront à la prochaine modification et à l’émission.</Message> : null}
         {sp.reprise === 'totaux' ? <Message type="erreur">Postes repris, mais les totaux n’ont pas pu être recalculés : modifiez une ligne ou rechargez la page.</Message> : null}
         {sp.achats === 'echec' ? <Message type="alerte">Les achats retenus (alerte de prix d’achat) n’ont pas été enregistrés : relancez « Reprendre les postes ».</Message> : null}
         {sp.version === '1' ? <Message type="succes">Nouvelle version en brouillon : l’ancienne est marquée « remplacée » et ses liens sont désactivés.</Message> : null}

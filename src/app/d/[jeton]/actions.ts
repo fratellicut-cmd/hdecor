@@ -24,12 +24,15 @@ export async function signerEnLigne(_: EtatFormulaire, fd: FormData): Promise<Et
   });
   if (!lu.success) return { erreurs: erreursParChamp(lu.error), valeurs: valeursTexte(fd, ['image', 'jeton']) };
   // Le jeton est vérifié par la base AVANT le décodage du tracé (coûteux) : un jeton inventé ne coûte qu'une lecture.
-  const d = await devisParJeton(jeton);
+  let d;
+  try { d = await devisParJeton(jeton); } catch {
+    return { message: 'Le service ne répond pas pour l’instant : réessayez dans un instant.', valeurs: valeursTexte(fd, ['image', 'jeton']) };
+  }
   if (!d?.peutSigner) return { message: 'Ce lien ne permet plus de signer (déjà utilisé, expiré ou révoqué).' };
   const png = lirePngSignature(lu.data.image);
   if ('erreur' in png) return { erreurs: { image: MESSAGES_TRACE[png.erreur] }, valeurs: valeursTexte(fd, ['image', 'jeton']) };
   const { ip, userAgent } = await ipEtNavigateur();
-  const r = await signerParJeton(jeton, {
+  const r = await signerParJeton(jeton, d, {
     nom: lu.data.nom, mention: lu.data.mention, png: png.octets, documentSha256: lu.data.document_sha256, options: lu.data.options, ip, userAgent,
   });
   if (!r.ok) return { message: r.message, valeurs: valeursTexte(fd, ['image', 'jeton']) };

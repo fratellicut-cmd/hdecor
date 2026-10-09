@@ -37,11 +37,17 @@ export type DevisPublic = {
   pdfSigneChemin: string | null;
 };
 
-/** Devis désigné par un jeton valide ; null sinon (même réponse dans tous les cas). */
+/**
+ * Devis désigné par un jeton valide ; null si le jeton est invalide, expiré ou
+ * révoqué (même réponse dans tous les cas). Une panne (réseau, base) LÈVE une
+ * erreur : elle ne doit pas se faire passer pour un lien expiré.
+ */
 export async function devisParJeton(jeton: string): Promise<DevisPublic | null> {
   const admin = clientAdmin();
   const { data, error } = await admin.rpc('devis_par_jeton', { p_jeton: jeton });
-  if (error || !data || typeof data !== 'object' || Array.isArray(data)) return null;
+  if (error?.code === 'P0002') return null;
+  if (error) throw new Error(`Lien public : lecture impossible (${error.code ?? 'réseau'}).`);
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
   const r = data as { devis_id: string; organisation_id: string; peut_signer: boolean };
   const [{ data: d }, { data: options }] = await Promise.all([
     admin.from('devis').select('numero, version, statut, pdf_chemin, pdf_sha256, date_emission, validite_jours, regime_tva, total_ttc_cents, total_ht_cents, hors_etablissement, copie_emetteur, copie_client, signature_id')
@@ -108,11 +114,11 @@ export async function deposerTrace(organisationId: string, devisId: string, png:
 }
 
 /** Signature par lien : la base vérifie le jeton (usage unique), l'empreinte, la validité et les options. */
-export async function signerParJeton(jeton: string, s: {
+export async function signerParJeton(jeton: string, d: DevisPublic, s: {
   nom: string; mention: string; png: Uint8Array; documentSha256: string; options: string[]; ip: string | null; userAgent: string | null;
 }): Promise<{ ok: true; devisId: string; organisationId: string } | { ok: false; message: string }> {
-  const d = await devisParJeton(jeton);
-  if (!d || !d.peutSigner) return { ok: false, message: 'Ce lien ne permet plus de signer (déjà utilisé, expiré ou révoqué).' };
+  // `d` : lu par l'appelant avec CE jeton juste avant (la base revérifie tout à la signature).
+  if (!d.peutSigner) return { ok: false, message: 'Ce lien ne permet plus de signer (déjà utilisé, expiré ou révoqué).' };
   // Contrôles AVANT tout dépôt de fichier : un envoi refusé ne laisse rien dans le stockage.
   if (s.documentSha256 !== d.pdfSha256) return { ok: false, message: messageSignature('ne correspond pas') };
   if (s.options.some((o) => !d.options.some((x) => x.id === o))) return { ok: false, message: messageSignature('Option inconnue') };
@@ -128,8 +134,9 @@ export async function signerParJeton(jeton: string, s: {
       const { data: apres } = await clientAdmin().from('devis').select('statut')
         .eq('id', d.devisId).eq('organisation_id', d.organisationId).maybeSingle();
       if (apres?.statut === 'accepte') return { ok: true, devisId: d.devisId, organisationId: d.organisationId };
-      if (apres?.statut === 'envoye') await retirer('signatures', d.organisationId, image).catch(() => undefined);
-      return { ok: false, message: 'La signature n’a pas pu être enregistrée. Réessayez.' };
+      // Issue incertaine : le tracé est GARDÉ (la signature a pu être validée juste après la relecture ;
+      // une preuve sans image serait pire qu'un fichier en trop).
+      return { ok: false, message: 'Le réseau ne répond pas : la signature n’est pas confirmée. Rechargez la page avant de réessayer.' };
     }
     // Refus certain : le tracé n'est référencé nulle part.
     await retirer('signatures', d.organisationId, image).catch(() => undefined);

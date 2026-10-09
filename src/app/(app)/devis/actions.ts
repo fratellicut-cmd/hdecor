@@ -566,7 +566,7 @@ export async function dupliquerDevis(_: EtatFormulaire, fd: FormData): Promise<E
   const recalcul = await recalculerTotaux(sb, data);
   revalidatePath('/devis');
   // Copie créée, totaux non recalculés : la page du brouillon le dit (ils le seront à la prochaine modification et à l'émission).
-  if (recalcul === 'echec') redirect(`/devis/${data}?duplique=1&reprise=totaux`);
+  if (recalcul === 'echec') redirect(`/devis/${data}?duplique=1&totaux=echec`);
   // Régime de TVA changé depuis le devis copié : les taux des lignes sont à revoir (signalé sur le brouillon).
   redirect(`/devis/${data}?duplique=1${source && copie && source.regime_tva !== copie.regime_tva ? '&regime=1' : ''}`);
 }
@@ -601,9 +601,10 @@ export async function signerSurPlace(_: EtatFormulaire, fd: FormData): Promise<E
     }
     // Réponse perdue : la signature a peut-être été enregistrée ; le tracé est gardé.
     const { data: apres } = await sb.from('devis').select('statut').eq('id', id.data).maybeSingle();
-    // Devis toujours à signer : la signature n'a pas été enregistrée, le tracé n'est référencé nulle part.
-    if (apres?.statut === 'envoye') await retirer('signatures', session.organisationId, image).catch(() => undefined);
-    if (apres?.statut !== 'accepte') return { message: ECHEC, valeurs: valeursTexte(fd, ['image']) };
+    // Issue incertaine : le tracé est GARDÉ (la signature a pu être validée juste après la relecture).
+    if (apres?.statut !== 'accepte') {
+      return { message: 'Le réseau ne répond pas : la signature n’est pas confirmée. Rechargez la page avant de réessayer.', valeurs: valeursTexte(fd, ['image']) };
+    }
   }
   const archive = await archiverPdfSigne(session.organisationId, id.data).catch(() => false);
   revalider(id.data);

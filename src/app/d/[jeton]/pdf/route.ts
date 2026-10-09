@@ -5,7 +5,11 @@ import { jetonBienForme } from '@/lib/liens';
 export async function GET(requete: Request, { params }: RouteContext<'/d/[jeton]/pdf'>) {
   const { jeton } = await params;
   const signe = new URL(requete.url).searchParams.get('signe') === '1';
-  const r = jetonBienForme(jeton) ? await pdfParJeton(jeton, signe) : null;
+  let r;
+  try { r = jetonBienForme(jeton) ? await pdfParJeton(jeton, signe) : null; } catch {
+    // Panne (réseau, base) : à distinguer d'un lien expiré.
+    return new Response('Service momentanément indisponible : réessayez dans un instant.', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Referrer-Policy': 'no-referrer' } });
+  }
   if (!r) return new Response('Lien invalide ou expiré.', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Referrer-Policy': 'no-referrer' } });
   return new Response(Buffer.from(r.octets), {
     headers: {

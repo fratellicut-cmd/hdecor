@@ -112,7 +112,7 @@ function PadSignature({ erreur }: { erreur?: string }) {
         <Bouton type="button" variante="discret" onClick={effacer}>Effacer</Bouton>
       </div>
       <canvas ref={canvas} aria-labelledby="libelle-signature" role="img"
-        className={`h-44 w-full touch-none rounded-xl border-2 bg-white ${erreur ? 'border-danger' : 'border-anthracite'}`}
+        className={`h-44 w-full touch-none rounded-xl border-2 bg-white ${erreur && etatTrace !== 'ok' ? 'border-danger' : 'border-anthracite'}`}
         onPointerDown={debut} onPointerMove={trace} onPointerUp={fin} onPointerCancel={fin} onPointerLeave={fin} />
       <input ref={champ} type="hidden" name="image" aria-invalid={erreur ? true : undefined} />
       {/* Erreur du dernier envoi : masquée dès qu'une nouvelle signature est tracée. */}
