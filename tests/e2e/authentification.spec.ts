@@ -40,7 +40,9 @@ test('connexion puis déconnexion, sans erreur console ni violation CSP', async 
   const erreurs = surveillerConsole(page);
   await seConnecter(page);
   await expect(page.getByRole('heading', { name: 'Bonjour' })).toBeVisible();
-  await page.getByRole('link', { name: /Compte/ }).click();
+  // Le compte s'ouvre depuis l'onglet Réglages.
+  await page.getByRole('link', { name: /Réglages/ }).click();
+  await page.getByRole('link', { name: /Mon compte/ }).click();
   await page.getByRole('button', { name: 'Se déconnecter' }).click();
   await expect(page).toHaveURL(/\/connexion/);
   await page.goto('/');

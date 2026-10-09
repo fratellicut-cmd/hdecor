@@ -17,6 +17,8 @@ const PAGES_PUBLIQUES = [
   '/auth/confirmer',
   '/confidentialite',
   '/manifest.webmanifest',
+  // Devis partagé au client : l'accès est donné par le JETON du lien, vérifié par la base.
+  '/d',
 ];
 
 function estPublique(chemin: string) {
@@ -24,7 +26,7 @@ function estPublique(chemin: string) {
     || chemin.startsWith('/icones/')
     // Tâche planifiée : protégée par son propre secret (CRON_SECRET). Chemin
     // exact : une future route sous /api/cron/ ne sera pas publique par défaut.
-    || chemin === '/api/cron/conservation';
+    || chemin === '/api/cron/conservation' || chemin === '/api/cron/relances';
 }
 
 function politiqueContenu(nonce: string) {
@@ -95,7 +97,8 @@ export async function proxy(request: NextRequest) {
   reponse.headers.set('Content-Security-Policy', csp);
   reponse.headers.set('X-Frame-Options', 'DENY');
   reponse.headers.set('X-Content-Type-Options', 'nosniff');
-  reponse.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  // Lien public : le jeton est dans l'adresse, il ne doit partir vers aucun site.
+  reponse.headers.set('Referrer-Policy', chemin.startsWith('/d/') ? 'no-referrer' : 'strict-origin-when-cross-origin');
   reponse.headers.set('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(), payment=()');
   if (process.env.NODE_ENV === 'production') {
     reponse.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');

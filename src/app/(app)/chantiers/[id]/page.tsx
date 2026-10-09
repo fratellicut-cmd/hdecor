@@ -4,7 +4,8 @@ import { notFound } from 'next/navigation';
 import { z } from 'zod';
 import { chargerChantier } from '@/lib/chantiers';
 import { nomAffiche } from '@/domain/clients';
-import { formaterDate } from '@/domain/formats';
+import { formaterDate, formaterEuros } from '@/domain/formats';
+import { clientServeur } from '@/lib/supabase/serveur';
 import { formaterSurface } from '@/domain/metre';
 import { libelleStatut } from '@/domain/statuts';
 import { supprimerChantier } from '../actions';
@@ -29,6 +30,8 @@ export default async function PageChantier({ params, searchParams }: PageProps<'
   const totalMurs = pieces.reduce((t, p) => t + (p.surfaces?.totalMursMm2 ?? 0n), 0n);
   const totalPlafonds = pieces.reduce((t, p) => t + (p.surfaces?.totalPlafondMm2 ?? 0n), 0n);
   const incompletes = pieces.filter((p) => !p.surfaces || p.surfaces.totalPlafondMm2 === null).length;
+  const { data: devis } = await (await clientServeur()).from('v_devis').select('id, numero, version, statut_affiche, total_ttc_cents')
+    .eq('chantier_id', chantier.id!).order('created_at', { ascending: false });
 
   return (
     <div className="flex flex-col gap-4">
@@ -48,6 +51,21 @@ export default async function PageChantier({ params, searchParams }: PageProps<'
         <Link href={`/chantiers/${chantier.id}/peinture`} className={`${bouton} bg-anthracite text-creme`}>Calcul peinture</Link>
         <Link href={`/chantiers/${chantier.id}/liste-achat`} className={`${bouton} border-2 border-anthracite bg-white`}>Liste d’achat</Link>
       </div>
+
+      <Carte titre="Devis" action={<Link href={`/devis/nouveau?chantier=${chantier.id}`} className={`${bouton} bg-anthracite text-creme`}>+ Devis</Link>}>
+        {!devis?.length ? <p className="text-encre-douce">Aucun devis. « + Devis » reprend les postes de peinture de ce chantier.</p> : (
+          <ul className="flex flex-col divide-y divide-trait">
+            {devis.map((d) => (
+              <li key={d.id}>
+                <Link href={`/devis/${d.id}`} className="flex min-h-14 items-center justify-between gap-3 py-2">
+                  <span className="font-semibold">{d.numero ? `${d.numero}${d.version! > 1 ? ` v${d.version}` : ''}` : 'Brouillon'} · {libelleStatut(d.statut_affiche)}</span>
+                  <span className="tabular-nums">{formaterEuros(d.total_ttc_cents!)}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Carte>
 
       <Carte titre="Pièces" action={<Link href={`/chantiers/${chantier.id}/pieces/nouvelle`} className={`${bouton} bg-anthracite text-creme`}>+ Pièce</Link>}>
         {pieces.length === 0 ? <p className="text-encre-douce">Aucune pièce. Commencez le métré avec « + Pièce ».</p> : (

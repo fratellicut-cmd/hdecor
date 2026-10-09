@@ -14,7 +14,7 @@
 | Finalités | Établir des devis, réaliser et suivre les chantiers, facturer, encaisser, relancer. |
 | Base légale | Mesures précontractuelles et exécution du contrat (devis, chantier). Obligation légale (facturation, comptabilité). Intérêt légitime (suivi d'un prospect sans devis). **À VÉRIFIER** |
 | Personnes concernées | Clients particuliers et professionnels (personnes de contact), prospects. |
-| Données | Civilité, nom, prénom, raison sociale, SIRET, n° de TVA, email, téléphone, adresse de facturation, adresse de chantier, notes, provenance du contact, documents (devis, factures, paiements), photos de chantier, signature (à partir de la phase Devis). **Aucune donnée sensible** : le champ « Notes » le rappelle. |
+| Données | Civilité, nom, prénom, raison sociale, SIRET, n° de TVA, email, téléphone, adresse de facturation, adresse de chantier, notes, provenance du contact, documents (devis, factures, paiements), photos de chantier, signature et sa preuve (nom, tracé, date et heure, adresse IP, navigateur, empreinte du devis, options retenues). **Aucune donnée sensible** : le champ « Notes » le rappelle. |
 | Destinataires | Le dirigeant (seul utilisateur). Le comptable (exports). Les sous-traitants techniques ci-dessous. |
 | Durée : prospect ou client **sans facture émise ni devis accepté** (aucun devis, devis refusé, remplacé ou expiré, chantier non facturé) | Anonymisation automatique après **36 mois** sans activité sur la fiche, ses devis et ses chantiers (durée paramétrable dans Paramètres > Conditions, **À VÉRIFIER**). La tâche planifiée tourne chaque nuit (`/api/cron/conservation`). **Elle ne purge rien tant que cette durée n'est pas confirmée**, car la purge est irréversible. Les PDF des devis non acceptés et les photos sont supprimés du stockage. |
 | Durée : factures émises, devis acceptés, signatures | Conservées telles qu'émises au titre de l'obligation de conservation des pièces comptables (**10 ans, À VÉRIFIER** par le comptable). Ces pièces ne sont pas effacées par une demande d'effacement. |
@@ -44,7 +44,7 @@
 |---|---|---|---|
 | Supabase | Base de données, authentification, stockage des fichiers | Région UE prévue (Paris ou Francfort) | **À VÉRIFIER** à la création du projet de production ; contrat de sous-traitance (DPA) à accepter |
 | Vercel | Hébergement de l'application | Région `cdg1` (Paris) prévue pour les fonctions | **À VÉRIFIER** ; DPA à accepter |
-| Resend | Envoi des emails (devis, factures) | **À VÉRIFIER** | Phase 4, pas encore utilisé |
+| Resend | Envoi des emails (devis, relances ; factures en phase 5) : email, nom du client, lien du devis | **États-Unis : transfert hors UE, région d'envoi et clauses contractuelles types À VÉRIFIER** | Utilisé depuis la phase 4 si `RESEND_API_KEY` est configurée ; suivi des clics désactivé |
 
 ## Mesures de sécurité
 
@@ -76,4 +76,4 @@
 
 ## Information des personnes
 
-Page publique `/confidentialite`. Un lien vers cette page figurera sur les devis et la page de consultation publique (Phase 4).
+Page publique `/confidentialite`. Son adresse est imprimée sur chaque devis ; la page publique de signature et l'écran de signature sur place affichent une information au moment de la collecte (données de preuve) avec un lien vers elle.

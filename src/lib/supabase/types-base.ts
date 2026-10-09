@@ -1537,8 +1537,19 @@ isOneToOne: false
 "definir_preparations":
 { Args: { "p_etapes": (string)[],"p_poste_id": string }; Returns: undefined
                            },
+"deplacer_ligne_devis":
+{ Args: { "p_ligne_id": string,"p_sens": number }; Returns: undefined
+                           },
+"devis_a_relancer":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "client": string,"devis_id": string,"email": string,"entreprise": string,"numero": string,"organisation_id": string,"valide_jusqu_au": string,"version": number
+            }[]
+                           },
 "devis_par_jeton":
 { Args: { "p_jeton": string }; Returns: Json
+                           },
+"dupliquer_devis":
+{ Args: { "p_devis_id": string }; Returns: string
                            },
 "dupliquer_piece":
 { Args: { "p_nom": string,"p_nouvelle"?: string,"p_piece_id": string }; Returns: string
@@ -1547,7 +1558,7 @@ isOneToOne: false
 { Args: { "p_client_id": string }; Returns: number
                            },
 "emettre_devis":
-{ Args: { "p_copie_chantier": Json,"p_copie_client": Json,"p_copie_emetteur": Json,"p_devis_id": string,"p_pdf_chemin": string,"p_pdf_sha256": string }; Returns: string
+{ Args: { "p_copie_chantier": Json,"p_copie_client": Json,"p_copie_emetteur": Json,"p_date_attendue"?: string,"p_devis_id": string,"p_numero_attendu"?: string,"p_pdf_chemin": string,"p_pdf_sha256": string }; Returns: string
                            },
 "emettre_facture":
 { Args: { "p_copie_chantier": Json,"p_copie_client": Json,"p_copie_emetteur": Json,"p_facture_id": string,"p_pdf_chemin": string,"p_pdf_sha256": string }; Returns: string
@@ -1568,6 +1579,9 @@ isOneToOne: false
 { Args: { "p_organisation_id": string }; Returns: undefined
                            },
 "initialiser_catalogue":
+{ Args: { "p_organisation_id": string }; Returns: undefined
+                           },
+"initialiser_messages":
 { Args: { "p_organisation_id": string }; Returns: undefined
                            },
 "initialiser_organisation":
@@ -1603,6 +1617,9 @@ isOneToOne: false
                            },
 "nouvelle_version_devis":
 { Args: { "p_devis_id": string }; Returns: string
+                           },
+"numero_devis_previsionnel":
+{ Args: { "p_devis_id": string }; Returns: Json
                            },
 "organisation_du_chemin":
 { Args: { "p_nom": string }; Returns: string
@@ -1649,6 +1666,9 @@ isOneToOne: false
       } },
 "refuser_devis":
 { Args: { "p_devis_id": string,"p_motif": string }; Returns: undefined
+                           },
+"remplacer_achats_devis":
+{ Args: { "p_achats": Json,"p_devis_id": string }; Returns: undefined
                            },
 "signer_devis_interne":
 { Args: { "p_devis_id": string,"p_document_sha256": string,"p_image_chemin": string,"p_ip": unknown,"p_mention": string,"p_methode": string,"p_nom": string,"p_options": (string)[],"p_user_agent": string }; Returns: string

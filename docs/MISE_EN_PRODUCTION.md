@@ -22,7 +22,7 @@
        - **À VÉRIFIER** dans le tableau de bord (noms des variables de modèle), en recevant un vrai email de test.
 5. **Vérification automatique** des réglages publics. Elle doit afficher 4 fois « OK » :
    `NEXT_PUBLIC_SUPABASE_URL=… NEXT_PUBLIC_SUPABASE_ANON_KEY=… node scripts/verifier-auth.mjs`
-6. Courriels : configurer un SMTP personnalisé (Resend, Phase 4). Le service d'envoi intégré de Supabase est très limité en nombre d'emails par heure.
+6. Courriels de connexion : configurer un SMTP personnalisé (Resend). Le service d'envoi intégré de Supabase est très limité en nombre d'emails par heure.
 
 ## 2. Projet Vercel
 
@@ -36,8 +36,18 @@
 | `NEXT_PUBLIC_SITE_URL` | l'adresse de production (https://…) | non |
 | `SUPABASE_SERVICE_ROLE_KEY` | idem (clé « service_role ») | **oui** |
 | `CRON_SECRET` | à générer : `openssl rand -hex 32` | **oui** |
+| `RESEND_API_KEY` | Resend > API Keys (droit « envoi » seulement) | **oui** |
+| `EMAIL_EXPEDITEUR` | adresse d'un domaine vérifié dans Resend, par exemple `H'DECOR <devis@votre-domaine.fr>` | non |
 
-- La tâche planifiée `/api/cron/conservation` est déclarée dans `vercel.json`. Elle tourne chaque nuit à 3 h 17 UTC, et Vercel lui envoie `CRON_SECRET`.
+- Tâches planifiées déclarées dans `vercel.json` (Vercel leur envoie `CRON_SECRET`) :
+  - `/api/cron/conservation` : chaque nuit à 3 h 17 UTC (prospects inactifs, fichiers en attente de suppression) ;
+  - `/api/cron/relances` : chaque jour à 7 h 43 UTC. Une seule relance automatique par devis envoyé et sans réponse, après le délai des Paramètres. Sans `RESEND_API_KEY` et `EMAIL_EXPEDITEUR`, rien n'est envoyé.
+- **Resend** :
+  - vérifier le domaine d'expédition (enregistrements DNS SPF et DKIM donnés par Resend) ; sans cela, les emails finissent en indésirables ;
+  - **désactiver le suivi des clics** (« click tracking ») : il réécrirait les liens de signature, et leur jeton passerait par le domaine de suivi ;
+  - Resend est un prestataire américain : vérifier la région d'envoi et l'encadrement du transfert (DPA, clauses contractuelles types), **À VÉRIFIER** ; le registre des traitements et la page Confidentialité le mentionnent.
+- **Hébergement Vercel obligatoire** pour la preuve de signature : l'adresse IP enregistrée est lue dans l'en-tête `x-vercel-forwarded-for`, posé par Vercel. Derrière un autre hébergeur, cette IP serait falsifiable (`src/lib/requete.ts` à adapter).
+- `NEXT_PUBLIC_SITE_URL` doit être exactement l'adresse publique : elle sert à fabriquer les liens envoyés aux clients (un lien vers une autre adresse ne fonctionne pas).
 
 ## 3. Création du compte de Yorick
 

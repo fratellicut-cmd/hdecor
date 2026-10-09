@@ -6,7 +6,7 @@
 # (configuration dans supabase/config.toml). Ce script sert aux environnements
 # où Docker est indisponible : PostgreSQL 16 local + GoTrue (auth) + PostgREST
 # (API) + une mini passerelle qui reproduit les chemins /auth/v1 et /rest/v1.
-# Le stockage de fichiers n'est pas lancé (tables seules).
+# Le stockage de fichiers est émulé par la passerelle (disque, clé service seulement).
 #
 #   bash scripts/supabase-sans-docker/demarrer.sh          # (re)crée tout
 #   bash scripts/supabase-sans-docker/arreter.sh
@@ -100,11 +100,13 @@ echo "GoTrue…"
 nohup "$LOCAL/bin/auth" serve > "$LOCAL/logs/auth.log" 2>&1 &
 echo $! > "$LOCAL/auth.pid"
 
-echo "Passerelle…"
-PORT_API=$PORT_API PORT_REST=$PORT_REST PORT_AUTH=$PORT_AUTH nohup node "$ICI/proxy.mjs" > "$LOCAL/logs/proxy.log" 2>&1 &
-echo $! > "$LOCAL/proxy.pid"
-
 eval "$(node "$ICI/cles.mjs" "$JWT_SECRET")"
+
+echo "Passerelle (et stockage de fichiers émulé sur le disque)…"
+mkdir -p "$LOCAL/stockage"
+PORT_API=$PORT_API PORT_REST=$PORT_REST PORT_AUTH=$PORT_AUTH DOSSIER_STOCKAGE="$LOCAL/stockage" CLE_SERVICE="$SERVICE" \
+  nohup node "$ICI/proxy.mjs" > "$LOCAL/logs/proxy.log" 2>&1 &
+echo $! > "$LOCAL/proxy.pid"
 cat > "$RACINE/.env.local" <<ENVF
 # Généré par scripts/supabase-sans-docker/demarrer.sh : DÉVELOPPEMENT LOCAL UNIQUEMENT.
 NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:$PORT_API

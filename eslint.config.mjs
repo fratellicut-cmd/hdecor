@@ -6,6 +6,8 @@ import nextTs from 'eslint-config-next/typescript';
 const ADMIN_AUTORISE = [
   'src/lib/supabase/admin.ts',
   'src/lib/stockage-admin.ts',
+  'src/lib/stockage.ts',
+  'src/lib/devis-public.ts',
   'src/app/api/cron/**',
   'scripts/**',
   'tests/**',

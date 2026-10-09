@@ -91,6 +91,12 @@ insert into public.organisations (id, nom) values
 insert into public.membres values
   ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-000000000001', 'proprietaire'),
   ('bbbbbbbb-0000-0000-0000-00000000000b', 'bbbbbbbb-0000-0000-0000-000000000001', 'proprietaire');
+-- Taux de TVA de l'organisation A (comme initialiser_organisation).
+insert into public.taux_tva (organisation_id, taux_bp, libelle, attestation_requise, a_verifier) values
+  ('aaaaaaaa-0000-0000-0000-00000000000a', 0, '0 %', false, true),
+  ('aaaaaaaa-0000-0000-0000-00000000000a', 550, '5,5 %', true, true),
+  ('aaaaaaaa-0000-0000-0000-00000000000a', 1000, '10 %', true, true),
+  ('aaaaaaaa-0000-0000-0000-00000000000a', 2000, '20 %', false, true);
 
 -- -----------------------------------------------------------------------------
 -- 3. Utilisateur A
@@ -289,9 +295,17 @@ select tests.echoue($$delete from public.journal_audit$$, 'permission denied', '
 select tests.echoue($$insert into public.journal_audit (organisation_id, action, table_nom) values ('aaaaaaaa-0000-0000-0000-00000000000a', 'INSERT', 'faux')$$,
   'permission denied', 'journal : aucune écriture directe');
 
--- Stockage
-insert into storage.objects (bucket_id, name) values
-  ('documents', 'aaaaaaaa-0000-0000-0000-00000000000a/factures/f2.pdf');
+-- Stockage : PDF émis et tracés de signature déposés par le SERVEUR (clé service) uniquement.
+select tests.echoue(
+  $$insert into storage.objects (bucket_id, name) values ('documents', 'aaaaaaaa-0000-0000-0000-00000000000a/factures/f2.pdf')$$,
+  'row-level security', 'un document émis n''est pas déposé directement par l''API, même chez soi');
+select tests.echoue(
+  $$insert into storage.objects (bucket_id, name) values ('signatures', 'aaaaaaaa-0000-0000-0000-00000000000a/devis/s.png')$$,
+  'row-level security', 'un tracé de signature n''est pas déposé directement par l''API');
+insert into storage.objects (bucket_id, name) values ('photos', 'aaaaaaaa-0000-0000-0000-00000000000a/chantier/p.jpg');
+reset role;
+insert into storage.objects (bucket_id, name) values ('documents', 'aaaaaaaa-0000-0000-0000-00000000000a/factures/f2.pdf');
+set role authenticated;
 select tests.echoue(
   $$insert into storage.objects (bucket_id, name) values ('documents', 'bbbbbbbb-0000-0000-0000-00000000000b/x.pdf')$$,
   'row-level security', 'A ne peut pas déposer de fichier chez B');
@@ -781,7 +795,7 @@ select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prokind = 'f' and p.prorettype <> 'trigger'::regtype
      and has_function_privilege('authenticated', p.oid, 'execute')),
-  'aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,copier_poste,deductions_bien_formees,definir_preparations,dupliquer_piece,effacer_client,emettre_devis,emettre_facture,est_membre,importer_produits,marquer_facture_envoyee,nouvelle_version_devis,organisation_du_chemin,rechercher_clients,refuser_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,ventilation_attendue,ventilation_bien_formee',
+  'aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,copier_poste,deductions_bien_formees,definir_preparations,deplacer_ligne_devis,dupliquer_devis,dupliquer_piece,effacer_client,emettre_devis,emettre_facture,est_membre,importer_produits,marquer_facture_envoyee,nouvelle_version_devis,numero_devis_previsionnel,organisation_du_chemin,rechercher_clients,refuser_devis,remplacer_achats_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,ventilation_attendue,ventilation_bien_formee',
   'sécurité : liste COMPLÈTE des fonctions appelables par une session');
 select tests.echoue($$select public.purger_journal_audit(now() - interval '20 years')$$, 'permission denied',
   'sécurité : purge du journal réservée au serveur');
@@ -1546,6 +1560,107 @@ select tests.echoue($$update public.referentiel_calcul set formats_ml = array[50
 update public.referentiel_calcul set formats_ml = array[500, 1000, 2500] where type_produit = 'laque';
 
 
+-- -----------------------------------------------------------------------------
+-- Phase 4 : devis (numéro attendu, duplication, messages, relances)
+-- -----------------------------------------------------------------------------
+insert into public.devis (id, organisation_id, client_id, validite_jours, regime_tva, total_ht_cents, total_tva_cents, total_ttc_cents, ventilation_tva)
+values ('aaaaaaaa-0000-0000-0000-0000000d4001', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000c0001', 30, 'franchise',
+        10000, 0, 10000, '[{"taux_bp":0,"base_ht_cents":10000,"tva_cents":0}]');
+insert into public.devis_lignes (organisation_id, devis_id, ordre, designation, quantite_e4, unite, prix_unitaire_ht_cents, taux_tva_bp, total_ht_cents)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000d4001', 1, 'Peinture', 10000, 'forfait', 10000, 0, 10000);
+select set_config('tests.prev', public.numero_devis_previsionnel('aaaaaaaa-0000-0000-0000-0000000d4001')::text, false);
+select set_config('tests.seq', (select dernier::text from public.sequences_documents
+  where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and type = 'DEV' and annee = extract(year from public.aujourd_hui_paris())::integer), false);
+-- Numéro attendu faux : refusé ET compteur intact (pas de trou).
+select tests.echoue($$select public.emettre_devis('aaaaaaaa-0000-0000-0000-0000000d4001', '{}', '{}', '{}',
+  'aaaaaaaa-0000-0000-0000-00000000000a/d4001.pdf', repeat('4', 64), 'DEV-1999-0001', public.aujourd_hui_paris())$$,
+  'changés pendant l''émission', 'émission : numéro attendu différent -> refusée');
+select tests.egal((select dernier::text from public.sequences_documents
+  where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and type = 'DEV' and annee = extract(year from public.aujourd_hui_paris())::integer),
+  current_setting('tests.seq'), 'émission refusée : le compteur n''a pas bougé (aucun trou)');
+select tests.egal(public.emettre_devis('aaaaaaaa-0000-0000-0000-0000000d4001', '{}', '{}', '{}',
+  'aaaaaaaa-0000-0000-0000-00000000000a/d4001.pdf', repeat('4', 64),
+  current_setting('tests.prev')::jsonb ->> 'numero', (current_setting('tests.prev')::jsonb ->> 'date_emission')::date),
+  current_setting('tests.prev')::jsonb ->> 'numero', 'émission : le numéro prévisionnel du PDF est celui attribué');
+-- Duplication : nouveau brouillon, sans numéro, lignes recopiées.
+select set_config('tests.dup', public.dupliquer_devis('aaaaaaaa-0000-0000-0000-0000000d4001')::text, false);
+select tests.egal((select statut::text || ' ' || coalesce(numero, '-') || ' ' || version || ' ' || (select count(*) from public.devis_lignes where devis_id = d.id)
+  from public.devis d where id = current_setting('tests.dup')::uuid), 'brouillon - 1 1', 'duplication : brouillon v1 sans numéro, lignes recopiées');
+select tests.egal((select string_agg(code, ',' order by code) from public.modeles_messages where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'),
+  'envoi_devis,relance_devis', 'messages : modèles d''envoi et de relance créés');
+select tests.echoue($$select * from public.devis_a_relancer()$$, 'permission denied', 'relances : réservées au rôle service');
+-- Déplacement d'une ligne : échange d'ordre atomique ; devis émis figé.
+insert into public.devis_lignes (id, organisation_id, devis_id, ordre, type, designation)
+values ('aaaaaaaa-0000-0000-0000-0000000d4011', 'aaaaaaaa-0000-0000-0000-00000000000a', current_setting('tests.dup')::uuid, 2, 'section', 'Séjour');
+select public.deplacer_ligne_devis('aaaaaaaa-0000-0000-0000-0000000d4011', -1);
+select tests.egal((select string_agg(designation, ',' order by ordre) from public.devis_lignes where devis_id = current_setting('tests.dup')::uuid),
+  'Séjour,Peinture', 'déplacement : la section passe en tête');
+select public.deplacer_ligne_devis('aaaaaaaa-0000-0000-0000-0000000d4011', -1);
+select tests.egal((select string_agg(ordre::text, ',' order by ordre) from public.devis_lignes where devis_id = current_setting('tests.dup')::uuid),
+  '1,2', 'déplacement : déjà en tête, rien ne change');
+select tests.echoue($$select public.deplacer_ligne_devis((select id from public.devis_lignes where devis_id = 'aaaaaaaa-0000-0000-0000-0000000d4001'), 1)$$,
+  'figées', 'déplacement : refusé sur un devis émis');
+select tests.echoue($$select public.deplacer_ligne_devis('aaaaaaaa-0000-0000-0000-0000000d4011', 2)$$, 'Sens invalide', 'déplacement : sens contrôlé');
+
+-- Achats retenus remplacés d'un bloc (pas de perte entre suppression et ajout).
+select public.remplacer_achats_devis(current_setting('tests.dup')::uuid,
+  '[{"conditionnement_id":"aaaaaaaa-0000-0000-0000-0000000e0002","nombre":2,"prix_achat_retenu_cents":5000}]');
+select public.remplacer_achats_devis(current_setting('tests.dup')::uuid,
+  '[{"conditionnement_id":"aaaaaaaa-0000-0000-0000-0000000e0002","nombre":3,"prix_achat_retenu_cents":5000}]');
+select tests.egal((select string_agg(nombre::text, ',') from public.devis_achats where devis_id = current_setting('tests.dup')::uuid), '3',
+  'achats retenus : remplacés, pas cumulés');
+select tests.echoue($$select public.remplacer_achats_devis('aaaaaaaa-0000-0000-0000-0000000d4001',
+  '[{"conditionnement_id":"aaaaaaaa-0000-0000-0000-0000000e0002","nombre":1,"prix_achat_retenu_cents":1}]')$$,
+  'figé', 'achats retenus : figés sur un devis émis');
+
+-- Garde-fou d'émission : taux des lignes cohérents avec le régime et les Paramètres.
+insert into public.devis (id, organisation_id, client_id, validite_jours, regime_tva, total_ht_cents, total_tva_cents, total_ttc_cents, ventilation_tva)
+values ('aaaaaaaa-0000-0000-0000-0000000d4002', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000c0001', 30, 'assujetti',
+        10000, 0, 10000, '[{"taux_bp":0,"base_ht_cents":10000,"tva_cents":0}]');
+insert into public.devis_lignes (id, organisation_id, devis_id, ordre, designation, quantite_e4, unite, prix_unitaire_ht_cents, taux_tva_bp, total_ht_cents)
+values ('aaaaaaaa-0000-0000-0000-0000000d4021', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000d4002', 1, 'Peinture', 10000, 'forfait', 10000, 0, 10000);
+select tests.echoue($$select public.emettre_devis('aaaaaaaa-0000-0000-0000-0000000d4002', '{}', '{}', '{}',
+  'aaaaaaaa-0000-0000-0000-00000000000a/d4002.pdf', repeat('5', 64))$$, 'sans justification', 'émission : ligne à 0 % sur un devis assujetti refusée');
+update public.devis_lignes set taux_tva_bp = 1500 where id = 'aaaaaaaa-0000-0000-0000-0000000d4021';
+update public.devis set total_tva_cents = 1500, total_ttc_cents = 11500, ventilation_tva = '[{"taux_bp":1500,"base_ht_cents":10000,"tva_cents":1500}]'
+where id = 'aaaaaaaa-0000-0000-0000-0000000d4002';
+select tests.echoue($$select public.emettre_devis('aaaaaaaa-0000-0000-0000-0000000d4002', '{}', '{}', '{}',
+  'aaaaaaaa-0000-0000-0000-00000000000a/d4002.pdf', repeat('5', 64))$$, 'absent des Paramètres', 'émission : taux absent des Paramètres refusé');
+update public.devis set regime_tva = 'franchise', total_tva_cents = 0, total_ttc_cents = 10000,
+  ventilation_tva = '[{"taux_bp":1500,"base_ht_cents":10000,"tva_cents":0}]' where id = 'aaaaaaaa-0000-0000-0000-0000000d4002';
+select tests.echoue($$select public.emettre_devis('aaaaaaaa-0000-0000-0000-0000000d4002', '{}', '{}', '{}',
+  'aaaaaaaa-0000-0000-0000-00000000000a/d4002.pdf', repeat('5', 64))$$, 'toutes les lignes doivent être à 0', 'émission : ligne taxée en franchise refusée');
+
+-- Échéancier : les échéances « à la signature » doivent être en tête.
+update public.devis set regime_tva = 'franchise' where id = 'aaaaaaaa-0000-0000-0000-0000000d4002';
+update public.devis_lignes set taux_tva_bp = 0 where id = 'aaaaaaaa-0000-0000-0000-0000000d4021';
+update public.devis set total_tva_cents = 0, total_ttc_cents = 10000, ventilation_tva = '[{"taux_bp":0,"base_ht_cents":10000,"tva_cents":0}]', acompte_pct_bp = 5000
+where id = 'aaaaaaaa-0000-0000-0000-0000000d4002';
+insert into public.devis_echeances (organisation_id, devis_id, ordre, libelle, pourcentage_bp, declencheur) values
+  ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000d4002', 1, 'Début', 5000, 'debut_travaux'),
+  ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000d4002', 2, 'Acompte', 5000, 'signature');
+select tests.echoue($$select public.emettre_devis('aaaaaaaa-0000-0000-0000-0000000d4002', '{}', '{}', '{}',
+  'aaaaaaaa-0000-0000-0000-00000000000a/d4002.pdf', repeat('5', 64))$$, 'à la signature doivent venir en premier',
+  'émission : échéance « à la signature » après une autre refusée');
+
+-- Nouvelle version : les liens de l'ancienne sont désactivés dans la même transaction.
+insert into public.liens_publics (organisation_id, devis_id, finalite, jeton_sha256, expire_le)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000d4001', 'signature', repeat('6', 64), now() + interval '10 days');
+select set_config('tests.v2', public.nouvelle_version_devis('aaaaaaaa-0000-0000-0000-0000000d4001')::text, false);
+select tests.egal((select revoque_le is not null from public.liens_publics where jeton_sha256 = repeat('6', 64)), true,
+  'nouvelle version : liens de la version remplacée désactivés');
+
+-- Relances : devis émis, client avec email ; aucun envoi encore (voir le rôle serveur plus bas).
+update public.clients set email = 'paul.durand@test' where id = 'aaaaaaaa-0000-0000-0000-0000000c0001';
+insert into public.devis (id, organisation_id, client_id, validite_jours, regime_tva, total_ht_cents, total_tva_cents, total_ttc_cents, ventilation_tva)
+values ('aaaaaaaa-0000-0000-0000-0000000d4003', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000c0001', 30, 'franchise',
+        10000, 0, 10000, '[{"taux_bp":0,"base_ht_cents":10000,"tva_cents":0}]');
+insert into public.devis_lignes (organisation_id, devis_id, ordre, designation, quantite_e4, unite, prix_unitaire_ht_cents, taux_tva_bp, total_ht_cents)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000d4003', 1, 'Peinture', 10000, 'forfait', 10000, 0, 10000);
+select public.emettre_devis('aaaaaaaa-0000-0000-0000-0000000d4003', '{}', '{"nom_affiche":"Paul Durand"}', '{}',
+  'aaaaaaaa-0000-0000-0000-00000000000a/d4003.pdf', repeat('7', 64));
+
+
 set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000001';
 select tests.egal((select count(*) from public.clients), 0::bigint, 'B ne voit pas les clients de A');
 select tests.egal((select count(*) from public.rechercher_clients('helene')), 0::bigint, 'B ne trouve pas les clients de A par la recherche');
@@ -1556,6 +1671,9 @@ select tests.echoue($$select public.copier_poste('aaaaaaaa-0000-0000-0000-000000
 select tests.echoue($$select public.importer_produits('aaaaaaaa-0000-0000-0000-00000000000a', '[{"marque": "X", "designation": "Y", "type": "acrylique", "usages": [], "unite_mesure": "L"}]')$$,
   'introuvable', 'B n''importe pas dans le catalogue de A');
 select tests.egal((select count(*) from public.v_alertes_prix), 0::bigint, 'B ne voit pas les alertes de prix de A');
+select tests.echoue($$select public.dupliquer_devis('aaaaaaaa-0000-0000-0000-0000000d4001')$$, 'introuvable', 'B ne duplique pas un devis de A');
+select tests.echoue($$select public.numero_devis_previsionnel('aaaaaaaa-0000-0000-0000-0000000d4001')$$, 'introuvable', 'B ne lit pas le numéro prévisionnel de A');
+select tests.echoue($$select public.deplacer_ligne_devis('aaaaaaaa-0000-0000-0000-0000000d4011', 1)$$, 'introuvable', 'B ne déplace pas une ligne de A');
 select tests.egal((select count(*) from public.referentiel_calcul where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'), 0::bigint,
   'B ne voit pas le référentiel de calcul de A');
 select tests.egal(public.confirmer_valeurs('aaaaaaaa-0000-0000-0000-00000000000a', array['validite_devis_jours']), false,
@@ -1625,6 +1743,30 @@ select tests.echoue($$select public.devis_par_jeton('jeton-de-test-suffisamment-
   'invalide ou expiré', 'jeton inconnu refusé');
 select tests.egal((select consulte_le is not null from public.devis where id = 'aaaaaaaa-0000-0000-0000-0000000d0001'),
   true, 'consultation tracée');
+
+-- Relances : jamais sans envoi réel ; délai compté depuis le dernier envoi ; une seule relance.
+select tests.egal((select count(*) from public.devis_a_relancer() where devis_id = 'aaaaaaaa-0000-0000-0000-0000000d4003'), 0::bigint,
+  'relance : devis émis mais jamais envoyé -> pas de relance');
+insert into public.envois (organisation_id, document_type, document_id, nature, canal, destinataire, envoye_le)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'devis', 'aaaaaaaa-0000-0000-0000-0000000d4003', 'envoi', 'email', 'paul.durand@test', now() - interval '2 days');
+select tests.egal((select count(*) from public.devis_a_relancer() where devis_id = 'aaaaaaaa-0000-0000-0000-0000000d4003'), 0::bigint,
+  'relance : envoyé il y a 2 jours (délai 7) -> pas encore');
+update public.envois set envoye_le = now() - interval '8 days' where document_id = 'aaaaaaaa-0000-0000-0000-0000000d4003';
+select tests.egal((select email || ' ' || client from public.devis_a_relancer() where devis_id = 'aaaaaaaa-0000-0000-0000-0000000d4003'),
+  'paul.durand@test Paul Durand', 'relance : envoyé il y a 8 jours -> à relancer');
+insert into public.envois (organisation_id, document_type, document_id, nature, canal, destinataire, statut, erreur)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'devis', 'aaaaaaaa-0000-0000-0000-0000000d4003', 'relance_devis', 'email', 'paul.durand@test', 'echec', 'test');
+select tests.egal((select count(*) from public.devis_a_relancer() where devis_id = 'aaaaaaaa-0000-0000-0000-0000000d4003'), 1::bigint,
+  'relance : une relance en échec ne compte pas');
+insert into public.envois (organisation_id, document_type, document_id, nature, canal, destinataire)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'devis', 'aaaaaaaa-0000-0000-0000-0000000d4003', 'relance_devis', 'email', 'paul.durand@test');
+select tests.egal((select count(*) from public.devis_a_relancer() where devis_id = 'aaaaaaaa-0000-0000-0000-0000000d4003'), 0::bigint,
+  'relance : une seule relance par devis');
+update public.parametres_entreprise set relance_devis_active = false where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a';
+delete from public.envois where nature = 'relance_devis' and document_id = 'aaaaaaaa-0000-0000-0000-0000000d4003';
+select tests.egal((select count(*) from public.devis_a_relancer() where devis_id = 'aaaaaaaa-0000-0000-0000-0000000d4003'), 0::bigint,
+  'relance : désactivée dans les Paramètres -> aucune');
+update public.parametres_entreprise set relance_devis_active = true where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a';
 
 select tests.echoue($$select public.purger_journal_audit(now() - interval '1 day')$$, 'trop récente',
   'purge du journal refusée pour des entrées récentes');

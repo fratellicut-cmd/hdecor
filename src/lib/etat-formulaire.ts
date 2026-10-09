@@ -8,6 +8,8 @@ export type EtatFormulaire = {
   valeurs?: Record<string, string>;
   /** Fiche existante qui ressemble à la saisie (création d'un client). */
   doublon?: { id: string; nom: string };
+  /** Lien public créé (affiché une seule fois : seule son empreinte est stockée). */
+  lien?: string;
 };
 
 export const ETAT_INITIAL: EtatFormulaire = {};

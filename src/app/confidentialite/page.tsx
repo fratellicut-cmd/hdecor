@@ -27,6 +27,8 @@ export default function PageConfidentialite() {
           <li>Établir votre devis et réaliser les travaux (mesures précontractuelles, puis exécution du contrat).</li>
           <li>Facturer et tenir la comptabilité (obligation légale).</li>
           <li>Vous recontacter au sujet d’une demande sans suite, pendant une durée limitée (intérêt légitime).</li>
+          <li>Prouver votre accord quand vous signez un devis (signature électronique).</li>
+          <li>Vous envoyer vos devis par email et, si vous n’avez pas répondu, une relance (une seule par devis).</li>
         </ul>
         <p className="mt-2 text-sm">Bases légales <BadgeAVerifier /></p>
       </Section>
@@ -36,12 +38,17 @@ export default function PageConfidentialite() {
           Identité, coordonnées (email, téléphone, adresse), adresse du chantier, devis, factures et paiements, photos du chantier
           et, si vous signez en ligne, votre signature. Aucune donnée sensible n’est demandée.
         </p>
+        <p className="mt-2">
+          Quand vous signez un devis (en ligne ou sur le téléphone de l’entreprise), sont enregistrés comme preuve : votre nom, votre
+          tracé de signature, la date et l’heure, l’adresse IP et le navigateur utilisés, l’empreinte du devis signé et les options retenues.
+        </p>
       </Section>
 
       <Section titre="Combien de temps ?">
         <ul className="list-disc pl-5">
           <li>Demande sans devis ni facture : anonymisée automatiquement après une durée sans activité fixée par l’entreprise. <BadgeAVerifier /></li>
-          <li>Factures et devis acceptés : conservés pendant la durée légale de conservation des pièces comptables (10 ans). <BadgeAVerifier /></li>
+          <li>Factures et devis acceptés, avec la preuve de signature : conservés pendant la durée légale de conservation des pièces comptables (10 ans). <BadgeAVerifier /></li>
+          <li>Lien de consultation ou de signature d’un devis : valable au plus jusqu’à la fin de validité du devis (90 jours au maximum).</li>
         </ul>
       </Section>
 
@@ -49,6 +56,10 @@ export default function PageConfidentialite() {
         <p>
           Le dirigeant de H’DECOR, son comptable, et les prestataires techniques qui hébergent l’application (Supabase, Vercel),
           dans l’Union européenne. <BadgeAVerifier />
+        </p>
+        <p className="mt-2">
+          Les emails (envoi des devis, relance) passent par Resend, prestataire établi aux États-Unis : votre adresse email, votre nom et le
+          lien du devis lui sont transmis. Région d’envoi et garanties du transfert (clauses contractuelles types) <BadgeAVerifier />
         </p>
         <p className="mt-2">Vos données ne sont ni vendues ni utilisées pour de la publicité. Ce site n’utilise aucun cookie de suivi.</p>
       </Section>

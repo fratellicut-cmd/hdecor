@@ -37,7 +37,9 @@ test('mot de passe oublié : le lien mène au choix d’un nouveau mot de passe'
   await page.getByRole('button', { name: 'Enregistrer le mot de passe' }).click();
   await expect(page.getByRole('heading', { name: 'Bonjour' })).toBeVisible();
   // Le nouveau mot de passe fonctionne.
-  await page.getByRole('link', { name: /Compte/ }).click();
+  // Le compte s'ouvre depuis l'onglet Réglages.
+  await page.getByRole('link', { name: /Réglages/ }).click();
+  await page.getByRole('link', { name: /Mon compte/ }).click();
   await page.getByRole('button', { name: 'Se déconnecter' }).click();
   await seConnecter(page, { email, motDePasse: 'nouveau-mot-de-passe-long' });
 });
