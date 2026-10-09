@@ -36,6 +36,9 @@ export default async function Accueil() {
       {param?.valeurs_a_verifier?.length ? (
         <Message type="info">{param.valeurs_a_verifier.length} valeur(s) par défaut restent À VÉRIFIER dans les conditions.</Message>
       ) : null}
+      <Carte titre="Catalogue">
+        <Link href="/catalogue" className="flex min-h-12 items-center underline underline-offset-4">Produits, nuancier, prestations, import</Link>
+      </Carte>
       <Carte titre="Clients" action={<Link href="/clients/nouveau" className="inline-flex min-h-12 items-center rounded-xl bg-anthracite px-4 font-semibold text-creme">+ Nouveau</Link>}>
         <Link href="/clients" className="flex min-h-12 items-center underline underline-offset-4">
           {nbClients ?? 0} client{(nbClients ?? 0) > 1 ? 's' : ''} : voir la liste

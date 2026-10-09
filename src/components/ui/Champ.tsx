@@ -41,7 +41,7 @@ export function Champ({ libelle, nom, erreur, aide, aVerifier, className = '', .
 /** Marque visible de toute donnée non confirmée (règle « À VÉRIFIER »). */
 export function BadgeAVerifier({ texte = 'À VÉRIFIER' }: { texte?: string }) {
   return (
-    <span className="rounded-md border border-alerte bg-alerte-fond px-2 py-0.5 text-xs font-bold tracking-wide text-alerte">
+    <span className="rounded-md border border-alerte bg-alerte-fond px-2 py-0.5 text-sm font-bold tracking-wide text-alerte">
       {texte}
     </span>
   );

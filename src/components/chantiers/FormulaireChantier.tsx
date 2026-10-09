@@ -11,12 +11,14 @@ import { CaseACocher, Selection, TexteLong } from '@/components/ui/Autres';
 export type ChantierSaisi = {
   id?: string; client_id: string; nom: string; adresse_ligne1: string | null; adresse_ligne2: string | null;
   code_postal: string | null; ville: string | null; statut: string; date_debut_prevue: string | null; notes: string | null;
-  updated_at?: string;
+  teinte_id?: string | null; updated_at?: string;
 };
 
 export const LIBELLES_STATUT_CHANTIER = { a_planifier: 'À planifier', en_cours: 'En cours', termine: 'Terminé' } as const;
 
-export function FormulaireChantier({ chantier, clients }: { chantier: ChantierSaisi; clients: { id: string; nom: string }[] }) {
+export function FormulaireChantier({ chantier, clients, teintes = [] }: {
+  chantier: ChantierSaisi; clients: { id: string; nom: string }[]; teintes?: { id: string; nom: string }[];
+}) {
   const { etat, action, enCours, formRef, garde, surEnvoi } = useFormulaire(`chantier:${chantier.id ?? 'nouveau'}`, enregistrerChantier,
     { version: chantier.id ? (chantier.updated_at ?? null) : undefined });
   const e = etat.erreurs ?? {};
@@ -43,6 +45,12 @@ export function FormulaireChantier({ chantier, clients }: { chantier: ChantierSa
         {Object.entries(LIBELLES_STATUT_CHANTIER).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
       </Selection>
       <Champ libelle="Début prévu" nom="date_debut_prevue" type="date" defaultValue={v('date_debut_prevue')} erreur={e.date_debut_prevue} />
+      {teintes.length ? (
+        <Selection libelle="Teinte principale (nuancier)" nom="teinte_id" defaultValue={v('teinte_id')} erreur={e.teinte_id}>
+          <option value="">Aucune</option>
+          {teintes.map((t) => <option key={t.id} value={t.id}>{t.nom}</option>)}
+        </Selection>
+      ) : null}
       <TexteLong libelle="Notes" nom="notes" defaultValue={v('notes')} erreur={e.notes} placeholder="Accès, code porte, contraintes…" />
       <RappelEnvoi garde={garde} etat={etat} />
       <Bouton type="submit" disabled={enCours}>{enCours ? 'Enregistrement…' : 'Enregistrer'}</Bouton>

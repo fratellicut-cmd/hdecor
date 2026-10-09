@@ -13,7 +13,8 @@ export function optionsPoste(c: ChantierCalcule) {
     })),
     // Les produits archivés ne sont plus proposés (ils restent calculés sur les postes qui les utilisent).
     produits: c.produits.filter((p) => p.actif).map((p) => ({ id: p.id, libelle: [p.marque, p.gamme, p.designation].filter(Boolean).join(' '), aVerifier: p.statut_verification !== 'verifie' })),
-    teintes: c.teintes.map((t) => ({ id: t.id, nom: t.nom })),
+    // Teintes archivées : gardées dans la liste (un poste peut l'utiliser) mais signalées.
+    teintes: c.teintes.map((t) => ({ id: t.id, nom: t.actif ? t.nom : `${t.nom} (archivée)` })),
     etapes: c.etapes.map((e) => ({ id: e.id, libelle: e.libelle, aVerifier: e.statut_verification !== 'verifie' })),
     margeParDefautBp: c.parametres.marge_perte_bp,
   };

@@ -79,7 +79,7 @@ export async function calculerChantier(id: string) {
     // Produits actifs, et produits archivés encore utilisés par un poste (signalés).
     supabase.from('produits').select('*').order('marque').order('designation'),
     supabase.from('conditionnements').select('*').eq('actif', true),
-    supabase.from('teintes').select('id, nom, marque, code_ral, code_ncs, code_fabricant, statut_verification').order('nom'),
+    supabase.from('teintes').select('id, nom, marque, code_ral, code_ncs, code_fabricant, statut_verification, actif').order('nom'),
     supabase.from('referentiel_calcul').select('*'),
     supabase.from('coefficients_support').select('*'),
     supabase.from('etapes_preparation').select('*').eq('actif', true).order('ordre'),

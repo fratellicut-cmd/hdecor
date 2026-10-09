@@ -15,7 +15,7 @@ import { Selection, TexteLong } from '@/components/ui/Autres';
 export type PieceSaisie = {
   id?: string; nom: string; etage: string | null; mode_saisie: string; longueur_mm: number | null; largeur_mm: number | null;
   murs_mm: number[] | null; surface_sol_mm2: number | null; hauteur_mm: number; multiplicateur: number;
-  etat_support: string | null; notes: string | null; updated_at?: string;
+  etat_support: string | null; notes: string | null; teinte_id?: string | null; updated_at?: string;
 };
 
 type Apercu = { texte: string[]; erreur: string | null };
@@ -47,7 +47,7 @@ function apercu(form: HTMLFormElement): Apercu {
   }
 }
 
-export function FormulairePiece({ chantierId, piece }: { chantierId: string; piece: PieceSaisie }) {
+export function FormulairePiece({ chantierId, piece, teintes = [] }: { chantierId: string; piece: PieceSaisie; teintes?: { id: string; nom: string }[] }) {
   const { etat, action, enCours, formRef, garde, surEnvoi } = useFormulaire(`piece:${piece.id ?? `nouvelle:${chantierId}`}`, enregistrerPiece,
     { version: piece.id ? (piece.updated_at ?? null) : undefined });
   const e = etat.erreurs ?? {};
@@ -114,6 +114,12 @@ export function FormulairePiece({ chantierId, piece }: { chantierId: string; pie
       </div>
 
       <Champ libelle="État du support" nom="etat_support" defaultValue={v('etat_support', piece.etat_support ?? '')} erreur={e.etat_support} placeholder="Fissures, humidité, ancienne peinture…" />
+      {teintes.length ? (
+        <Selection libelle="Teinte (nuancier)" nom="teinte_id" defaultValue={v('teinte_id', piece.teinte_id ?? '')} erreur={e.teinte_id}>
+          <option value="">Aucune</option>
+          {teintes.map((t) => <option key={t.id} value={t.id}>{t.nom}</option>)}
+        </Selection>
+      ) : null}
       <TexteLong libelle="Notes" nom="notes" defaultValue={v('notes', piece.notes ?? '')} erreur={e.notes} />
       <RappelEnvoi garde={garde} etat={etat} />
       <Bouton type="submit" disabled={enCours}>{enCours ? 'Enregistrement…' : 'Enregistrer la pièce'}</Bouton>

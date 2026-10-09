@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { z } from 'zod';
 import { verifierSession } from '@/lib/dal';
 import { clientsPourChoix } from '@/lib/clients-liste';
+import { teintesAuChoix } from '@/lib/catalogue';
 import { FormulaireChantier } from '@/components/chantiers/FormulaireChantier';
 
 export const metadata: Metadata = { title: 'Nouveau chantier' };
@@ -22,7 +23,7 @@ export default async function PageNouveauChantier({ searchParams }: PageProps<'/
           Créez d’abord le client. <Link href="/clients/nouveau" className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4">Nouveau client</Link>
         </p>
       ) : (
-        <FormulaireChantier clients={clients} chantier={{
+        <FormulaireChantier clients={clients} teintes={await teintesAuChoix()} chantier={{
           client_id: client.success ? client.data : '', nom: '', adresse_ligne1: null, adresse_ligne2: null, code_postal: null,
           ville: null, statut: 'a_planifier', date_debut_prevue: null, notes: null,
         }} />

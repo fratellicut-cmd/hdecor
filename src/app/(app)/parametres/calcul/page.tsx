@@ -11,6 +11,7 @@ import { actionConsommable } from './actions';
 import { ActionConfirmee } from '@/components/formulaire/ActionConfirmee';
 import { EnTeteSection } from '@/components/parametres/EnTeteSection';
 import { FormulaireConsommable, FormulaireMetre, LigneCoefficient, LigneEtape, LigneReferentiel } from '@/components/parametres/ReglagesCalcul';
+import { FormulaireMatiereEtape } from '@/components/catalogue/Formulaires';
 import { Carte } from '@/components/ui/Carte';
 import { BadgeAVerifier } from '@/components/ui/Champ';
 import { Message } from '@/components/ui/Message';
@@ -25,14 +26,17 @@ const typesProduit = TYPES_PRODUIT.map((t) => ({ valeur: t, libelle: libelleType
 export default async function PageReglagesCalcul() {
   const session = await verifierSession();
   const supabase = await clientServeur();
-  const [ref, coefs, etapes, conso, param] = await Promise.all([
+  const [ref, coefs, etapes, conso, param, produits] = await Promise.all([
     supabase.from('referentiel_calcul').select('*').order('type_produit'),
     supabase.from('coefficients_support').select('*'),
     supabase.from('etapes_preparation').select('*').eq('actif', true).order('ordre'),
     supabase.from('consommables').select('*').eq('actif', true).order('libelle'),
     supabase.from('parametres_entreprise').select('porte_largeur_mm, porte_hauteur_mm, formats_pots_ml, formats_sacs_g, hauteur_alerte_mm, minutes_par_jour, tolerance_reste_bp').eq('organisation_id', session.organisationId).single(),
+    supabase.from('produits').select('id, marque, gamme, designation, unite_mesure, actif').order('marque').order('designation').limit(1000),
   ]);
-  if (ref.error || coefs.error || etapes.error || conso.error || param.error) throw new Error('Lecture impossible : réglages de calcul.');
+  if (ref.error || coefs.error || etapes.error || conso.error || param.error || produits.error) throw new Error('Lecture impossible : réglages de calcul.');
+  const produitsAuChoix = (choisi: string | null) => produits.data.filter((p) => p.actif || p.id === choisi)
+    .map((p) => ({ id: p.id, libelle: `${[p.marque, p.gamme, p.designation].filter(Boolean).join(' ')}${p.actif ? '' : ' (archivé)'}`, unite: p.unite_mesure }));
   const coefDe = new Map(coefs.data.map((c) => [c.support, c]));
 
   return (
@@ -52,7 +56,8 @@ export default async function PageReglagesCalcul() {
         <p className="mb-2 text-sm text-encre-douce">Sans produit du catalogue, le calcul prend le rendement mini (choix prudent).</p>
         {ref.data.map((r) => (
           <LigneReferentiel key={r.type_produit} type={r.type_produit} libelle={libelleType(r.type_produit as TypeProduit)}
-            min={num(r.rendement_min)} max={num(r.rendement_max)} minutes={num(r.minutes_par_m2_couche)} sechage={num(r.sechage_recouvrable_h)} aVerifier={r.statut_verification !== 'verifie'} />
+            min={num(r.rendement_min)} max={num(r.rendement_max)} minutes={num(r.minutes_par_m2_couche)} sechage={num(r.sechage_recouvrable_h)}
+            formats={(r.formats_ml ?? []).map((f) => formaterContenance(f).replace(/ L$/, '')).join(' ; ')} aVerifier={r.statut_verification !== 'verifie'} />
         ))}
       </Carte>
 
@@ -66,8 +71,22 @@ export default async function PageReglagesCalcul() {
       <Carte titre="Temps de préparation">
         <p className="mb-2 text-sm text-encre-douce">Aucun temps n’est fourni par défaut : renseignez les vôtres. La matière d’une étape (enduit, impression…) est comptée avec le rendement de son type de produit.</p>
         {etapes.data.map((e) => (
-          <LigneEtape key={e.id} id={e.id} libelle={e.libelle} minutes={num(e.minutes_par_m2)} typeProduit={e.type_produit ?? ''} couches={String(e.couches)}
-            avecMatiere={e.avec_matiere} types={typesProduit} aVerifier={e.statut_verification !== 'verifie'} />
+          <div key={e.id} className="flex flex-col gap-2 border-t border-trait first:border-t-0">
+            <LigneEtape id={e.id} libelle={e.libelle} minutes={num(e.minutes_par_m2)} typeProduit={e.type_produit ?? ''} couches={String(e.couches)}
+              avecMatiere={e.avec_matiere} types={typesProduit} aVerifier={e.statut_verification !== 'verifie'} />
+            {e.avec_matiere ? (
+              <details className="pb-3">
+                <summary className="inline-flex min-h-11 cursor-pointer items-center text-sm font-semibold underline underline-offset-4">
+                  Matière par produit du catalogue{e.produit_id ? ' (renseignée)' : ''}
+                </summary>
+                <p className="mt-1 text-sm text-encre-douce">Prioritaire sur le type de produit : consommation de la fiche technique, par m² et par passe.</p>
+                <div className="mt-2">
+                  <FormulaireMatiereEtape id={e.id} produitId={e.produit_id ?? ''} produits={produitsAuChoix(e.produit_id)}
+                    consommation={e.consommation_par_m2 === null ? '' : String(e.consommation_par_m2).replace('.', ',')} />
+                </div>
+              </details>
+            ) : null}
+          </div>
         ))}
       </Carte>
 

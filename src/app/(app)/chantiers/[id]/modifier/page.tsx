@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { verifierSession } from '@/lib/dal';
 import { clientServeur } from '@/lib/supabase/serveur';
 import { clientsPourChoix } from '@/lib/clients-liste';
+import { teintesAuChoix } from '@/lib/catalogue';
 import { FormulaireChantier } from '@/components/chantiers/FormulaireChantier';
 
 export const metadata: Metadata = { title: 'Modifier le chantier' };
@@ -24,7 +25,7 @@ export default async function PageModifierChantier({ params }: PageProps<'/chant
         <Link href={`/chantiers/${chantier.id}`} className="inline-flex min-h-12 items-center underline underline-offset-4">← {chantier.nom}</Link>
         <h1 className="text-2xl font-bold">Modifier le chantier</h1>
       </div>
-      <FormulaireChantier chantier={chantier} clients={clients} />
+      <FormulaireChantier chantier={chantier} clients={clients} teintes={await teintesAuChoix(chantier.teinte_id)} />
     </>
   );
 }
