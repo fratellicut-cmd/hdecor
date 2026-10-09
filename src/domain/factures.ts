@@ -165,13 +165,6 @@ export function lignesAvoirTotal(lignesOrigine: LigneFacture[]): LigneFacture[] 
 }
 
 /**
- * Avoir d'un montant TTC donné (partiel, ou total d'une facture qui déduisait
- * des acomptes) : une ligne par taux, au prorata du net de chaque taux. Les
- * bases sont cherchées pour que le TTC obtenu (TVA R6 recalculée) soit
- * EXACTEMENT le montant demandé ; si un taux rend ce montant impossible au
- * centime près, une erreur l'explique (jamais d'avoir approché en silence).
- */
-/**
  * Avoir d'un montant TTC donné ; si ce montant n'est pas atteignable au
  * centime (arrondi de la TVA), l'erreur propose le montant atteignable le
  * plus proche en dessous, VÉRIFIÉ (et le complément à faire ensuite).
@@ -185,15 +178,22 @@ export function lignesAvoirMontant(netParTaux: Ventilation, montantTtcCents: big
     for (let m = montantTtcCents - 1n; m > 0n && m >= montantTtcCents - 200n; m--) {
       try {
         lignesAvoirMontantExact(netParTaux, m, regime, autoliquidation, libelle);
-        throw new ErreurFacture(`Avoir : ${formaterEuros(montantTtcCents)} n’est pas atteignable au centime près (arrondi de la TVA). Montant atteignable le plus proche : ${formaterEuros(m)} (le reste, ${formaterEuros(montantTtcCents - m)}, pourra faire l’objet d’un second avoir).`);
+        throw new ErreurFacture(`Avoir : ${formaterEuros(montantTtcCents)} n’est pas atteignable au centime près (arrondi de la TVA). Montant atteignable le plus proche : ${formaterEuros(m)} (le reste, ${formaterEuros(montantTtcCents - m)}, pourra être crédité par un autre avoir, lui-même ajusté si besoin).`);
       } catch (x) {
-        if (x instanceof ErreurFacture && x.message.includes('le plus proche')) throw x;
+        // Montant voisin lui aussi inatteignable : on continue ; toute autre erreur remonte.
+        if (!(x instanceof ErreurFacture) || x.message.includes('le plus proche')) throw x;
       }
     }
     throw e;
   }
 }
 
+/**
+ * Avoir d'un montant TTC donné, EXACT : une ligne par taux, au prorata du net de chaque taux. Les
+ * bases sont cherchées pour que le TTC obtenu (TVA R6 recalculée) soit
+ * EXACTEMENT le montant demandé ; si un taux rend ce montant impossible au
+ * centime près, une erreur l'explique (jamais d'avoir approché en silence).
+ */
 function lignesAvoirMontantExact(netParTaux: Ventilation, montantTtcCents: bigint, regime: Regime, autoliquidation: boolean,
   libelle: string): LigneFacture[] {
   const netTtc = netParTaux.reduce((a, v) => a + v.base_ht_cents + v.tva_cents, 0n);

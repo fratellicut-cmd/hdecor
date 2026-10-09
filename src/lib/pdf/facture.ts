@@ -3,7 +3,7 @@ import QRCode from 'qrcode';
 import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import type { Regime, Ventilation } from '@/domain/devis';
 import {
-  formaterIban, libelleDatesPrestation, netParTaux, LIBELLES_TYPE_FACTURE, MENTION_AUTOLIQUIDATION, mentionIndemnite, mentionPenalites, totalLigneFacture, totauxFacture,
+  ErreurFacture, formaterIban, libelleDatesPrestation, netParTaux, LIBELLES_TYPE_FACTURE, MENTION_AUTOLIQUIDATION, mentionIndemnite, mentionPenalites, totalLigneFacture, totauxFacture,
   type CopieEmetteurFacture, type Deduction, type LigneFacture, type TypeFacture,
 } from '@/domain/factures';
 import { formaterQuantiteE4, identiteEmetteur, lignesAdresse, nomAvecForme, texteAssurance, UNITES, type CopieChantier, type CopieClient } from '@/domain/devis-document';
@@ -196,7 +196,9 @@ export async function pdfFacture(d: DonneesPdfFacture): Promise<Uint8Array> {
       try {
         const nets = netParTaux(totaux.ventilation, d.ventilationsDeduites!);
         detail += `, TVA ${nets.map((v) => `${formaterTaux(v.taux_bp)} : ${formaterEuros(v.tva_cents)}`).join(' ; ')}`;
-      } catch {
+      } catch (e) {
+        // Taux négatif (déduction supérieure au facturé sur un taux) : TVA nette globale, exacte mais non détaillée.
+        if (!(e instanceof ErreurFacture)) throw e;
         detail += `, TVA ${formaterEuros(totaux.totalTvaCents - d.deductions.reduce((a, x) => a + x.tva, 0n))}`;
       }
     }

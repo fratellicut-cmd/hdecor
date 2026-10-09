@@ -302,6 +302,9 @@ select tests.echoue(
 select tests.echoue(
   $$insert into storage.objects (bucket_id, name) values ('signatures', 'aaaaaaaa-0000-0000-0000-00000000000a/devis/s.png')$$,
   'row-level security', 'un tracé de signature n''est pas déposé directement par l''API');
+select tests.echoue(
+  $$insert into storage.objects (bucket_id, name) values ('justificatifs', 'aaaaaaaa-0000-0000-0000-00000000000a/depenses/j.pdf')$$,
+  'row-level security', 'un justificatif comptable n''est déposé que par le serveur (contenu vérifié)');
 insert into storage.objects (bucket_id, name) values ('photos', 'aaaaaaaa-0000-0000-0000-00000000000a/chantier/p.jpg');
 reset role;
 insert into storage.objects (bucket_id, name) values ('documents', 'aaaaaaaa-0000-0000-0000-00000000000a/factures/f2.pdf');
@@ -795,7 +798,7 @@ select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prokind = 'f' and p.prorettype <> 'trigger'::regtype
      and has_function_privilege('authenticated', p.oid, 'execute')),
-  'aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,copier_poste,deductions_bien_formees,definir_preparations,deplacer_ligne_devis,deplacer_ligne_facture,dupliquer_devis,dupliquer_piece,effacer_client,emettre_devis,emettre_facture,emettre_facture_attendue,enregistrer_facturx,est_membre,importer_produits,marquer_facture_envoyee,nouvelle_version_devis,numero_devis_previsionnel,numero_facture_previsionnel,organisation_du_chemin,rechercher_clients,refuser_devis,remplacer_achats_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,ventilation_attendue,ventilation_bien_formee',
+  'aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,copier_poste,deductions_bien_formees,definir_preparations,deplacer_ligne_devis,deplacer_ligne_facture,dupliquer_devis,dupliquer_piece,effacer_client,emettre_devis,emettre_facture,emettre_facture_attendue,enregistrer_facturx,est_membre,importer_produits,initialiser_categories_depenses,marquer_facture_envoyee,nouvelle_version_devis,numero_devis_previsionnel,numero_facture_previsionnel,organisation_du_chemin,rechercher_clients,refuser_devis,remplacer_achats_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,ventilation_attendue,ventilation_bien_formee',
   'sécurité : liste COMPLÈTE des fonctions appelables par une session');
 select tests.echoue($$select public.purger_journal_audit(now() - interval '20 years')$$, 'permission denied',
   'sécurité : purge du journal réservée au serveur');
@@ -1958,6 +1961,47 @@ select tests.egal(public.purger_prospects_inactifs() >= 1, true, 'purge : prospe
 select tests.egal((select count(*) from public.clients where nom = 'Hélène'), 0::bigint, 'purge : plus de nom en clair');
 select tests.egal((select count(*) from public.clients where id = 'aaaaaaaa-0000-0000-0000-0000000c0001' and anonymise_le is null), 1::bigint,
   'purge : un client avec documents n''est pas touché');
+
+-- -----------------------------------------------------------------------------
+-- Phase 6 : pilotage
+-- -----------------------------------------------------------------------------
+reset role;
+insert into storage.objects (bucket_id, name) values ('justificatifs', 'aaaaaaaa-0000-0000-0000-00000000000a/depenses/j.pdf');
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select tests.egal(tests.lignes($$delete from storage.objects where bucket_id = 'justificatifs'$$), 0::bigint,
+  'pilotage : un justificatif comptable ne se supprime pas depuis le navigateur');
+select tests.egal(tests.lignes($$update storage.objects set name = name || '.x' where bucket_id = 'justificatifs'$$), 0::bigint,
+  'pilotage : un justificatif comptable ne se remplace pas depuis le navigateur');
+select public.initialiser_categories_depenses();
+select public.initialiser_categories_depenses();
+select tests.egal((select count(*) from public.categories_depenses where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'), 7::bigint,
+  'pilotage : catégories de dépenses par défaut créées une seule fois');
+insert into public.depenses (id, organisation_id, date_depense, fournisseur, montant_ht_cents, tva_cents, montant_ttc_cents)
+values ('aaaaaaaa-0000-0000-0000-0000000e6001', 'aaaaaaaa-0000-0000-0000-00000000000a', '2026-10-01', 'Fournisseur fictif', 10000, 2000, 12000);
+select tests.echoue($$update public.depenses set justificatif_chemin = 'aaaaaaaa-0000-0000-0000-00000000000a/f5001.pdf'
+  where id = 'aaaaaaaa-0000-0000-0000-0000000e6001'$$, 'justificatif_chemin_depense', 'pilotage : justificatif hors du dossier de sa dépense refusé');
+select tests.egal(tests.lignes($$update public.depenses set justificatif_chemin =
+  'aaaaaaaa-0000-0000-0000-00000000000a/depenses/aaaaaaaa-0000-0000-0000-0000000e6001/' || gen_random_uuid() || '.jpg'
+  where id = 'aaaaaaaa-0000-0000-0000-0000000e6001'$$), 1::bigint, 'pilotage : justificatif rattaché dans le dossier de sa dépense');
+select tests.echoue($$insert into public.depenses (organisation_id, date_depense, fournisseur, montant_ht_cents, tva_cents, montant_ttc_cents)
+  values ('aaaaaaaa-0000-0000-0000-00000000000a', '2026-10-01', 'X', 10000, 2000, 12001)$$, 'check', 'pilotage : TTC = HT + TVA exigé');
+select tests.echoue($$insert into public.evenements (organisation_id, type, titre, debut, fin)
+  values ('aaaaaaaa-0000-0000-0000-00000000000a', 'chantier', 'Sans chantier', now(), now())$$,
+  'evenement_chantier_porte_son_chantier', 'planning : un événement de chantier porte son chantier');
+select tests.echoue($$insert into public.evenements (organisation_id, type, titre, debut, fin)
+  values ('aaaaaaaa-0000-0000-0000-00000000000a', 'rendez_vous', 'Trop long', now(), now() + interval '400 days')$$,
+  'evenement_duree_raisonnable', 'planning : durée d''un an au plus');
+select tests.egal((select count(*) || ':' || bool_and(v.facture_net_ht_cents = f.total_ht_cents and v.facture_net_ttc_cents = f.net_a_payer_cents
+                           and jsonb_array_length(f.deductions) = 0)::text
+                    from public.v_livre_recettes v join public.factures f on f.id = v.facture_id
+                    where v.facture_id = 'aaaaaaaa-0000-0000-0000-0000000f5001'), '3:true',
+  'livre des recettes : net HT et TTC de la facture fournis (facture sans acompte déduit)');
+set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000001';
+select tests.egal((select count(*) from public.depenses), 0::bigint, 'pilotage : B ne voit pas les dépenses de A');
+select tests.egal((select count(*) from public.v_livre_recettes where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'), 0::bigint,
+  'pilotage : B ne voit pas le livre des recettes de A');
+reset role;
 
 -- Triggers : même le propriétaire de la base ne modifie pas une facture émise
 reset role;

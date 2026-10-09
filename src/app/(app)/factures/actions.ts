@@ -499,11 +499,13 @@ export async function envoyerFacture(_: EtatFormulaire, fd: FormData): Promise<E
     if (reservation === 'deja') return { message: 'Cet email est déjà en cours d’envoi : rechargez la page dans un instant.' };
     if (reservation === 'echec') return { message: `${ECHEC} Aucun email n’est parti.` };
   }
-  const lien = await nouveauLienFacture(sb, session.organisationId, id.data, c.facture.date_echeance!);
-  if (!lien) {
+  // Par email, l'ancien lien n'est désactivé qu'une fois le nouvel email parti.
+  const nouveau = await nouveauLienFacture(sb, session.organisationId, id.data, c.facture.date_echeance!, canal !== 'email');
+  if (!nouveau) {
     if (canal === 'email') await conclureEnvoi(sb, envoiId.data, { ok: false, nonConfigure: false, erreur: 'Lien non créé.' });
     return { message: ECHEC };
   }
+  const lien = nouveau.url;
   const tracer = async (champs: { canal: 'email' | 'manuel'; destinataire?: string | null; fournisseur_id?: string | null }) => {
     const { error: e } = await sb.from('envois').insert({
       id: envoiId.data, organisation_id: session.organisationId, document_type: 'facture', document_id: id.data, nature: 'envoi', ...champs,
@@ -538,6 +540,7 @@ export async function envoyerFacture(_: EtatFormulaire, fd: FormData): Promise<E
   if (reservation === 'echec') return { message: `${ECHEC} Aucun email n’est parti : partagez le lien.`, lien };
   const r = await envoyerEmail({ a: email!, sujet: remplirModele(modele.sujet, valeurs), texte: remplirModele(modele.corps, valeurs), repondreA: p?.email });
   await conclureEnvoi(sb, envoiId.data, r);
+  await conserverSeulLien(sb, id.data, nouveau.id, r.ok);
   if (r.ok) await marquer();
   revalider(id.data);
   return r.ok ? { succes: `Email envoyé à ${email}.`, lien } : { message: `${r.erreur} Partagez le lien à la main.`, lien };
@@ -548,18 +551,28 @@ export async function envoyerFacture(_: EtatFormulaire, fd: FormData): Promise<E
  * désactivés (un seul lien valable à la fois : un lien parti au mauvais
  * destinataire ne reste pas ouvert). Null si l'écriture échoue.
  */
-async function nouveauLienFacture(sb: Sb, organisationId: string, factureId: string, dateEcheance: string, desactiverAnciens = true): Promise<string | null> {
+async function nouveauLienFacture(sb: Sb, organisationId: string, factureId: string, dateEcheance: string, desactiverAnciens = true): Promise<{ url: string; id: string } | null> {
   if (desactiverAnciens) {
     const { error: e1 } = await sb.from('liens_publics').update({ revoque_le: new Date().toISOString() })
       .eq('facture_id', factureId).is('revoque_le', null);
     if (e1) return null;
   }
   const { jeton, sha256 } = nouveauJeton();
-  const { error } = await sb.from('liens_publics').insert({
+  const { data, error } = await sb.from('liens_publics').insert({
     organisation_id: organisationId, facture_id: factureId, finalite: 'consultation', jeton_sha256: sha256,
     expire_le: expirationLienFacture(dateEcheance).toISOString(),
-  });
-  return error ? null : urlPublique(jeton, 'f');
+  }).select('id').single();
+  return error || !data ? null : { url: urlPublique(jeton, 'f'), id: data.id };
+}
+
+/**
+ * Après un envoi par email : réussi -> seul le nouveau lien reste valable ;
+ * échoué -> le nouveau lien (jamais transmis) est désactivé, le client garde l'ancien.
+ */
+async function conserverSeulLien(sb: Sb, factureId: string, nouveauId: string, envoye: boolean) {
+  const requete = sb.from('liens_publics').update({ revoque_le: new Date().toISOString() }).eq('facture_id', factureId).is('revoque_le', null);
+  const { error } = await (envoye ? requete.neq('id', nouveauId) : requete.eq('id', nouveauId));
+  if (error) console.error('Envoi conclu, liens de la facture non mis à jour', factureId, error.code);
 }
 
 /** Désactive tous les liens de consultation de la facture (lien transmis par erreur, fuite). */
@@ -633,8 +646,10 @@ export async function relancerFacture(_: EtatFormulaire, fd: FormData): Promise<
   }
   // Message à partager : simple préparation, le lien du client reste valable tant que rien n'est partagé
   // (les anciens liens sont désactivés quand le rappel est noté).
-  const lien = await nouveauLienFacture(sb, session.organisationId, id.data, f.date_echeance!, canal === 'email');
-  if (!lien) {
+  // Jamais de désactivation avant l'envoi : par email, après succès ; message à partager, au moment où il est partagé.
+  const nouveau = await nouveauLienFacture(sb, session.organisationId, id.data, f.date_echeance!, false);
+  const lien = nouveau?.url;
+  if (!nouveau || !lien) {
     if (canal === 'email') await conclureEnvoi(sb, envoiId.data, { ok: false, nonConfigure: false, erreur: 'Lien non créé.' });
     return { message: ECHEC };
   }
@@ -646,10 +661,11 @@ export async function relancerFacture(_: EtatFormulaire, fd: FormData): Promise<
   const rang = rangDe + 1;
   if (canal === 'lien') {
     revalider(id.data);
-    return { succes: `Rappel ${rang} préparé : copiez-le ou partagez-le (il sera noté dans l’historique à ce moment-là).`, lien, texte, niveau };
+    return { succes: `Rappel ${rang} préparé : copiez-le ou partagez-le (il sera noté dans l’historique à ce moment-là).`, lien, texte, niveau, lienId: nouveau.id };
   }
   const r = await envoyerEmail({ a: email!, sujet: remplirModele(modele.sujet, valeurs), texte, repondreA: p?.email });
   await conclureEnvoi(sb, envoiId.data, r);
+  await conserverSeulLien(sb, id.data, nouveau.id, r.ok);
   revalider(id.data);
   return r.ok ? { succes: `Rappel ${rang} envoyé par email à ${email}.` } : { message: `${r.erreur} Partagez le message à la main.`, lien, texte };
 }
@@ -661,10 +677,15 @@ export async function noterRelancePartagee(_: EtatFormulaire, fd: FormData): Pro
   const envoiId = idDe(fd, 'id_nouveau');
   const niveau = z.enum(NIVEAUX_RELANCE).safeParse(fd.get('niveau'));
   if (!id.success || !envoiId.success || !niveau.success) return { message: INCOMPLET };
+  const lienId = idDe(fd, 'lien_id');
   const sb = await clientServeur();
-  // Seul le rappel suivant (le premier niveau pas encore fait) peut être noté : jamais un 3e sans les précédents.
-  const { data: faits, error: eFaits } = await sb.from('envois').select('nature').eq('document_type', 'facture').eq('document_id', id.data).neq('statut', 'echec');
+  // Seul le rappel suivant (le premier niveau pas encore fait) d'une facture émise peut être noté : jamais un 3e sans les précédents.
+  const [{ data: f }, { data: faits, error: eFaits }] = await Promise.all([
+    sb.from('factures').select('type, statut').eq('id', id.data).maybeSingle(),
+    sb.from('envois').select('nature').eq('document_type', 'facture').eq('document_id', id.data).neq('statut', 'echec'),
+  ]);
   if (eFaits) return { message: 'Le rappel n’a pas pu être noté dans l’historique : réessayez.' };
+  if (!f || f.type === 'avoir' || f.statut !== 'emise') return { message: 'Cette facture n’a rien à relancer.' };
   const suivant = NIVEAUX_RELANCE.find((n) => !(faits ?? []).some((e) => e.nature === n));
   if (niveau.data !== suivant) {
     return (faits ?? []).some((e) => e.nature === niveau.data) ? { succes: `Rappel ${niveau.data.slice(-1)} déjà noté.` } : { message: 'Rappel hors ordre : rechargez la page.' };
@@ -673,10 +694,14 @@ export async function noterRelancePartagee(_: EtatFormulaire, fd: FormData): Pro
     id: envoiId.data, organisation_id: session.organisationId, document_type: 'facture', document_id: id.data, nature: niveau.data, canal: 'manuel',
   });
   if (error && error.code !== '23505') return { message: 'Le rappel n’a pas pu être noté dans l’historique : réessayez.' };
-  // Rappel partagé : seul le lien le plus récent (celui du message) reste valable.
+  // Rappel partagé : seul le lien de CE message reste valable (à défaut, le plus récent).
   const { data: liens } = await sb.from('liens_publics').select('id').eq('facture_id', id.data).is('revoque_le', null).order('cree_le', { ascending: false });
-  const anciens = (liens ?? []).slice(1).map((l) => l.id);
-  if (anciens.length) await sb.from('liens_publics').update({ revoque_le: new Date().toISOString() }).in('id', anciens);
+  const garde = lienId.success && (liens ?? []).some((l) => l.id === lienId.data) ? lienId.data : liens?.[0]?.id;
+  const anciens = (liens ?? []).filter((l) => l.id !== garde).map((l) => l.id);
+  if (anciens.length) {
+    const { error: eLiens } = await sb.from('liens_publics').update({ revoque_le: new Date().toISOString() }).in('id', anciens);
+    if (eLiens) console.error('Rappel noté, mais anciens liens de facture non désactivés', id.data, eLiens.code);
+  }
   revalider(id.data);
   return { succes: `Rappel ${niveau.data.slice(-1)} noté dans l’historique.` };
 }
