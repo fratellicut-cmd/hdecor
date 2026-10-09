@@ -4,6 +4,7 @@ import { useState } from 'react';
 import {
   ajouterEcheance, creerDevis, deplacerLigne, emettreDevis, enregistrerEntete, enregistrerLigne, envoyerDevis, refuserDevis,
 } from '@/app/(app)/devis/actions';
+import type { EtatFormulaire } from '@/lib/etat-formulaire';
 import { useFormulaire } from '@/components/formulaire/useFormulaire';
 import { MessagesGarde, RappelEnvoi } from '@/components/formulaire/MessagesGarde';
 import { RetourFormulaire } from '@/components/parametres/RetourFormulaire';
@@ -94,19 +95,27 @@ export type LigneSaisie = {
 const UNITES = [['m2', 'm²'], ['ml', 'mètre linéaire'], ['u', 'unité'], ['h', 'heure'], ['forfait', 'forfait'], ['L', 'litre'], ['kg', 'kilo']] as const;
 const TYPES = [['ligne', 'Prestation chiffrée'], ['section', 'Titre de section'], ['sous_total', 'Sous-total'], ['texte', 'Texte libre']] as const;
 
-export function FormulaireLigne({ devisId, ligne, franchise, taux }: {
+type ActionFormulaire = (etat: EtatFormulaire, fd: FormData) => Promise<EtatFormulaire>;
+
+/**
+ * Ligne de devis (par défaut) ou de facture libre (`facture` : autre action,
+ * autre identifiant parent, pas d'option).
+ */
+export function FormulaireLigne({ devisId, ligne, franchise, taux, facture }: {
   devisId: string; ligne: LigneSaisie; franchise: boolean; taux: { taux_bp: number; libelle: string }[];
+  facture?: { action: ActionFormulaire };
 }) {
   const nouvelle = !ligne.id;
-  const { etat, action, enCours, formRef, garde, surEnvoi } = useFormulaire(`devis:ligne:${ligne.id ?? `nouvelle:${devisId}`}`, enregistrerLigne,
-    { viderApresSucces: nouvelle });
+  const espace = facture ? 'facture' : 'devis';
+  const { etat, action, enCours, formRef, garde, surEnvoi } = useFormulaire(`${espace}:ligne:${ligne.id ?? `nouvelle:${devisId}`}`,
+    facture?.action ?? enregistrerLigne, { viderApresSucces: nouvelle });
   const e = etat.erreurs ?? {};
   const sv = etat.succes && nouvelle ? undefined : etat.valeurs;
   const v = (k: string, d: string) => sv?.[k] ?? d;
   const [type, setType] = useState<LigneSaisie['type']>((sv?.type as LigneSaisie['type']) ?? ligne.type);
   return (
     <form ref={formRef} action={action} onSubmit={surEnvoi} className="flex flex-col gap-3" noValidate>
-      <input type="hidden" name="devis_id" value={devisId} />
+      <input type="hidden" name={facture ? 'facture_id' : 'devis_id'} value={devisId} />
       {ligne.id ? <input type="hidden" name="id" value={ligne.id} /> : null}
       <RetourFormulaire etat={etat} />
       <MessagesGarde garde={garde} />
@@ -139,8 +148,10 @@ export function FormulaireLigne({ devisId, ligne, franchise, taux }: {
               {taux.map((t) => <option key={t.taux_bp} value={t.taux_bp}>{t.libelle}</option>)}
             </Selection>
           )}
-          <CaseACocher nom="optionnelle" libelle="Option (proposée au client, hors total)"
-            defaultChecked={sv ? sv.optionnelle === 'on' : ligne.optionnelle} />
+          {facture ? null : (
+            <CaseACocher nom="optionnelle" libelle="Option (proposée au client, hors total)"
+              defaultChecked={sv ? sv.optionnelle === 'on' : ligne.optionnelle} />
+          )}
         </>
       ) : null}
       <RappelEnvoi garde={garde} etat={etat} />

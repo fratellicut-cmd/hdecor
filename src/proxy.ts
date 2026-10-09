@@ -19,6 +19,8 @@ const PAGES_PUBLIQUES = [
   '/manifest.webmanifest',
   // Devis partagé au client : l'accès est donné par le JETON du lien, vérifié par la base.
   '/d',
+  // Facture partagée au client : même principe (jeton vérifié par la base).
+  '/f',
 ];
 
 function estPublique(chemin: string) {
@@ -26,7 +28,9 @@ function estPublique(chemin: string) {
     || chemin.startsWith('/icones/')
     // Tâche planifiée : protégée par son propre secret (CRON_SECRET). Chemin
     // exact : une future route sous /api/cron/ ne sera pas publique par défaut.
-    || chemin === '/api/cron/conservation' || chemin === '/api/cron/relances';
+    || chemin === '/api/cron/conservation' || chemin === '/api/cron/relances'
+    // Webhook Stripe : protégé par la signature de Stripe (STRIPE_WEBHOOK_SECRET).
+    || chemin === '/api/stripe/webhook';
 }
 
 function politiqueContenu(nonce: string) {
@@ -40,7 +44,8 @@ function politiqueContenu(nonce: string) {
     `connect-src 'self' ${process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''}`.trim(),
     "object-src 'none'",
     "base-uri 'self'",
-    "form-action 'self'",
+    // Paiement en ligne facultatif : la redirection vers la page de paiement Stripe suit l'envoi du formulaire.
+    `form-action 'self'${process.env.STRIPE_SECRET_KEY ? ' https://checkout.stripe.com' : ''}`,
     "frame-ancestors 'none'",
     "manifest-src 'self'",
     ...(dev ? [] : ['upgrade-insecure-requests']),
@@ -98,7 +103,7 @@ export async function proxy(request: NextRequest) {
   reponse.headers.set('X-Frame-Options', 'DENY');
   reponse.headers.set('X-Content-Type-Options', 'nosniff');
   // Lien public : le jeton est dans l'adresse, il ne doit partir vers aucun site.
-  reponse.headers.set('Referrer-Policy', chemin.startsWith('/d/') ? 'no-referrer' : 'strict-origin-when-cross-origin');
+  reponse.headers.set('Referrer-Policy', chemin.startsWith('/d/') || chemin.startsWith('/f/') ? 'no-referrer' : 'strict-origin-when-cross-origin');
   reponse.headers.set('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(), payment=()');
   if (process.env.NODE_ENV === 'production') {
     reponse.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');

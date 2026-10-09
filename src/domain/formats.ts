@@ -64,9 +64,10 @@ export function formaterDateHeure(valeur: string | Date): string {
  * décimales, lettres, plusieurs séparateurs…).
  */
 export function lireMontantEnCentimes(saisie: string): number | null {
-  const texte = saisie
-    .replace(/[\s  ]/g, '')
-    .replace(/€$/, '');
+  const brut = saisie.trim().replace(/\s*€$/, '');
+  // Espaces acceptés SEULEMENT entre groupes de trois chiffres (« 1 234,56 ») : « 1 0,5 » est une faute de frappe, refusée.
+  if (/[\s\u00a0\u202f]/.test(brut) && !/^-?\d{1,3}(?:[\s\u00a0\u202f]\d{3})+(?:[.,]\d{1,2})?$/.test(brut)) return null;
+  const texte = brut.replace(/[\s\u00a0\u202f]/g, '');
   const m = /^(-?)(\d+)(?:[.,](\d{1,2}))?$/.exec(texte);
   if (!m) return null;
   const [, signe, entier, dec = ''] = m;

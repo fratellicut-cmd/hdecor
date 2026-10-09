@@ -38,10 +38,17 @@
 | `CRON_SECRET` | à générer : `openssl rand -hex 32` | **oui** |
 | `RESEND_API_KEY` | Resend > API Keys (droit « envoi » seulement) | **oui** |
 | `EMAIL_EXPEDITEUR` | adresse d'un domaine vérifié dans Resend, par exemple `H'DECOR <devis@votre-domaine.fr>` | non |
+| `STRIPE_SECRET_KEY` | **facultatif** (paiement par carte) : Stripe > Developers > API keys, clé secrète **restreinte** au droit « Checkout Sessions : écriture » | **oui** |
+| `STRIPE_WEBHOOK_SECRET` | **facultatif** : Stripe > Developers > Webhooks, secret de signature (`whsec_…`) du point d'arrivée ci-dessous | **oui** |
 
 - Tâches planifiées déclarées dans `vercel.json` (Vercel leur envoie `CRON_SECRET`) :
   - `/api/cron/conservation` : chaque nuit à 3 h 17 UTC (prospects inactifs, fichiers en attente de suppression) ;
-  - `/api/cron/relances` : chaque jour à 7 h 43 UTC. Une seule relance automatique par devis envoyé et sans réponse, après le délai des Paramètres. Sans `RESEND_API_KEY` et `EMAIL_EXPEDITEUR`, rien n'est envoyé.
+  - `/api/cron/relances` : chaque jour à 7 h 43 UTC. Une seule relance automatique par devis envoyé et sans réponse, après le délai des Paramètres ; puis les relances d'impayés (3 niveaux, délais après l'échéance réglables dans Réglages > Messages et relances, seulement pour une facture envoyée ; chaque rappel attend au moins l'écart entre les délais depuis le précédent, jamais deux le même jour). Chaque relance crée un nouveau lien de la facture et désactive le précédent. Sans `RESEND_API_KEY` et `EMAIL_EXPEDITEUR`, rien n'est envoyé. Chaque email est réservé en base avant l'envoi : deux passages simultanés n'envoient pas deux fois la même relance.
+- **Paiement par carte (Stripe), facultatif** : sans les deux variables Stripe, le bouton « Payer par carte » n'apparaît pas et le webhook répond 404.
+  - Webhook : point d'arrivée `https://<domaine>/api/stripe/webhook`, événements `checkout.session.completed` et `checkout.session.async_payment_succeeded`.
+  - Le paiement n'est enregistré QUE par le webhook signé, une seule fois par événement et par paiement (payment_intent). Un paiement encaissé par Stripe mais refusé par l'application (facture soldée ou annulée entre-temps) est CONSIGNÉ et affiché en rouge sur la facture (« à rembourser dans Stripe »), jusqu'à ce que l'artisan confirme le remboursement.
+  - Les événements Stripe sans rapport avec une facture (autre usage du compte) sont acceptés et ignorés.
+  - Frais, contrat, remboursements, mentions sur la facture d'un paiement par carte : **À VÉRIFIER** (Stripe et comptable). Stripe est un prestataire américain : à ajouter au registre des traitements avant activation.
 - **Resend** :
   - vérifier le domaine d'expédition (enregistrements DNS SPF et DKIM donnés par Resend) ; sans cela, les emails finissent en indésirables ;
   - **désactiver le suivi des clics** (« click tracking ») : il réécrirait les liens de signature, et leur jeton passerait par le domaine de suivi ;

@@ -789,13 +789,13 @@ select tests.egal((select copie_client ->> 'nom_affiche' from public.factures wh
 select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prosecdef and has_function_privilege('authenticated', p.oid, 'execute')),
-  'effacer_client,emettre_devis,emettre_facture,est_membre,marquer_facture_envoyee,nouvelle_version_devis,refuser_devis,signer_devis_sur_place,supprimer_chantier',
+  'effacer_client,emettre_devis,emettre_facture,enregistrer_facturx,est_membre,marquer_facture_envoyee,nouvelle_version_devis,refuser_devis,signer_devis_sur_place,supprimer_chantier',
   'sécurité : liste exacte des fonctions SECURITY DEFINER appelables par une session');
 select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prokind = 'f' and p.prorettype <> 'trigger'::regtype
      and has_function_privilege('authenticated', p.oid, 'execute')),
-  'aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,copier_poste,deductions_bien_formees,definir_preparations,deplacer_ligne_devis,dupliquer_devis,dupliquer_piece,effacer_client,emettre_devis,emettre_facture,est_membre,importer_produits,marquer_facture_envoyee,nouvelle_version_devis,numero_devis_previsionnel,organisation_du_chemin,rechercher_clients,refuser_devis,remplacer_achats_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,ventilation_attendue,ventilation_bien_formee',
+  'aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,copier_poste,deductions_bien_formees,definir_preparations,deplacer_ligne_devis,deplacer_ligne_facture,dupliquer_devis,dupliquer_piece,effacer_client,emettre_devis,emettre_facture,emettre_facture_attendue,enregistrer_facturx,est_membre,importer_produits,marquer_facture_envoyee,nouvelle_version_devis,numero_devis_previsionnel,numero_facture_previsionnel,organisation_du_chemin,rechercher_clients,refuser_devis,remplacer_achats_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,ventilation_attendue,ventilation_bien_formee',
   'sécurité : liste COMPLÈTE des fonctions appelables par une session');
 select tests.echoue($$select public.purger_journal_audit(now() - interval '20 years')$$, 'permission denied',
   'sécurité : purge du journal réservée au serveur');
@@ -1586,8 +1586,9 @@ select tests.egal(public.emettre_devis('aaaaaaaa-0000-0000-0000-0000000d4001', '
 select set_config('tests.dup', public.dupliquer_devis('aaaaaaaa-0000-0000-0000-0000000d4001')::text, false);
 select tests.egal((select statut::text || ' ' || coalesce(numero, '-') || ' ' || version || ' ' || (select count(*) from public.devis_lignes where devis_id = d.id)
   from public.devis d where id = current_setting('tests.dup')::uuid), 'brouillon - 1 1', 'duplication : brouillon v1 sans numéro, lignes recopiées');
-select tests.egal((select string_agg(code, ',' order by code) from public.modeles_messages where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'),
-  'envoi_devis,relance_devis', 'messages : modèles d''envoi et de relance créés');
+select tests.egal((select string_agg(code, ',' order by code) from public.modeles_messages
+  where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and code in ('envoi_devis', 'relance_devis')),
+  'envoi_devis,relance_devis', 'messages : modèles d''envoi et de relance de devis créés');
 select tests.echoue($$select * from public.devis_a_relancer()$$, 'permission denied', 'relances : réservées au rôle service');
 -- Déplacement d'une ligne : échange d'ordre atomique ; devis émis figé.
 insert into public.devis_lignes (id, organisation_id, devis_id, ordre, type, designation)
@@ -1660,6 +1661,62 @@ values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000
 select public.emettre_devis('aaaaaaaa-0000-0000-0000-0000000d4003', '{}', '{"nom_affiche":"Paul Durand"}', '{}',
   'aaaaaaaa-0000-0000-0000-00000000000a/d4003.pdf', repeat('7', 64));
 
+
+-- -----------------------------------------------------------------------------
+-- Phase 5 : factures (numéro attendu, messages, lignes, relances d'impayés)
+-- -----------------------------------------------------------------------------
+insert into public.factures (id, organisation_id, type, client_id, delai_paiement_jours, regime_tva,
+  total_ht_cents, total_tva_cents, total_ttc_cents, ventilation_tva, net_a_payer_cents)
+values ('aaaaaaaa-0000-0000-0000-0000000f5001', 'aaaaaaaa-0000-0000-0000-00000000000a', 'libre',
+  'aaaaaaaa-0000-0000-0000-0000000c0001', 30, 'franchise', 20000, 0, 20000, '[{"taux_bp":0,"base_ht_cents":20000,"tva_cents":0}]', 20000);
+insert into public.facture_lignes (id, organisation_id, facture_id, ordre, type, designation, quantite_e4, unite, prix_unitaire_ht_cents, taux_tva_bp, total_ht_cents)
+values ('aaaaaaaa-0000-0000-0000-0000000f5011', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f5001', 1, 'ligne', 'Travaux supplémentaires', 10000, 'forfait', 20000, 0, 20000),
+       ('aaaaaaaa-0000-0000-0000-0000000f5012', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f5001', 2, 'texte', 'Note', null, null, null, null, null);
+select public.deplacer_ligne_facture('aaaaaaaa-0000-0000-0000-0000000f5012', -1);
+select tests.egal((select string_agg(designation, ',' order by ordre) from public.facture_lignes where facture_id = 'aaaaaaaa-0000-0000-0000-0000000f5001'),
+  'Note,Travaux supplémentaires', 'facture : déplacement d''une ligne de brouillon');
+select set_config('tests.fprev', public.numero_facture_previsionnel('aaaaaaaa-0000-0000-0000-0000000f5001')::text, false);
+select tests.egal((current_setting('tests.fprev')::jsonb ->> 'date_echeance')::date - (current_setting('tests.fprev')::jsonb ->> 'date_emission')::date, 30,
+  'facture : échéance prévisionnelle = émission + délai');
+select set_config('tests.fseq', (select dernier::text from public.sequences_documents
+  where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and type = 'FAC' and annee = extract(year from public.aujourd_hui_paris())::integer), false);
+select tests.echoue($$select public.emettre_facture_attendue('aaaaaaaa-0000-0000-0000-0000000f5001', '{}', '{"nom_affiche":"Paul Durand"}', '{}',
+  'aaaaaaaa-0000-0000-0000-00000000000a/f5001.pdf', repeat('8', 64), 'FAC-1999-0001', public.aujourd_hui_paris())$$,
+  'changés pendant l''émission', 'facture : numéro attendu différent -> émission refusée');
+select tests.egal((select dernier::text from public.sequences_documents
+  where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and type = 'FAC' and annee = extract(year from public.aujourd_hui_paris())::integer),
+  current_setting('tests.fseq'), 'facture refusée : compteur intact (aucun trou)');
+select tests.egal((select statut::text from public.factures where id = 'aaaaaaaa-0000-0000-0000-0000000f5001'), 'brouillon',
+  'facture refusée : reste brouillon');
+select tests.egal(public.emettre_facture_attendue('aaaaaaaa-0000-0000-0000-0000000f5001', '{}', '{"nom_affiche":"Paul Durand"}', '{}',
+  'aaaaaaaa-0000-0000-0000-00000000000a/f5001.pdf', repeat('8', 64),
+  current_setting('tests.fprev')::jsonb ->> 'numero', (current_setting('tests.fprev')::jsonb ->> 'date_emission')::date),
+  current_setting('tests.fprev')::jsonb ->> 'numero', 'facture : le numéro prévisionnel du PDF est celui attribué');
+select tests.echoue($$select public.deplacer_ligne_facture('aaaaaaaa-0000-0000-0000-0000000f5012', 1)$$, 'figées',
+  'facture émise : lignes non déplaçables');
+select tests.echoue($$select public.enregistrer_facturx('aaaaaaaa-0000-0000-0000-0000000f5001', 'aaaaaaaa-0000-0000-0000-00000000000a/f5001.pdf')$$,
+  'invalide', 'Factur-X : un autre fichier de l''organisation (PDF) refusé');
+select tests.echoue($$select public.enregistrer_facturx('aaaaaaaa-0000-0000-0000-0000000f5001',
+  'aaaaaaaa-0000-0000-0000-00000000000a/factures/aaaaaaaa-0000-0000-0000-0000000f0002/facturx-' || repeat('a', 64) || '.xml')$$,
+  'invalide', 'Factur-X : dossier d''une autre facture refusé');
+select public.enregistrer_facturx('aaaaaaaa-0000-0000-0000-0000000f5001', 'aaaaaaaa-0000-0000-0000-00000000000a/factures/aaaaaaaa-0000-0000-0000-0000000f5001/facturx-' || repeat('a', 64) || '.xml');
+select public.enregistrer_facturx('aaaaaaaa-0000-0000-0000-0000000f5001', 'aaaaaaaa-0000-0000-0000-00000000000a/factures/aaaaaaaa-0000-0000-0000-0000000f5001/facturx-' || repeat('b', 64) || '.xml');
+select tests.egal((select facturx_chemin from public.factures where id = 'aaaaaaaa-0000-0000-0000-0000000f5001'),
+  'aaaaaaaa-0000-0000-0000-00000000000a/factures/aaaaaaaa-0000-0000-0000-0000000f5001/facturx-' || repeat('a', 64) || '.xml', 'Factur-X : chemin fixé une seule fois');
+select tests.echoue($$select public.enregistrer_facturx('aaaaaaaa-0000-0000-0000-0000000f0002', 'bbbbbbbb-0000-0000-0000-00000000000b/x.xml')$$,
+  'invalide', 'Factur-X : chemin hors de l''organisation refusé');
+insert into public.paiements (id, organisation_id, facture_id, date_paiement, montant_cents, mode)
+values ('aaaaaaaa-0000-0000-0000-0000000f5091', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f5001', public.aujourd_hui_paris(), 5000, 'cheque');
+select tests.echoue($$insert into public.paiements (id, organisation_id, facture_id, date_paiement, montant_cents, mode)
+  values ('aaaaaaaa-0000-0000-0000-0000000f5091', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f5001', public.aujourd_hui_paris(), 5000, 'cheque')$$,
+  'duplicate key', 'paiement : même identifiant renvoyé -> pas de second paiement');
+insert into public.paiements (organisation_id, facture_id, date_paiement, montant_cents, mode, annule_paiement_id)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f5001', public.aujourd_hui_paris(), -5000, 'cheque', 'aaaaaaaa-0000-0000-0000-0000000f5091');
+select tests.egal((select string_agg(code, ',' order by code) from public.modeles_messages where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'),
+  'envoi_devis,envoi_facture,impaye_1,impaye_2,impaye_3,relance_devis', 'messages : envoi de facture et 3 niveaux d''impayés');
+select tests.egal((select string_agg(delai_jours::text, ',' order by code) from public.modeles_messages
+  where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and code like 'impaye_%'), '7,15,30', 'impayés : délais de départ après l''échéance');
+select tests.echoue($$select * from public.factures_a_relancer()$$, 'permission denied', 'relances d''impayés : réservées au rôle service');
 
 set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000001';
 select tests.egal((select count(*) from public.clients), 0::bigint, 'B ne voit pas les clients de A');
@@ -1743,6 +1800,99 @@ select tests.echoue($$select public.devis_par_jeton('jeton-de-test-suffisamment-
   'invalide ou expiré', 'jeton inconnu refusé');
 select tests.egal((select consulte_le is not null from public.devis where id = 'aaaaaaaa-0000-0000-0000-0000000d0001'),
   true, 'consultation tracée');
+
+-- Relances d'impayés : facture envoyée, échue, avec un reste ; un niveau à la fois.
+select tests.egal((select count(*) from public.factures_a_relancer() where facture_id = 'aaaaaaaa-0000-0000-0000-0000000f5001'), 0::bigint,
+  'impayés : facture non envoyée et non échue -> rien');
+-- Dates de test : préparées par le superutilisateur, triggers de protection contournés.
+reset role;
+set session_replication_role = replica;
+update public.factures set envoyee_le = now() - interval '40 days', date_echeance = public.aujourd_hui_paris() - 10
+where id = 'aaaaaaaa-0000-0000-0000-0000000f5001';
+set session_replication_role = origin;
+set role service_role;
+select tests.egal((select niveau || ' ' || code || ' ' || reste_cents from public.factures_a_relancer() where facture_id = 'aaaaaaaa-0000-0000-0000-0000000f5001'),
+  '1 impaye_1 20000', 'impayés : échue depuis 10 jours -> 1er rappel (délai 7)');
+insert into public.envois (organisation_id, document_type, document_id, nature, canal, destinataire)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'facture', 'aaaaaaaa-0000-0000-0000-0000000f5001', 'impaye_1', 'email', 'paul.durand@test');
+select tests.egal((select count(*) from public.factures_a_relancer() where facture_id = 'aaaaaaaa-0000-0000-0000-0000000f5001'), 0::bigint,
+  'impayés : 1er rappel envoyé, 2e pas avant 15 jours');
+reset role;
+set session_replication_role = replica;
+update public.factures set date_echeance = public.aujourd_hui_paris() - 40 where id = 'aaaaaaaa-0000-0000-0000-0000000f5001';
+set session_replication_role = origin;
+set role service_role;
+select tests.egal((select count(*) from public.factures_a_relancer() where facture_id = 'aaaaaaaa-0000-0000-0000-0000000f5001'), 0::bigint,
+  'impayés : facture très en retard -> le 2e rappel attend l''écart entre délais (15 - 7 = 8 jours) après le 1er');
+reset role;
+update public.envois set envoye_le = now() - interval '9 days'
+where document_id = 'aaaaaaaa-0000-0000-0000-0000000f5001' and nature = 'impaye_1';
+set role service_role;
+select tests.egal((select string_agg(code, ',') from public.factures_a_relancer() where facture_id = 'aaaaaaaa-0000-0000-0000-0000000f5001'),
+  'impaye_2', 'impayés : 1er rappel envoyé il y a 9 jours -> 2e seulement (le 3e attend le 2e)');
+insert into public.paiements (organisation_id, facture_id, date_paiement, montant_cents, mode)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f5001', public.aujourd_hui_paris(), 20000, 'virement');
+select tests.egal((select count(*) from public.factures_a_relancer() where facture_id = 'aaaaaaaa-0000-0000-0000-0000000f5001'), 0::bigint,
+  'impayés : facture payée -> plus de relance');
+
+-- Envois réservés avant l'email : une relance par niveau, conclusion seulement d'un envoi en cours.
+select tests.echoue(
+  $$insert into public.envois (organisation_id, document_type, document_id, nature, canal, destinataire, statut)
+    values ('aaaaaaaa-0000-0000-0000-00000000000a', 'facture', 'aaaaaaaa-0000-0000-0000-0000000f5001', 'impaye_1', 'email', 'x@test', 'en_cours')$$,
+  'envois_relance_unique', 'envois : 2e relance du même niveau refusée (deux passages simultanés)');
+insert into public.envois (organisation_id, document_type, document_id, nature, canal, destinataire, statut, erreur)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'facture', 'aaaaaaaa-0000-0000-0000-0000000f5001', 'impaye_1', 'email', 'x@test', 'echec', 'test');
+select tests.egal((select count(*) from public.envois where document_id = 'aaaaaaaa-0000-0000-0000-0000000f5001' and nature = 'impaye_1'),
+  2::bigint, 'envois : une relance en échec s''ajoute (ne bloque pas un nouvel essai)');
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+insert into public.envois (id, organisation_id, document_type, document_id, nature, canal, destinataire, statut)
+values ('aaaaaaaa-0000-0000-0000-0000000e5001', 'aaaaaaaa-0000-0000-0000-00000000000a', 'facture', 'aaaaaaaa-0000-0000-0000-0000000f5001',
+        'envoi', 'email', 'x@test', 'en_cours');
+select tests.echoue(
+  $$insert into public.envois (id, organisation_id, document_type, document_id, nature, canal, destinataire, statut)
+    values ('aaaaaaaa-0000-0000-0000-0000000e5001', 'aaaaaaaa-0000-0000-0000-00000000000a', 'facture', 'aaaaaaaa-0000-0000-0000-0000000f5001',
+            'envoi', 'email', 'x@test', 'en_cours')$$,
+  'envois_pkey', 'envois : même identifiant de formulaire -> réservé une seule fois (pas de 2e email)');
+select tests.echoue($$update public.envois set destinataire = 'autre@test' where id = 'aaaaaaaa-0000-0000-0000-0000000e5001'$$,
+  'permission denied', 'envois : le destinataire ne se modifie pas');
+select tests.egal(tests.lignes($$update public.envois set statut = 'envoye', fournisseur_id = 'r1' where id = 'aaaaaaaa-0000-0000-0000-0000000e5001'$$),
+  1::bigint, 'envois : conclusion d''un envoi en cours');
+select tests.egal(tests.lignes($$update public.envois set statut = 'echec' where id = 'aaaaaaaa-0000-0000-0000-0000000e5001'$$),
+  0::bigint, 'envois : un envoi conclu ne se modifie plus');
+reset role;
+set role service_role;
+
+-- Paiements par carte : un payment_intent une seule fois ; incident consigné, visible et traitable par l'organisation seule.
+insert into public.incidents_paiement (organisation_id, facture_id, stripe_evenement_id, reference, montant_cents, motif)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f5001', 'evt_test_1', 'pi_1', 1000, 'Ce paiement dépasse le reste à payer.');
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000001';
+select tests.egal((select count(*) from public.incidents_paiement), 0::bigint, 'incidents de paiement : invisibles pour une autre organisation');
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select tests.egal((select count(*) from public.incidents_paiement where stripe_evenement_id = 'evt_test_1'), 1::bigint, 'incidents de paiement : visibles par l''organisation');
+select tests.echoue($$insert into public.incidents_paiement (organisation_id, facture_id, stripe_evenement_id, montant_cents, motif)
+  values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f5001', 'evt_faux', 1, 'x')$$,
+  'permission denied', 'incidents de paiement : écrits par le serveur seulement');
+select tests.echoue($$update public.incidents_paiement set montant_cents = 1 where stripe_evenement_id = 'evt_test_1'$$,
+  'permission denied', 'incidents de paiement : montant non modifiable');
+select tests.egal(tests.lignes($$update public.incidents_paiement set traite_le = now() where stripe_evenement_id = 'evt_test_1'$$),
+  1::bigint, 'incidents de paiement : marqué traité');
+select tests.egal(tests.lignes($$update public.incidents_paiement set traite_le = null where stripe_evenement_id = 'evt_test_1'$$),
+  0::bigint, 'incidents de paiement : traitement définitif');
+reset role;
+set role service_role;
+-- Contrôles de solde contournés (facture déjà soldée ici) : seul l'index unique est testé.
+reset role;
+set session_replication_role = replica;
+select tests.echoue($$insert into public.paiements (organisation_id, facture_id, date_paiement, montant_cents, mode, reference, stripe_evenement_id)
+  values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f5001', public.aujourd_hui_paris(), 1, 'stripe', 'pi_double', 'evt_a'),
+         ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f5001', public.aujourd_hui_paris(), 1, 'stripe', 'pi_double', 'evt_b')$$,
+  'paiements_stripe_reference_unique', 'paiement par carte : un même payment_intent n''est enregistré qu''une fois');
+set session_replication_role = origin;
+set role service_role;
 
 -- Relances : jamais sans envoi réel ; délai compté depuis le dernier envoi ; une seule relance.
 select tests.egal((select count(*) from public.devis_a_relancer() where devis_id = 'aaaaaaaa-0000-0000-0000-0000000d4003'), 0::bigint,

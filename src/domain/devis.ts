@@ -152,21 +152,46 @@ export function acompte(ventilation: Ventilation, pourcentageBp: number, regime:
 }
 
 /**
- * Montants de l'échéancier, calculés en CUMULÉ taux par taux : la première
- * échéance suit R9 (comme l'acompte) et, à 100 %, la somme des échéances est
- * exactement le HT, la TVA et le TTC du devis (aucun centime de trop).
- * Échéance k = montant(cumul k) − montant(cumul k−1).
+ * Ventilation d'une FACTURE D'ACOMPTE d'échéance, taux par taux :
+ *  - base HT = base(cumul k) − base(cumul k−1), avec base(c) = arrondi(base du taux × c) ;
+ *  - TVA = arrondi(base × taux) (R6, comme toute facture).
+ * La première échéance est donc l'acompte R9. La dernière échéance (cumul
+ * 100 %) n'est pas un acompte : c'est la facture finale, qui prend le reste
+ * exact (total − acomptes déduits) ; voir montantsEcheances.
+ */
+export function ventilationEcheance(ventilation: Ventilation, cumulAvantBp: number, pourcentageBp: number, regime: Regime): Ventilation {
+  const cumul = cumulAvantBp + pourcentageBp;
+  if (!Number.isInteger(pourcentageBp) || !Number.isInteger(cumulAvantBp) || pourcentageBp < 0 || cumulAvantBp < 0 || cumul > 10_000) {
+    throw new ErreurDevis('L’échéancier dépasse 100 % du devis.');
+  }
+  const base = (b: bigint, c: number) => arrondi(b * BigInt(c), 10_000n);
+  return ventilation.map((v) => {
+    const baseK = base(v.base_ht_cents, cumul) - base(v.base_ht_cents, cumulAvantBp);
+    return { taux_bp: v.taux_bp, base_ht_cents: baseK, tva_cents: regime === 'franchise' ? 0n : arrondi(baseK * BigInt(v.taux_bp), 10_000n) };
+  });
+}
+
+/**
+ * Montants de l'échéancier (dans l'ordre), identiques aux factures d'acompte
+ * puis à la facture finale : base en cumulé, TVA de chaque échéance selon R6,
+ * la dernière (cumul 100 %) prenant le reste exact de la TVA. Somme exacte.
  */
 export function montantsEcheances(ventilation: Ventilation, pourcentagesBp: number[], regime: Regime) {
   let cumul = 0;
-  let precedent = { htCents: 0n, tvaCents: 0n, ttcCents: 0n };
+  const tvaFacturee = new Map<number, bigint>();
   return pourcentagesBp.map((p) => {
+    if (cumul + p > 10_000) throw new ErreurDevis('L’échéancier dépasse 100 % du devis.');
+    const v = ventilationEcheance(ventilation, cumul, p, regime).map((x) => {
+      if (cumul + p < 10_000) return x;
+      // Reste exact de la TVA réellement facturée par les échéances précédentes.
+      const total = ventilation.find((t) => t.taux_bp === x.taux_bp)!.tva_cents;
+      return { ...x, tva_cents: total - (tvaFacturee.get(x.taux_bp) ?? 0n) };
+    });
+    for (const x of v) tvaFacturee.set(x.taux_bp, (tvaFacturee.get(x.taux_bp) ?? 0n) + x.tva_cents);
     cumul += p;
-    if (cumul > 10_000) throw new ErreurDevis('L’échéancier dépasse 100 % du devis.');
-    const total = acompte(ventilation, cumul, regime);
-    const m = { htCents: total.htCents - precedent.htCents, tvaCents: total.tvaCents - precedent.tvaCents, ttcCents: total.ttcCents - precedent.ttcCents };
-    precedent = total;
-    return m;
+    const htCents = v.reduce((a, x) => a + x.base_ht_cents, 0n);
+    const tvaCents = v.reduce((a, x) => a + x.tva_cents, 0n);
+    return { htCents, tvaCents, ttcCents: htCents + tvaCents };
   });
 }
 

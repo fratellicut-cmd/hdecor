@@ -8,6 +8,7 @@ import { tauxProposes } from '@/lib/taux';
 import { emailConfigure } from '@/lib/email';
 import { acompte, ErreurDevis, montantsEcheances, LIBELLES_STATUT_DEVIS, sousTotaux, totalLigne, totauxDevis, type TotauxDevis } from '@/domain/devis';
 import { formaterQuantiteE4, UNITES } from '@/domain/devis-document';
+import { LIBELLES_STATUT_FACTURE, LIBELLES_TYPE_FACTURE } from '@/domain/factures';
 import { formaterDate, formaterDateHeure, formaterEuros, formaterTaux, montantVersSaisie, pourcentageVersSaisie } from '@/domain/formats';
 import { nomAffiche } from '@/domain/clients';
 import { formaterContenance } from '@/domain/peinture';
@@ -230,12 +231,14 @@ export default async function PageDevis({ params, searchParams }: PageProps<'/de
   }
 
   // ------------------------------------------------------------------ devis émis
-  const [{ data: signature }, { data: envois }, { data: liens }, { data: suivante }] = await Promise.all([
+  const [{ data: signature }, { data: envois }, { data: liens }, { data: suivante }, { data: factures }] = await Promise.all([
     d.signature_id ? sb.from('signatures').select('signataire_nom, signe_le, methode, options_acceptees, pdf_signe_chemin, ip').eq('id', d.signature_id).maybeSingle()
       : Promise.resolve({ data: null }),
     sb.from('envois').select('envoye_le, canal, destinataire, statut, nature, erreur').eq('document_type', 'devis').eq('document_id', d.id).order('envoye_le', { ascending: false }),
     sb.from('liens_publics').select('id, finalite, expire_le, utilise_le, revoque_le').eq('devis_id', d.id),
     d.statut === 'remplace' ? sb.from('devis').select('id, version').eq('devis_precedent_id', d.id).maybeSingle() : Promise.resolve({ data: null }),
+    d.statut === 'accepte' ? sb.from('v_factures').select('id, numero, type, statut_affiche, net_a_payer_cents').eq('devis_id', d.id).order('created_at')
+      : Promise.resolve({ data: [] }),
   ]);
   const maintenant = new Date().toISOString();
   const liensActifs = (liens ?? []).filter((l) => !l.revoque_le && l.expire_le > maintenant && !(l.finalite === 'signature' && l.utilise_le)).length;
@@ -283,9 +286,24 @@ export default async function PageDevis({ params, searchParams }: PageProps<'/de
       <div className="flex flex-col gap-2">
         <a href={`/devis/${d.id}/pdf`} target="_blank" rel="noopener" className={`${bouton} border-2 border-anthracite bg-white`}>PDF du devis</a>
         {signature?.pdf_signe_chemin ? <a href={`/devis/${d.id}/pdf?signe=1`} target="_blank" rel="noopener" className={`${bouton} border-2 border-anthracite bg-white`}>PDF signé</a> : null}
+        {d.statut === 'accepte' ? <Link href={`/factures/nouvelle?devis=${d.id}`} className={`${bouton} bg-anthracite text-creme`}>Facturer (acompte, situation, solde)</Link> : null}
         {signable ? <Link href={`/devis/${d.id}/signer`} className={`${bouton} bg-anthracite text-creme`}>Faire signer sur place</Link> : null}
         {d.devis_precedent_id ? <Link href={`/devis/${d.id}/comparer`} className={`${bouton} border-2 border-trait bg-white`}>Comparer avec la version précédente</Link> : null}
       </div>
+
+      {factures?.length ? (
+        <Carte titre="Factures">
+          <ul className="flex flex-col gap-1">
+            {factures.map((x) => (
+              <li key={x.id}>
+                <Link href={`/factures/${x.id}`} className="inline-flex min-h-11 items-center underline underline-offset-4">
+                  {LIBELLES_TYPE_FACTURE[x.type!]} {x.numero ?? '(brouillon)'} · {formaterEuros(x.net_a_payer_cents!)} · {LIBELLES_STATUT_FACTURE[x.statut_affiche!] ?? x.statut_affiche}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Carte>
+      ) : null}
 
       {signable ? (
         <Carte titre="Envoyer pour signature">
@@ -305,6 +323,7 @@ export default async function PageDevis({ params, searchParams }: PageProps<'/de
               <li key={i}>
                 {formaterDateHeure(e.envoye_le)} · {e.nature === 'relance_devis' ? 'relance' : 'envoi'} · {e.canal === 'email' ? `email à ${e.destinataire}` : 'lien partagé'}
                 {e.statut === 'echec' ? <strong className="text-danger"> · échec{e.erreur ? ` (${e.erreur})` : ''}</strong> : null}
+                {e.statut === 'en_cours' ? <strong className="text-alerte"> · envoi non confirmé</strong> : null}
               </li>
             ))}
           </ul>

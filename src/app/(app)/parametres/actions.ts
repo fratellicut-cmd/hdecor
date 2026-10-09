@@ -8,6 +8,7 @@ import { erreursParChamp, valeursTexte, type EtatFormulaire } from '@/lib/etat-f
 import {
   lireFormulaire, schemaAssurance, schemaConditions, schemaEntreprise, schemaFiscal, schemaMentions,
 } from '@/lib/validation/parametres';
+import { CODES_MESSAGES, controlerDelaisRelances, schemaModeleMessage } from '@/lib/validation/messages';
 import { aujourdHuiParis } from '@/domain/dates';
 import type { MiseAJour } from '@/lib/supabase/types';
 
@@ -130,4 +131,26 @@ export async function majTauxTva(_: EtatFormulaire, formData: FormData): Promise
   if (error || !data?.length) return { message: 'La modification a échoué. Vérifiez la connexion et réessayez.' };
   revalidatePath('/parametres', 'layout');
   return { succes: lu.data.champ === 'confirmer' ? 'Taux confirmé.' : 'Enregistré.' };
+}
+
+export async function enregistrerModeleMessage(_: EtatFormulaire, formData: FormData): Promise<EtatFormulaire> {
+  const session = await verifierSession();
+  const code = z.enum(CODES_MESSAGES).safeParse(formData.get('code'));
+  if (!code.success) return { message: 'Modèle inconnu : rechargez la page.' };
+  const lu = schemaModeleMessage(code.data).safeParse(lireFormulaire(formData));
+  if (!lu.success) return { erreurs: erreursParChamp(lu.error), valeurs: valeursTexte(formData) };
+  const supabase = await clientServeur();
+  if (lu.data.delai_jours !== undefined) {
+    const { data: autres, error: e } = await supabase.from('modeles_messages').select('code, delai_jours')
+      .eq('organisation_id', session.organisationId).in('code', ['impaye_1', 'impaye_2', 'impaye_3']);
+    if (e) return { message: ECHEC, valeurs: valeursTexte(formData) };
+    const delais = Object.fromEntries((autres ?? []).map((m) => [m.code, m.delai_jours ?? undefined]));
+    const probleme = controlerDelaisRelances({ ...delais, [code.data]: lu.data.delai_jours });
+    if (probleme) return { erreurs: { delai_jours: probleme }, valeurs: valeursTexte(formData) };
+  }
+  const { data, error } = await supabase.from('modeles_messages').update(lu.data)
+    .eq('organisation_id', session.organisationId).eq('code', code.data).select('id');
+  if (error || !data?.length) return { message: ECHEC, valeurs: valeursTexte(formData) };
+  revalidatePath('/parametres/messages');
+  return { succes: OK };
 }
