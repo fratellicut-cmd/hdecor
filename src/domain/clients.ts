@@ -28,22 +28,8 @@ export function lienTelephone(telephone: string): string {
   return `tel:${t.startsWith('+') ? '+' : ''}${t.replace(/\D/g, '')}`;
 }
 
-/**
- * Cellule CSV pour Excel en français : séparateur « ; », guillemets doublés.
- * Protection contre l'injection de formule : une valeur commençant par
- * = + - @ tabulation ou retour chariot est préfixée d'une apostrophe, sauf un
- * numéro de téléphone (chiffres, espaces, points, « + » initial).
- */
-export function celluleCsv(valeur: string | null | undefined): string {
-  let v = valeur ?? '';
-  if (/^[=+\-@\t\r]/.test(v) && !/^\+?[\d\s.]+$/.test(v)) v = `'${v}`;
-  return /[";\r\n]/.test(v) || v !== v.trim() ? `"${v.replace(/"/g, '""')}"` : v;
-}
-
-/** Fichier CSV complet : BOM UTF-8 (accents corrects dans Excel), lignes CRLF. */
-export function fichierCsv(entetes: string[], lignes: (string | null | undefined)[][]): string {
-  return `\uFEFF${[entetes, ...lignes].map((l) => l.map(celluleCsv).join(';')).join('\r\n')}\r\n`;
-}
+// CSV : module partagé (clients, catalogue).
+export { celluleCsv, fichierCsv } from './csv';
 
 /** Affichage d'un numéro : « 06 12 34 56 78 », « +33 6 12 34 56 78 », sinon tel quel. */
 export function formaterTelephone(telephone: string): string {
