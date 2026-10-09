@@ -8,7 +8,8 @@ import { clientServeur } from '@/lib/supabase/serveur';
 import { erreursParChamp, valeursTexte, type EtatFormulaire } from '@/lib/etat-formulaire';
 import { analyserImport, cleProduit, type AnalyseImport, type FourchettesRendement } from '@/domain/catalogue';
 import { TAILLE_MAX_CSV } from '@/domain/csv';
-import { schemaFormat, schemaPrestation, schemaProduit, schemaTeinte } from '@/lib/validation/catalogue';
+import { lireDecimal } from '@/domain/saisie';
+import { schemaFormat, schemaPrestation, schemaProduit, schemaTeinte, suffixeUnite } from '@/lib/validation/catalogue';
 import { montantFacultatif } from '@/lib/validation/champs';
 
 const ECHEC = 'L’enregistrement a échoué. Vérifiez la connexion et réessayez.';
@@ -110,6 +111,13 @@ export async function ajouterFormat(_: EtatFormulaire, formData: FormData): Prom
   const lu = schemaFormat.safeParse(lireChamps(formData));
   if (!lu.success) return { erreurs: erreursParChamp(lu.error), valeurs: valeursTexte(formData) };
   const supabase = await clientServeur();
+  // La contenance est dans l'unité du produit : « 2,5 kg » sur un produit au litre est refusé.
+  const { data: produit } = await supabase.from('produits').select('unite_mesure').eq('id', produitId.data).maybeSingle();
+  if (!produit) return { message: 'Produit introuvable.' };
+  const suffixe = suffixeUnite(formData.get('contenance'));
+  if (suffixe && suffixe !== produit.unite_mesure) {
+    return { erreurs: { contenance: `Ce produit se mesure en ${produit.unite_mesure} : contenance en ${produit.unite_mesure}.` }, valeurs: valeursTexte(formData) };
+  }
   const { data: existant } = await supabase.from('conditionnements').select('id, actif')
     .eq('produit_id', produitId.data).eq('contenance', lu.data.contenance).maybeSingle();
   if (existant?.actif) return { erreurs: { contenance: 'Ce format existe déjà : modifiez son prix ci-dessus.' }, valeurs: valeursTexte(formData) };
@@ -250,8 +258,10 @@ const schemaContenu = z.string().min(1, { error: 'Choisissez un fichier CSV.' })
 async function fourchettes(): Promise<FourchettesRendement> {
   const supabase = await clientServeur();
   const { data } = await supabase.from('referentiel_calcul').select('type_produit, rendement_min, rendement_max');
+  // numeric(6,2) lu en texte exact (pas de calcul flottant).
+  const c = (v: number) => Number(lireDecimal(String(v), 2) ?? 0n);
   return Object.fromEntries((data ?? []).filter((r) => r.rendement_min !== null && r.rendement_max !== null)
-    .map((r) => [r.type_produit, { min: Math.round(Number(r.rendement_min) * 100), max: Math.round(Number(r.rendement_max) * 100) }]));
+    .map((r) => [r.type_produit, { min: c(r.rendement_min!), max: c(r.rendement_max!) }]));
 }
 
 async function analyser(texte: string): Promise<{ analyse: AnalyseImport; existants: Set<string> } | null> {
@@ -321,7 +331,8 @@ export async function validerImport(_: EtatImport, formData: FormData): Promise<
   const relu = await construireApercu(contenu.data);
   return {
     apercu: relu.apercu,
-    succes: `Import terminé : ${r.crees} produit(s) créé(s), ${r.mis_a_jour} mis à jour${enErreur ? `, ${enErreur} ligne(s) en erreur ignorée(s)` : ''}. Les produits importés sont « À VÉRIFIER ».`,
+    succes: `Import terminé : ${r.crees} produit(s) créé(s), ${r.mis_a_jour} mis à jour${enErreur ? `, ${enErreur} ligne(s) en erreur ignorée(s)` : ''}. `
+      + 'Produits créés ou dont une valeur technique a changé : « À VÉRIFIER » ; les autres gardent leur statut.',
   };
 }
 

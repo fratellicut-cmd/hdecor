@@ -1505,6 +1505,11 @@ select public.importer_produits('aaaaaaaa-0000-0000-0000-00000000000a', '[
 ]');
 select tests.egal((select statut_verification::text || ' ' || rendement_m2_par_unite from public.produits where reference_fabricant = 'REF-1'),
   'a_verifier 12.00', 'import : rendement changé -> À VÉRIFIER');
+update public.produits set statut_verification = 'verifie', verifie_le = '2026-10-01', source_verification = 'fiche' where reference_fabricant = 'REF-1';
+select public.importer_produits('aaaaaaaa-0000-0000-0000-00000000000a', '[
+  {"marque": "Marque Test", "reference_fabricant": "REF-1", "designation": "Acrylique test v2", "type": "acrylique", "fiche_technique_url": " https://exemple.fr/nouvelle.pdf "}]');
+select tests.egal((select statut_verification::text || ' ' || fiche_technique_url from public.produits where reference_fabricant = 'REF-1'),
+  'a_verifier https://exemple.fr/nouvelle.pdf', 'import : lien de fiche changé (espaces retirés) -> À VÉRIFIER');
 select tests.echoue($$select public.importer_produits('aaaaaaaa-0000-0000-0000-00000000000a', '[
   {"marque": "Marque Test", "reference_fabricant": "REF-1", "designation": "Acrylique test v2", "type": "acrylique", "unite_mesure": "kg"}]')$$,
   'changement d''unité refusé', 'import : changement d''unité refusé quand le produit a des formats');
@@ -1537,7 +1542,7 @@ select tests.egal((select string_agg(prix_achat_retenu_cents || '->' || prix_act
   where devis_id = 'aaaaaaaa-0000-0000-0000-0000000d0a01'), '3200->3400', 'alerte de prix : devis en cours, prix changé');
 
 -- Formats par type : bornés.
-select tests.echoue($$update public.referentiel_calcul set formats_ml = array[0] where type_produit = 'laque'$$, 'check', 'formats par type : format nul refusé');
+select tests.echoue($$update public.referentiel_calcul set formats_ml = array[50] where type_produit = 'laque'$$, 'check', 'formats par type : format de moins de 100 ml refusé');
 update public.referentiel_calcul set formats_ml = array[500, 1000, 2500] where type_produit = 'laque';
 
 

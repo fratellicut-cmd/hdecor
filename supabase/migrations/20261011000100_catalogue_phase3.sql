@@ -36,7 +36,7 @@ alter table public.produits
 -- Vide : les formats généraux (paramètres) s'appliquent. Valeurs : ml ou g.
 alter table public.referentiel_calcul
   add column formats_ml integer[] check (formats_ml is null or (
-    cardinality(formats_ml) between 1 and 10 and 0 < all (formats_ml) and 100000 >= all (formats_ml)));
+    cardinality(formats_ml) between 1 and 10 and 100 <= all (formats_ml) and 100000 >= all (formats_ml)));
 
 -- 3. Exemples fictifs -------------------------------------------------------------
 create or replace function public.initialiser_catalogue(p_organisation_id uuid)
@@ -142,11 +142,11 @@ begin
     if v_id is null then
       insert into public.produits (organisation_id, marque, gamme, reference_fabricant, designation, type, usages, finition,
         unite_mesure, rendement_m2_par_unite, couches_recommandees, sechage_recouvrable_h, fournisseur, fiche_technique_url, statut_verification)
-      values (p_organisation_id, v_marque, v_ligne ->> 'gamme', v_ref, v_designation, v_ligne ->> 'type',
+      values (p_organisation_id, v_marque, nullif(trim(v_ligne ->> 'gamme'), ''), v_ref, v_designation, v_ligne ->> 'type',
         coalesce(v_usages, '{}'), v_ligne ->> 'finition',
         coalesce(v_ligne ->> 'unite_mesure', case when v_ligne ->> 'type' = 'enduit' then 'kg' else 'L' end),
         (v_ligne ->> 'rendement')::numeric, (v_ligne ->> 'couches')::smallint, (v_ligne ->> 'sechage_h')::numeric,
-        v_ligne ->> 'fournisseur', v_ligne ->> 'fiche_technique_url', 'a_verifier')
+        nullif(trim(v_ligne ->> 'fournisseur'), ''), nullif(trim(v_ligne ->> 'fiche_technique_url'), ''), 'a_verifier')
       returning id into v_id;
       v_crees := v_crees + 1;
     else
@@ -158,24 +158,26 @@ begin
       update public.produits set
         designation = v_designation,
         type = v_ligne ->> 'type',
-        gamme = case when v_ligne ? 'gamme' then v_ligne ->> 'gamme' else gamme end,
+        gamme = case when v_ligne ? 'gamme' then nullif(trim(v_ligne ->> 'gamme'), '') else gamme end,
         usages = coalesce(v_usages, usages),
         finition = case when v_ligne ? 'finition' then v_ligne ->> 'finition' else finition end,
         unite_mesure = coalesce(v_ligne ->> 'unite_mesure', unite_mesure),
         rendement_m2_par_unite = case when v_ligne ? 'rendement' then (v_ligne ->> 'rendement')::numeric else rendement_m2_par_unite end,
         couches_recommandees = case when v_ligne ? 'couches' then (v_ligne ->> 'couches')::smallint else couches_recommandees end,
         sechage_recouvrable_h = case when v_ligne ? 'sechage_h' then (v_ligne ->> 'sechage_h')::numeric else sechage_recouvrable_h end,
-        fournisseur = case when v_ligne ? 'fournisseur' then v_ligne ->> 'fournisseur' else fournisseur end,
-        fiche_technique_url = case when v_ligne ? 'fiche_technique_url' then v_ligne ->> 'fiche_technique_url' else fiche_technique_url end,
+        fournisseur = case when v_ligne ? 'fournisseur' then nullif(trim(v_ligne ->> 'fournisseur'), '') else fournisseur end,
+        fiche_technique_url = case when v_ligne ? 'fiche_technique_url' then nullif(trim(v_ligne ->> 'fiche_technique_url'), '') else fiche_technique_url end,
         actif = true
       where id = v_id
       returning * into v_apres;
-      -- Valeur technique changée : la vérification ne vaut plus.
+      -- Valeur technique (ou lien de la fiche, souvent la source de la vérification) changée : la vérification ne vaut plus.
       if (v_apres.designation, v_apres.type, (select array_agg(u order by u) from unnest(v_apres.usages) u), v_apres.finition,
-          v_apres.unite_mesure, v_apres.rendement_m2_par_unite, v_apres.couches_recommandees, v_apres.sechage_recouvrable_h, v_apres.gamme)
+          v_apres.unite_mesure, v_apres.rendement_m2_par_unite, v_apres.couches_recommandees, v_apres.sechage_recouvrable_h, v_apres.gamme,
+          v_apres.fiche_technique_url)
          is distinct from
          (v_avant.designation, v_avant.type, (select array_agg(u order by u) from unnest(v_avant.usages) u), v_avant.finition,
-          v_avant.unite_mesure, v_avant.rendement_m2_par_unite, v_avant.couches_recommandees, v_avant.sechage_recouvrable_h, v_avant.gamme) then
+          v_avant.unite_mesure, v_avant.rendement_m2_par_unite, v_avant.couches_recommandees, v_avant.sechage_recouvrable_h, v_avant.gamme,
+          v_avant.fiche_technique_url) then
         update public.produits set statut_verification = 'a_verifier', verifie_le = null, source_verification = null where id = v_id;
       end if;
       v_maj := v_maj + 1;

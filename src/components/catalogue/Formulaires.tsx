@@ -224,6 +224,8 @@ export function ImportCatalogue() {
     if (f.size > TAILLE_MAX_CSV) { setLecture('Fichier trop volumineux (1 Mo au maximum).'); return; }
     // Excel en français enregistre le CSV en Windows-1252 : décodage sans perte des accents.
     const { texte, encodage } = decoderCsv(new Uint8Array(await f.arrayBuffer()));
+    // Envoyé en UTF-8 : un accent Windows-1252 y prend 2 octets ; la limite est vérifiée après décodage.
+    if (new TextEncoder().encode(texte).length > TAILLE_MAX_CSV) { setLecture('Fichier trop volumineux (1 Mo au maximum).'); return; }
     setFichier((x) => ({ nom: f.name, encodage, numero: (x?.numero ?? 0) + 1 }));
     setContenu(texte);
     const fd = new FormData();
@@ -311,7 +313,7 @@ export function ImportCatalogue() {
                 onChange={(ev) => setIgnorer(ev.target.checked)} />
             ) : null}
             <p className="text-sm text-encre-douce">
-              Les produits créés sont « À VÉRIFIER ». Une mise à jour ne remplace que les cellules remplies : une cellule vide ou une colonne absente
+              Les produits créés, ou dont une valeur technique change, sont « À VÉRIFIER ». Une mise à jour ne remplace que les cellules remplies : une cellule vide ou une colonne absente
               garde la valeur actuelle (un prix vide garde le prix actuel). Une valeur technique modifiée repasse le produit « À VÉRIFIER ».
               Un prix changé est daté dans l’historique ; un produit archivé réimporté revient au catalogue.
             </p>

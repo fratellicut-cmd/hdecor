@@ -25,7 +25,14 @@ export const contenance = z.preprocess((v) => {
   if (vide(v)) return Number.NaN;
   const ml = lireDecimal(String(v).trim().replace(/\s*(l|kg)$/i, ''), 3);
   return ml === null ? Number.NaN : Number(ml);
-}, z.number({ error: 'Contenance invalide (exemple : 2,5).' }).int().min(1, { error: 'Contenance invalide.' }).max(100_000, { error: 'Contenance : 100 au maximum.' }));
+}, z.number({ error: 'Contenance invalide (exemple : 2,5).' }).int().min(100, { error: 'Contenance : 0,1 au minimum (exemple : 2,5).' })
+  .max(100_000, { error: 'Contenance : 100 au maximum.' }));
+
+/** Suffixe d'unité tapé avec la contenance (« 2,5 kg »), s'il y en a un. */
+export const suffixeUnite = (v: unknown): 'L' | 'kg' | null => {
+  const m = /(l|kg)\s*$/i.exec(String(v ?? '').trim());
+  return m ? (m[1]!.toLowerCase() === 'kg' ? 'kg' : 'L') : null;
+};
 
 const codesTypes = TYPES.map((t) => t.code) as [string, ...string[]];
 const codesUsages = USAGES.map((u) => u.code) as [string, ...string[]];

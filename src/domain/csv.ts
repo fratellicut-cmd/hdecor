@@ -5,8 +5,11 @@
 
 export class ErreurCsv extends Error {}
 
-/** Taille maximale d'un fichier importé (1 Mo : environ 5 000 produits). */
-export const TAILLE_MAX_CSV = 1_000_000;
+/**
+ * Taille maximale d'un fichier importé, en octets UTF-8 (environ 4 000 produits) :
+ * sous la limite d'envoi des Server Actions (1 Mo, formulaire compris).
+ */
+export const TAILLE_MAX_CSV = 900_000;
 
 /**
  * Cellule CSV. Protection contre l'injection de formule : une valeur commençant

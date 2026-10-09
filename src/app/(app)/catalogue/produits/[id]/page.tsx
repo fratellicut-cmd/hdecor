@@ -8,6 +8,7 @@ import { alertesProduit, FINITIONS, TYPES, USAGES } from '@/domain/catalogue';
 import type { TypeProduit } from '@/domain/systemes';
 import { formaterDate, formaterEuros, montantVersSaisie } from '@/domain/formats';
 import { formaterContenance } from '@/domain/peinture';
+import { lireDecimal } from '@/domain/saisie';
 import { actionFormat, actionProduit } from '../../actions';
 import { BadgeStatut } from '@/components/catalogue/BadgeStatut';
 import { FormulaireAjoutFormat, FormulairePrixFormat } from '@/components/catalogue/Formulaires';
@@ -17,6 +18,9 @@ import { Carte } from '@/components/ui/Carte';
 import { Message } from '@/components/ui/Message';
 
 export const metadata: Metadata = { title: 'Produit' };
+
+/** numeric(6,2) -> centièmes entiers, lus en texte exact. */
+const centiemes = (v: number | null) => (v === null ? null : Number(lireDecimal(String(v), 2) ?? 0n));
 
 export default async function PageProduit({ params, searchParams }: PageProps<'/catalogue/produits/[id]'>) {
   await verifierSession();
@@ -36,8 +40,8 @@ export default async function PageProduit({ params, searchParams }: PageProps<'/
   const f = fourchette.data;
   const plausibilite = alertesProduit({
     type: p.type as TypeProduit, unite: p.unite_mesure === 'kg' ? 'kg' : 'L',
-    rendementCentiemes: p.rendement_m2_par_unite === null ? null : Math.round(Number(p.rendement_m2_par_unite) * 100),
-  }, f?.rendement_min != null && f.rendement_max != null ? { min: Math.round(Number(f.rendement_min) * 100), max: Math.round(Number(f.rendement_max) * 100) } : null);
+    rendementCentiemes: centiemes(p.rendement_m2_par_unite),
+  }, f?.rendement_min != null && f.rendement_max != null ? { min: centiemes(f.rendement_min)!, max: centiemes(f.rendement_max)! } : null);
   const unite = p.unite_mesure === 'kg' ? 'kg' : 'L';
   const formats = [...p.conditionnements].sort((a, b) => a.contenance - b.contenance);
   const contenanceDe = new Map(formats.map((c) => [c.id, c.contenance]));
