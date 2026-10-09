@@ -1540,6 +1540,9 @@ isOneToOne: false
 "deplacer_ligne_devis":
 { Args: { "p_ligne_id": string,"p_sens": number }; Returns: undefined
                            },
+"deplacer_ligne_facture":
+{ Args: { "p_ligne_id": string,"p_sens": number }; Returns: undefined
+                           },
 "devis_a_relancer":
 { Args: Record<PropertyKey, never>; Returns: {
               "client": string,"devis_id": string,"email": string,"entreprise": string,"numero": string,"organisation_id": string,"valide_jusqu_au": string,"version": number
@@ -1563,11 +1566,19 @@ isOneToOne: false
 "emettre_facture":
 { Args: { "p_copie_chantier": Json,"p_copie_client": Json,"p_copie_emetteur": Json,"p_facture_id": string,"p_pdf_chemin": string,"p_pdf_sha256": string }; Returns: string
                            },
+"emettre_facture_attendue":
+{ Args: { "p_copie_chantier": Json,"p_copie_client": Json,"p_copie_emetteur": Json,"p_date_attendue": string,"p_facture_id": string,"p_numero_attendu": string,"p_pdf_chemin": string,"p_pdf_sha256": string }; Returns: string
+                           },
 "est_membre":
 { Args: { "p_organisation_id": string }; Returns: boolean
                            },
 "facture_par_jeton":
 { Args: { "p_jeton": string }; Returns: Json
+                           },
+"factures_a_relancer":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "client": string,"code": string,"date_echeance": string,"email": string,"entreprise": string,"facture_id": string,"niveau": number,"numero": string,"organisation_id": string,"reste_cents": number
+            }[]
                            },
 "fichier_protege":
 { Args: { "p_chemin": string }; Returns: boolean
@@ -1620,6 +1631,9 @@ isOneToOne: false
                            },
 "numero_devis_previsionnel":
 { Args: { "p_devis_id": string }; Returns: Json
+                           },
+"numero_facture_previsionnel":
+{ Args: { "p_facture_id": string }; Returns: Json
                            },
 "organisation_du_chemin":
 { Args: { "p_nom": string }; Returns: string
