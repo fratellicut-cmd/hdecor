@@ -23,6 +23,7 @@ function texteCopies(copies: unknown, demandees: unknown): string {
   const d = Number(demandees);
   if (!Number.isInteger(n) || !Number.isInteger(d) || d <= 0 || n < 0 || n > d) return '';
   const deja = d - n;
+  if (n === 0) return ' Copie déjà faite : aucune nouvelle pièce (copies existantes non modifiées).';
   return ` Copié dans ${n} pièce${n > 1 ? 's' : ''}${deja ? ` ; ${deja} avai${deja > 1 ? 'ent' : 't'} déjà ce poste (copie existante non modifiée)` : ''}.`;
 }
 

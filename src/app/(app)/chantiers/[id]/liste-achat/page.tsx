@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import { z } from 'zod';
 import { calculerChantier } from '@/lib/chantiers';
 import { formaterEuros } from '@/domain/formats';
-import { formaterQuantiteCourte } from '@/domain/peinture';
+import { formaterContenance, formaterQuantiteCourte } from '@/domain/peinture';
 import { texteListeAchat, totalMatiere } from '@/domain/liste-texte';
 import { AVERTISSEMENT_RENDEMENT } from '@/domain/systemes';
 import { BoutonPartage } from '@/components/chantiers/BoutonPartage';
@@ -65,7 +65,12 @@ export default async function PageListeAchat({ params }: PageProps<'/chantiers/[
             {l.depuisPoste && !l.finition && !l.reference ? <p className="text-sm font-semibold text-alerte">Finition non précisée sur le poste.</p> : null}
             <p className="tabular-nums">Besoin : <strong>{formaterQuantiteCourte(l.quantite)} {l.unite}</strong></p>
             {l.pots ? (
-              <p className="text-lg font-bold tabular-nums">{texteCombinaison(l.pots.retenue, l.unite)}</p>
+              <>
+                <p className="text-lg font-bold tabular-nums">{texteCombinaison(l.pots.retenue, l.unite)}</p>
+                <p className="text-sm tabular-nums">
+                  Reste : {formaterContenance(Number(l.pots.retenue.resteMl), l.unite)}{l.pots.choixAuCout ? '' : ' · prix inconnus : choix indicatif'}
+                </p>
+              </>
             ) : <p className="font-semibold text-danger">{l.probleme}</p>}
             <p className="tabular-nums">
               {l.coutCents === null ? 'Prix à renseigner' : `Coût HT : ${formaterEuros(l.coutCents)}${l.coutIndicatif ? ' (indicatif : prix de certains formats inconnus)' : ''}`}
