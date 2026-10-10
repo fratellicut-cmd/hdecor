@@ -28,3 +28,39 @@ export function fichierConforme(octets: Uint8Array, typeAnnonce: string, autoris
   const reel = typeReel(octets);
   return reel !== null && reel === typeAnnonce && autorises.includes(reel);
 }
+
+/**
+ * JPEG sans métadonnées : retire les segments APP1 (EXIF : position GPS,
+ * appareil, date ; XMP), APP13 (IPTC) et les commentaires, avant le début de
+ * l'image. Garde APP0 (JFIF), APP2 (profil de couleurs) et APP14 (Adobe).
+ * Null si le fichier n'est pas un JPEG lisible.
+ */
+export function jpegSansMetadonnees(octets: Uint8Array): { octets: Uint8Array; largeur: number | null; hauteur: number | null } | null {
+  if (octets.length < 4 || octets[0] !== 0xff || octets[1] !== 0xd8) return null;
+  const morceaux: Uint8Array[] = [octets.subarray(0, 2)];
+  let largeur: number | null = null;
+  let hauteur: number | null = null;
+  let i = 2;
+  while (i + 4 <= octets.length) {
+    if (octets[i] !== 0xff) return null;
+    const marqueur = octets[i + 1]!;
+    if (marqueur === 0xff) { i += 1; continue; } // octet de remplissage
+    if (marqueur === 0xda) { morceaux.push(octets.subarray(i)); break; } // début des données de l'image : tout le reste est gardé
+    if (marqueur === 0xd9) { morceaux.push(octets.subarray(i, i + 2)); break; }
+    const taille = (octets[i + 2]! << 8) | octets[i + 3]!;
+    if (taille < 2 || i + 2 + taille > octets.length) return null;
+    // Dimensions : en-tête de trame (SOF0 à SOF15, sauf DHT, JPG et DAC).
+    if (marqueur >= 0xc0 && marqueur <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marqueur) && taille >= 7) {
+      hauteur = (octets[i + 5]! << 8) | octets[i + 6]!;
+      largeur = (octets[i + 7]! << 8) | octets[i + 8]!;
+    }
+    const retire = marqueur === 0xe1 || marqueur === 0xed || marqueur === 0xfe || (marqueur >= 0xe3 && marqueur <= 0xec) || marqueur === 0xef;
+    if (!retire) morceaux.push(octets.subarray(i, i + 2 + taille));
+    i += 2 + taille;
+  }
+  const total = morceaux.reduce((a, m) => a + m.length, 0);
+  const sortie = new Uint8Array(total);
+  let p = 0;
+  for (const m of morceaux) { sortie.set(m, p); p += m.length; }
+  return { octets: sortie, largeur: largeur || null, hauteur: hauteur || null };
+}

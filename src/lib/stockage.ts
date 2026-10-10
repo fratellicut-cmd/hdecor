@@ -6,7 +6,7 @@ import { clientAdmin } from '@/lib/supabase/admin';
  * ses propres contrôles d'accès (session et organisation, ou jeton de lien
  * public). Espaces privés ; chemin toujours préfixé par l'organisation.
  */
-export type Espace = 'documents' | 'signatures' | 'justificatifs';
+export type Espace = 'documents' | 'signatures' | 'justificatifs' | 'photos';
 
 const CHEMIN = /^[0-9a-f-]{36}\/[a-z0-9\-/.]+$/;
 
@@ -46,7 +46,7 @@ export async function retirer(espace: Espace, organisationId: string, chemin: st
  * retiré tout de suite ; en cas d'échec, mis en file de suppression (la tâche
  * planifiée le reprend ; la file refuse tout document protégé).
  */
-export async function oublier(espace: 'justificatifs', organisationId: string, chemin: string) {
+export async function oublier(espace: 'justificatifs' | 'photos', organisationId: string, chemin: string) {
   verifierChemin(organisationId, chemin);
   const admin = clientAdmin();
   const { error } = await admin.storage.from(espace).remove([chemin]);

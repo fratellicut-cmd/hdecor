@@ -31,8 +31,12 @@ export default async function PageChantier({ params, searchParams }: PageProps<'
   const totalMurs = pieces.reduce((t, p) => t + (p.surfaces?.totalMursMm2 ?? 0n), 0n);
   const totalPlafonds = pieces.reduce((t, p) => t + (p.surfaces?.totalPlafondMm2 ?? 0n), 0n);
   const incompletes = pieces.filter((p) => !p.surfaces || p.surfaces.totalPlafondMm2 === null).length;
-  const { data: devis } = await (await clientServeur()).from('v_devis').select('id, numero, version, statut_affiche, total_ttc_cents')
-    .eq('chantier_id', chantier.id!).order('created_at', { ascending: false });
+  const sb = await clientServeur();
+  const [{ data: devis }, { count: nbPhotos }, { count: nbDocuments }] = await Promise.all([
+    sb.from('v_devis').select('id, numero, version, statut_affiche, total_ttc_cents').eq('chantier_id', chantier.id!).order('created_at', { ascending: false }),
+    sb.from('photos').select('id', { count: 'exact', head: true }).eq('chantier_id', chantier.id!),
+    sb.from('documents_chantier').select('id', { count: 'exact', head: true }).eq('chantier_id', chantier.id!),
+  ]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -100,6 +104,13 @@ export default async function PageChantier({ params, searchParams }: PageProps<'
             {incompletes ? <span className="block text-sm font-normal text-danger">{incompletes} pièce(s) incomplète(s) : total partiel.</span> : null}
           </p>
         ) : null}
+      </Carte>
+
+      <Carte titre="Photos et documents">
+        <div className="grid grid-cols-2 gap-2">
+          <Link href={`/chantiers/${chantier.id}/photos`} className={`${bouton} border-2 border-anthracite bg-white`}>Photos ({nbPhotos ?? 0})</Link>
+          <Link href={`/chantiers/${chantier.id}/documents`} className={`${bouton} border-2 border-anthracite bg-white`}>Documents ({nbDocuments ?? 0})</Link>
+        </div>
       </Carte>
 
       <CartesPilotage chantier={{ id: chantier.id!, date_debut_prevue: chantier.date_debut_prevue, duree_estimee_jours: chantier.duree_estimee_jours }} />

@@ -9,6 +9,7 @@ import { Bouton } from '@/components/ui/Bouton';
 import { Champ } from '@/components/ui/Champ';
 import { Selection, TexteLong } from '@/components/ui/Autres';
 import { TAILLE_MAX_JUSTIFICATIF } from '@/lib/validation/comptabilite';
+import { reduirePhoto } from '@/components/formulaire/reduirePhoto';
 
 type Option = { id: string; libelle: string };
 
@@ -17,33 +18,6 @@ export type DepenseSaisie = {
   montant_ttc_cents: string; tva_cents: string; mode_paiement: string; justificatif: boolean;
 };
 
-/** Côté le plus long d'une photo réduite : un ticket reste lisible, le fichier pèse quelques centaines de Ko. */
-const COTE_MAX = 1600;
-const QUALITE_JPEG = 0.75;
-
-/**
- * Réduit une photo avant l'envoi (une photo de téléphone dépasse souvent la
- * limite d'envoi). Un PDF, ou une image que le navigateur ne sait pas lire
- * (HEIC hors Safari), est envoyé tel quel : le serveur tranche.
- */
-async function reduire(fichier: File): Promise<File> {
-  if (!fichier.type.startsWith('image/') || typeof createImageBitmap !== 'function') return fichier;
-  try {
-    const image = await createImageBitmap(fichier);
-    const echelle = Math.min(1, COTE_MAX / Math.max(image.width, image.height));
-    if (echelle === 1 && fichier.size <= 1_000_000 && fichier.type === 'image/jpeg') return fichier;
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(image.width * echelle);
-    canvas.height = Math.round(image.height * echelle);
-    canvas.getContext('2d')?.drawImage(image, 0, 0, canvas.width, canvas.height);
-    image.close();
-    const blob = await new Promise<Blob | null>((ok) => canvas.toBlob(ok, 'image/jpeg', QUALITE_JPEG));
-    return blob ? new File([blob], fichier.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' }) : fichier;
-  } catch {
-    return fichier;
-  }
-}
-
 function ChoixJustificatif({ existant, erreur }: { existant: boolean; erreur?: string }) {
   const [etat, setEtat] = useState<{ texte: string; trop: boolean } | null>(null);
   const choisir = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -51,7 +25,7 @@ function ChoixJustificatif({ existant, erreur }: { existant: boolean; erreur?: s
     const f = champ.files?.[0];
     if (!f) { setEtat(null); return; }
     setEtat({ texte: 'Préparation de la photo…', trop: false });
-    const reduit = await reduire(f);
+    const reduit = await reduirePhoto(f);
     if (reduit !== f) {
       const dt = new DataTransfer();
       dt.items.add(reduit);
