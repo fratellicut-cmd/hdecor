@@ -1,7 +1,6 @@
 # H'DECOR : cadrage (Phase 0)
 
-> Statut : **en attente de ta validation**. Aucune ligne d'application n'est écrite.
-> Seuls le schéma SQL et ses tests existent, parce qu'un schéma « avec RLS » qui n'a jamais tourné ne prouve rien.
+> Statut : **validé** (Phase 0), puis appliqué des Phases 1 à 8. Document d'origine, conservé tel quel ; les écarts décidés depuis sont dans `docs/SUIVI.md`.
 
 ---
 

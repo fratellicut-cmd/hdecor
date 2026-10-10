@@ -202,3 +202,90 @@ Aucun de ces points ne produit un montant faux ni un document non conforme connu
 | testeur-chantier | Confort : pas de bouton « Revenir au texte par défaut » ; repères {mediateur} peu parlants ; fenêtre sans dimensions proposées ; bandeau « pas encore envoyée » sur une facture payée ; pas de message « réseau revenu » ; formulaire de paiement fermé à l'arrivée sur une facture émise ; quelle ligne empêche le « prévu ». |
 | testeur-chantier | PDF : l'adresse de la page de confidentialité vient de `NEXT_PUBLIC_SITE_URL` ; à vérifier en production (MISE_EN_PRODUCTION). |
 | testeur-chantier (boucle 2) | Messages de la marge de perte sans le nom du champ ; « 0,155 % » refusé sans dire « 2 décimales au plus » ; après « Retirer le logo », l'ancien message vert « Logo enregistré » reste affiché. |
+
+## Clôture de la Phase 8
+
+Branche `phase-8`, dernier commit audité par chef-de-projet : 8dbeed7.
+
+| Agent | Verdict | Boucle | Commit audité |
+|---|---|---|---|
+| auditeur-peinture | APPROUVÉ | 2 | 64f563e |
+| auditeur-legal | APPROUVÉ | 2 | 323c662 |
+| securite-rgpd | APPROUVÉ | 2 | 64f563e (remarques traitées dans 58341f7) |
+| qa-calculs | APPROUVÉ | 3 | a6e9af7 |
+| relecteur-code | APPROUVÉ | 2 | ec35949 (remarques traitées dans de1932f) |
+| testeur-chantier | APPROUVÉ | 2 | 1caccbc (confort traité dans 3052ac6) |
+| chef-de-projet | Bloquant documentaire (ce bilan) | 1 | 8dbeed7 |
+
+Mesures sur l'état final : Vitest 766/766 ; SQL 424/424 (shim et gotrue) et 4 tests de concurrence ; e2e 81/81 (3052ac6, puis 8dbeed7 ne change qu'une ligne du test de sauvegarde) ; typecheck, lint et build sans erreur ni avertissement ; démo chargée (7/7) et « conforme » ; sauvegarde et restauration : tous les contrôles OK.
+
+Changement relevé par chef-de-projet, non vu par auditeur-legal : le rappel « Mention d'autoliquidation » à l'émission d'une facture disparaît une fois la validation des textes datée (même règle que le devis). À confirmer par le comptable avec la présentation de l'autoliquidation.
+
+## Clôture du projet : état des points reportés
+
+Chaque point reporté des Phases 1 à 8 qui n'était pas marqué « Fait » dans son tableau, avec son état à la fin de la Phase 8. Vérifié dans le code et l'historique git, pas seulement d'après les comptes rendus.
+
+États : **Fait** ; **Avant mise en production** (repris dans `docs/MISE_EN_PRODUCTION.md`) ; **Comptable / Yorick** (décision humaine, repris dans `docs/CHECKLIST_PREMIERE_FACTURE.md` pour le comptable) ; **Après mise en service** (amélioration, aucun montant faux ni document non conforme connu) ; **Avant activation de Stripe**.
+
+### Faits
+
+| Point (origine) | Où |
+|---|---|
+| Justificatifs protégés de la suppression par une session (sécurité, boucle 3, cible 6) | Phase 6 : politique `hdecor_suppr` réécrite (migration 20261016000100), puis Phase 8 (plus aucune suppression par session sur le stockage, migration 20261019000100). |
+| `src/lib/fichiers.ts` branché sur les dépôts (cible 2 ou 7) | Justificatifs, photos et documents de chantier, logo. |
+| Dépôt de photos de chantier (cible 7) | Phase 7. |
+| Liste des chantiers limitée à 200 (cible 6) | Phase 8 : pagination « Afficher 100 de plus », recherche. |
+| Recherche dans les listes devis, factures et clients (cibles 4, 6, 8) | Phase 8. |
+| Textes légaux modifiables (cible 7) | Phase 8 : Réglages > Textes des documents. |
+| Phase 2 : formats par type, matière d'étape, teinte, reprise des postes dans le devis (R1) | Phases 3 et 4 (bilan de la Phase 3 et e2e du devis). |
+| Envoi par email doublé par deux requêtes simultanées ; relances planifiées sans verrou (Phase 4) | Phase 5 : chaque email réservé en base avant l'envoi, index unique des relances. |
+| Améliorations de la validation finale de la Phase 5 (cible 6) | Phase 6, commit 6369139 (liens désactivés après l'envoi ou au partage, rappel noté seulement sur facture émise, erreurs ciblées) ; complément d'avoir sur trois taux : Phase 8 (voir ligne suivante). |
+| Écart d'un centime sur le cumul par taux d'avoirs partiels successifs (Phase 5, cible 8) | Phase 8 : `lignesAvoirMontantExact` n'accepte qu'un avoir dont le reste dû par taux garde une TVA conforme ; la base refuse un avoir qui dépasse la facture pour un taux. qa-calculs : 0 écart sur 1 500 tirages par configuration. Reste un cas hors application (voir « Après mise en service »). |
+| Cumul des acomptes calculé avec les brouillons (Phase 5, cible 8) | Phase 8 : cumul enregistré à la création (`acompte_cumul_avant_bp`) et contrôlé à l'émission en base, sous le verrou du devis. |
+| Complément d'avoir à refaire sur trois taux (14 cas sur 846, Phase 5) | Phase 8 : proposition vérifiée, ou message qui oriente vers l'avoir total puis une nouvelle facture. |
+| Actions GitHub épinglées (B7), logo | Phase 8. |
+
+### Avant mise en production
+
+| Point | Origine |
+|---|---|
+| Limitation du débit (connexion, emails, pages publiques /d et /f) par IP cliente, dans Vercel Firewall ; SMTP dédié (Resend) | Sécurité M4, Phase 4 |
+| Durée maximale et délai d'inactivité des sessions | Sécurité B5 |
+| Migrations modifiées sur place avant tout déploiement ; aucune migration de retour arrière : à partir de la première mise en ligne, une nouvelle migration par changement et une sauvegarde avant chaque déploiement (MISE_EN_PRODUCTION § 7 et § 8) | Phases 2, 4, 5 |
+| Chiffrement de la sauvegarde à authentifier ; restauration réelle à répéter sur un projet Supabase de test ; test de restauration à ajouter à la CI | Phase 8 |
+| Texte du PV : « [Références À VÉRIFIER] » à remplacer par le texte validé | Phase 7 |
+| Aucune étape de MISE_EN_PRODUCTION n'a été répétée sur de vrais projets Supabase et Vercel | Phase 8 |
+
+### Comptable / Yorick
+
+| Point | Origine |
+|---|---|
+| Toute la check-list `docs/CHECKLIST_PREMIERE_FACTURE.md` : mention de franchise et seuils, pénalités et indemnité de 40 €, « Net à payer », rétractation et encaissement, avoir d'une finale avec acomptes, autoliquidation (présentation « TVA 20 % … 0,00 € » et « Total TTC », rappel retiré après validation des textes), Factur-X et calendrier de la facturation électronique, durées de conservation, demande d'avis (L34-5), PV et levée des réserves, force probante du « Bon pour accord » tapé | Phases 4 à 8 |
+| Taux réduits bloqués tant que l'attestation n'est pas produite, sur devis et sur toutes les factures | Décision de Yorick (Phase 8), à confirmer par le comptable |
+| Purge du journal d'audit : durée à fixer | Sécurité B10 |
+| Enduit à 1 m²/kg par passe ; matière d'étape « pertes comprises » ; formats usuels sans effet sur « À VÉRIFIER » | Phases 2 et 3 |
+| Base du chiffre d'affaires, jauges des seuils, coût des achats en franchise, matière prévue HT comparée à des achats TTC, jauge à exactement 100 % | Phase 6 |
+| Activation de Stripe (frais, contrat, registre) | Phase 5 |
+| Champs date (JJ/MM/AAAA) et signatures sur un vrai Android et un vrai iPhone | Phases 5 et 7 |
+
+### Avant activation de Stripe
+
+| Point | Origine |
+|---|---|
+| Webhook : une facture introuvable donne une réponse 500 répétée par Stripe (théorique ; Stripe est inactif sans clés) | Phase 5 |
+
+### Après mise en service (améliorations)
+
+Risque qualifié pour les deux points de calcul et de sécurité qui visaient la Phase 8 :
+- **Désactivation puis insertion d'un lien de facture non atomiques** : seulement si deux requêtes strictement simultanées partent pour la même facture. Conséquence : deux liens valables pour le même client, chacun limité à la facture de ce client et à 89 jours ; « Désactiver le lien envoyé » les coupe tous. Aucun montant, aucune donnée d'un autre client exposée. Risque faible, accepté.
+- **Avoir partiel inséré directement en base (hors application)** qui laisse un reste dont la TVA n'est pas l'arrondi de sa base : l'application ne le produit pas, et la RLS réserve l'écriture à l'entreprise elle-même. Le reste se solde par l'annulation exacte. Risque faible, accepté ; contrôle en base à ajouter.
+
+Autres améliorations :
+- Métré : pièce en L (« deux rectangles ») ; modifier une ouverture ou un élément ; alertes d'aperçu pour une valeur hors de l'ordinaire ; « Pièce humide » au niveau de la pièce ; support par défaut selon la cible ; dimensions par défaut d'une fenêtre.
+- Calcul : planning du séchage complet (impression → finition, passes d'enduit, somme) ; avertissement métal malgré un poste antirouille ; alternatives à plusieurs formats de pots ; fausse alerte « plâtre neuf » ; prévu masqué dès qu'une ligne manuelle n'a pas de prévision, sans dire laquelle.
+- Catalogue : contrôle du format des codes RAL et NCS.
+- Devis et factures : taux de TVA par défaut des travaux ; écart de ±0,5 centime par m² affiché à la reprise d'un poste ; lien direct vers la fiche produit fautive ; bouton « acompte → début des travaux » ; bouton « recalculer les déductions » d'une finale ; avancement de situation en recul contrôlé ligne par ligne ; menu TVA qui signale les taux bloqués ; propositions d'avoir au-dessus du montant.
+- Relances et paiements : suspension des relances par facture (litige, échéancier accordé) ; répartition d'un paiement sur plusieurs factures ; résumé « à encaisser » sur l'accueil.
+- Saisie : renvoi après une réponse perdue avec une saisie corrigée entre-temps (la première version est gardée sans message) ; message « réseau revenu, pas encore enregistré ».
+- Toutes les remarques de confort des testeurs (Phases 1 à 8) listées plus haut, et la section « Phase 8 : points reportés (audit global) ».
+- Hors périmètre, par décision : annotation des photos, mode sombre, attestation de TVA, notifications « push », hors-ligne complet, jours fériés.

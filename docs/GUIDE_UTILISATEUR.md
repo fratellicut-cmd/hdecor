@@ -101,7 +101,7 @@ Ensuite : **Émettre…**, cochez, **Émettre la facture** (FAC-AAAA-NNNN). Pour
 
 ## 6. Paiements et relances
 
-- Sur la facture : **Enregistrer un paiement**. Saisissez le montant et le mode (virement, espèces, chèque). Le reste à payer se met à jour.
+- Sur la facture : **Enregistrer un paiement**. Saisissez le montant et le mode (virement, espèces, chèque, carte). Le reste à payer se met à jour.
 - Paiement saisi par erreur : **Annuler ce paiement…**. Une écriture opposée est ajoutée, rien n'est effacé.
 - Lien de la facture pour le client : reste à payer, QR code de virement, PDF.
 - Relances : réglables dans **Réglages > Messages et relances**. Elles ne partent par email que si l'envoi est configuré.
