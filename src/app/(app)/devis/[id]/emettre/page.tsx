@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { z } from 'zod';
-import { chargerDevis, preparerEmission } from '@/lib/devis';
+import { chargerDevis, ErreurPreparation, preparerEmission } from '@/lib/devis';
 import { clientServeur } from '@/lib/supabase/serveur';
 import { FormulaireEmission } from '@/components/devis/Formulaires';
 import { Carte } from '@/components/ui/Carte';
@@ -28,7 +28,16 @@ export default async function PageEmettre({ params }: PageProps<'/devis/[id]/eme
   const { data: prev } = await sb.rpc('numero_devis_previsionnel', { p_devis_id: id.data });
   const { numero, date_emission: date } = (prev ?? {}) as { numero?: string; date_emission?: string };
   if (!numero || !date) throw new Error('Numéro prévisionnel indisponible.');
-  const prep = await preparerEmission(sb, c, date);
+  let prep;
+  try { prep = await preparerEmission(sb, c, date); } catch (e) {
+    if (!(e instanceof ErreurPreparation)) throw e;
+    return (
+      <div className="flex flex-col gap-4">
+        <Link href={`/devis/${id.data}`} className="inline-flex min-h-12 items-center underline underline-offset-4">← Retour au brouillon</Link>
+        <Message type="erreur">{e.message}</Message>
+      </div>
+    );
+  }
   const bloquants = prep.manques.filter((m) => m.bloquant);
   const signales = prep.manques.filter((m) => !m.bloquant);
   const sansLigne = !c.lignes.some((l) => l.type === 'ligne' && !l.optionnelle);

@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { PDFDocument } from 'pdf-lib';
 import { verifierSession } from '@/lib/dal';
 import { clientServeur } from '@/lib/supabase/serveur';
-import { deposer, oublier, retirer } from '@/lib/stockage';
+import { deposer, oublier } from '@/lib/stockage';
 import { jpegSansMetadonnees, typeReel } from '@/lib/fichiers';
 import type { EtatFormulaire } from '@/lib/etat-formulaire';
 import { enregistrerCheminLogo } from '@/lib/logo';
@@ -63,7 +63,7 @@ export async function deposerLogo(_: EtatFormulaire, fd: FormData): Promise<Etat
     return { message: ECHEC };
   }
   if (!(await enregistrerCheminLogo(session.organisationId, chemin))) {
-    await retirer('marque', session.organisationId, chemin).catch(() => undefined);
+    await oublier('marque', session.organisationId, chemin);
     return { message: ECHEC };
   }
   if (p.logo_chemin) await oublier('marque', session.organisationId, p.logo_chemin);

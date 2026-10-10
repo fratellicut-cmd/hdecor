@@ -208,18 +208,29 @@ describe('avoirs', () => {
   it('propriété : un avoir partiel puis « tout le reste » solde toujours chaque taux exactement (1 000 factures à deux taux)', () => {
     let a = 11;
     const r = (n: number) => { a = (a * 1103515245 + 12345) % 2147483648; return a % n; };
+    let verifies = 0;
     for (let i = 0; i < 1_000; i++) {
       const b1 = BigInt(100 + r(500_000)), b2 = BigInt(100 + r(500_000));
       const facture = [{ taux_bp: 1_000, base_ht_cents: b1, tva_cents: arrondi(b1 * 1_000n, 10_000n) },
         { taux_bp: 2_000, base_ht_cents: b2, tva_cents: arrondi(b2 * 2_000n, 10_000n) }];
       const total = facture.reduce((x, v) => x + v.base_ht_cents + v.tva_cents, 0n);
       let a1: Ventilation;
-      try { a1 = totauxFacture(lignesAvoirMontant(facture, BigInt(1 + r(Number(total) - 1)), 'assujetti', false, 'A'), 0, 'assujetti').ventilation; } catch { continue; }
+      try { a1 = totauxFacture(lignesAvoirMontant(facture, BigInt(1 + r(Number(total) - 1)), 'assujetti', false, 'A'), 0, 'assujetti').ventilation; } catch (e) {
+        expect((e as Error).message).toMatch(/pas atteignable/);
+        continue;
+      }
       const reste = netParTaux(facture, [], [a1]);
       const du = reste.reduce((x, v) => x + v.base_ht_cents + v.tva_cents, 0n);
       const a2 = totauxFacture(lignesAvoirMontant(reste, du, 'assujetti', false, 'A'), 0, 'assujetti').ventilation;
       expect(netParTaux(facture, [], [a1, a2])).toEqual([]);
+      verifies++;
     }
+    expect(verifies).toBeGreaterThan(900);
+  });
+  it('net hérité d’une déduction (TVA ≠ arrondi de la base : 150,39 HT + 15,03 à 10 %) : avoir partiel refusé avec une issue', () => {
+    // L'issue (avoir sur la totalité) passe par l'annulation exacte (lignesAvoirTotal, mêmes lignes et déductions), pas par un montant.
+    const net = [{ taux_bp: 1_000, base_ht_cents: 15_039n, tva_cents: 1_503n }];
+    expect(() => lignesAvoirMontant(net, 5_000n, 'assujetti', false, 'A')).toThrow(/avoir sur la totalité, puis une nouvelle facture/);
   });
   it('propriété : tout montant atteignable reste exact sur deux taux (2 000 cas)', () => {
     let a = 3;

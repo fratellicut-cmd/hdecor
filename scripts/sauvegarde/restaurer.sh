@@ -63,7 +63,7 @@ SQL
 )
     N=$(echo "select count(*) from public.clients where id = any(:'ids'::uuid[]) and anonymise_le is not null;" \
       | psql -X -At -v ON_ERROR_STOP=1 -d "$DB_CIBLE" -v ids="{$IDS}")
-    echo "Effacements réappliqués : $N client(s) effacé(s) dans la base restaurée."
+    echo "Effacements : $N client(s) de la liste effacé(s) dans la base restaurée (y compris ceux déjà effacés dans l'archive) ; $REAPPLIQUES fichier(s) mis en file de suppression."
   fi
 fi
 echo "Restauration terminée et contrôlée."

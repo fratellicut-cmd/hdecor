@@ -10,7 +10,9 @@ type Sb = Awaited<ReturnType<typeof clientServeur>>;
  * correspondent (même recherche que la liste des clients).
  */
 export async function filtreRecherche(sb: Sb, texte: string, colonnes: string[]): Promise<string> {
-  const { data } = await sb.rpc('rechercher_clients', { p_texte: texte, p_limite: 200 });
+  const { data, error } = await sb.rpc('rechercher_clients', { p_texte: texte, p_limite: 200 });
+  // Recherche des clients indisponible : la liste filtre encore sur ses propres colonnes.
+  if (error) console.error('Recherche des clients', error.code);
   const motif = motifContient(texte);
   const ids = (data ?? []).map((c) => c.id);
   return [...colonnes.map((c) => `${c}.ilike.${motif}`), ids.length ? `client_id.in.(${ids.join(',')})` : null].filter(Boolean).join(',');

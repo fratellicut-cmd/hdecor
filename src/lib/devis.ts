@@ -1,5 +1,5 @@
-import { chargerLogo } from '@/lib/logo';
 import 'server-only';
+import { logoOuErreur } from '@/lib/logo';
 import { verifierSession } from '@/lib/dal';
 import { envPublique } from '@/lib/env';
 import { clientServeur } from '@/lib/supabase/serveur';
@@ -151,7 +151,7 @@ export async function preparerEmission(sb: Client, c: DevisComplet, dateIso: str
     emetteur, client, chantier, manques,
     aCompleter: c.lignes.filter(aCompleter).map((l) => l.designation),
     textesAVerifier: textes,
-    logo: await chargerLogo(p.organisation_id, p.logo_chemin),
+    logo: await logoOuErreur(p.organisation_id, p.logo_chemin, (m) => new ErreurPreparation(m)),
   };
 }
 

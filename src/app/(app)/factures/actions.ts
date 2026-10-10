@@ -390,9 +390,10 @@ export async function emettreFacture(_: EtatFormulaire, fd: FormData): Promise<E
     if (!c) return { message: 'Facture introuvable.' };
     if (c.facture.statut !== 'brouillon') redirect(`/factures/${id.data}`);
     if (c.facture.type === 'acompte' && c.facture.devis_id) {
-      const [{ data: calcul }, factures] = await Promise.all([
+      const [{ data: calcul, error: eCalcul }, factures] = await Promise.all([
         sb.from('factures').select('acompte_cumul_avant_bp').eq('id', id.data).single(), facturesDuDevis(sb, c.facture.devis_id),
       ]);
+      if (eCalcul) return { message: ECHEC };
       const ecart = controlerCumulAcompte(calcul?.acompte_cumul_avant_bp ?? null, cumulAcomptesEmis(factures, id.data));
       if (ecart) return { message: `Émission impossible : ${ecart}` };
     }

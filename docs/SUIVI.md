@@ -11,7 +11,7 @@ Points relevés par les agents de contrôle, acceptés pour la phase en cours ma
 | Sécurité B7 | Actions GitHub non épinglées par empreinte (SHA). **Traité en Phase 8.** | Fait |
 | Sécurité B10 | La purge du journal d'audit n'est pas planifiée, la durée étant À VÉRIFIER par le comptable. | Après validation de la durée |
 | Fichiers | `src/lib/fichiers.ts` (signature binaire) doit être branché sur le premier dépôt de fichier (logo, photos). | 2 ou 7 |
-| Logo | Dépôt du logo officiel. Le service de stockage local est indisponible dans l'environnement de développement actuel. | 7 (documents) |
+| Logo | Dépôt du logo officiel. **Traité en Phase 8** (Réglages > Logo ; le logo officiel reste à déposer par Yorick). | Fait |
 | Testeur (confort) | Les points suivants sont du confort, à reprendre plus tard : bouton Itinéraire ; ville proposée à partir du code postal ; bouton Enregistrer collant sur Conditions ; annulation d'une confirmation de taux de TVA ; message « Assurance supprimée » ; message français si la case de confirmation n'est pas cochée ; champs date à vérifier sur un vrai Android. | 2 à 8 |
 | Testeur | Déconnexion inattendue observée une fois après une 4G faible, non reproduite (probablement une autre session sur le même compte de test). À surveiller. | Suivi |
 | Phase 2 (calcul) | Matière des étapes de préparation : chiffrée par TYPE de produit (rendement du référentiel). Le choix d'un produit précis du catalogue et de sa consommation au m² arrive avec le catalogue. | 3 (catalogue) |
@@ -173,3 +173,25 @@ Mesures sur 2666f7f : Vitest 730/730, SQL 409/409 (shim et gotrue), e2e 74/74, t
 - **Annotation des photos et mode sombre** : reportés (hors recette).
 - **Attestation de TVA à taux réduit** : reportée ; les taux réduits restent bloqués, avec un message, tant qu'elle n'existe pas.
 - **Démonstration** : base locale séparée (`hdecor_demo`) seulement.
+
+## Phase 8 : points reportés (audit global)
+
+Aucun de ces points ne produit un montant faux ni un document non conforme connu ; chacun est à reprendre après la mise en service.
+
+| Origine | Point |
+|---|---|
+| qa-calculs | Facture en autoliquidation : le PDF imprime la colonne du taux, « TVA 20 % … 0,00 € » et « Total TTC ». Montants exacts, présentation à faire valider par le comptable. |
+| qa-calculs | Autoliquidation : le contrôle « taux absent des Paramètres » est sauté (taux déjà limité à la saisie ; il figure dans les données Factur-X). |
+| qa-calculs / relecteur-code | Avoir partiel sur une finale qui déduit un acompte (plusieurs taux, ou 10 %) : certains montants sont refusés sans proposition. Le message oriente vers l'avoir total puis une nouvelle facture. Élargir la recherche de proposition (au-dessus du montant). |
+| qa-calculs | La base accepte un avoir partiel inséré directement (hors application) qui laisse un reste dont la TVA n'est pas l'arrondi de sa base ; l'application ne le produit pas. Contrôle en base à ajouter. |
+| qa-calculs / relecteur-code | Les manques de taux d'une facture portent `ou: 'devis'` : le lien de correction peut mener au mauvais écran. |
+| relecteur-code | Logo jusqu'à 4096 px intégré en pleine résolution dans chaque PDF (jusqu'à 1,5 s et 600 Ko de plus) : réduire l'image au dépôt. |
+| relecteur-code | `controler_emission_recette` : le contrôle « solde sans solder chaque taux » est une défense en profondeur inatteignable (pas de taux négatif + somme nulle ⇒ chaque taux nul). |
+| relecteur-code | Droits UPDATE de `parametres_entreprise` accordés colonne par colonne : toute colonne ajoutée par une migration future doit recevoir son `grant update (...)`. |
+| relecteur-code | Recherche : si `rechercher_clients` échoue, la liste filtre sur ses propres colonnes (erreur journalisée, pas signalée à l'écran). |
+| relecteur-code | `enregistrerTextes` valide avec `lireTexte` plutôt qu'avec zod ; longueur comptée en UTF-16 (JS) et en caractères (SQL). |
+| relecteur-code / securite-rgpd | Sauvegarde : chiffrement `aes-256-cbc` sans authentification (passer à age, gpg ou ajouter un HMAC) ; fichiers des clients effacés réimportés avant d'être remis en file de suppression ; test de restauration non lancé en CI ; restauration Supabase réelle à répéter avant la production. |
+| relecteur-code | Taux réduits « attestation requise » bloqués sur toutes les factures (acompte, situation, finale) : conforme à la décision de Yorick, à confirmer avec le comptable. |
+| auditeur-peinture | Le prévu d'un chantier est masqué dès qu'une ligne manuelle n'a pas de prévision ; fausse alerte « plâtre neuf » ; R3 (pots sans prix) ; marge de la démonstration peu réaliste. |
+| auditeur-legal | Pas de rappel des textes légaux avant la signature du PV. |
+| securite-rgpd | Caractères de contrôle bidirectionnels (U+202E) acceptés dans les textes ; IBAN d'exemple dans la démonstration (fictif). |

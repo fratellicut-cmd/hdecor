@@ -1,6 +1,6 @@
-import { chargerLogo } from '@/lib/logo';
-import type { Logo } from '@/lib/pdf/commun';
 import 'server-only';
+import { logoOuErreur } from '@/lib/logo';
+import type { Logo } from '@/lib/pdf/commun';
 import { verifierSession } from '@/lib/dal';
 import { envPublique } from '@/lib/env';
 import { clientServeur } from '@/lib/supabase/serveur';
@@ -167,8 +167,10 @@ export async function preparerEmissionFacture(sb: Client, c: FactureComplete, da
       ...controlesTauxFacture(f.type, f.regime_tva, f.autoliquidation!, c.lignes.filter((l) => l.type === 'ligne')
         .map((l) => ({ designation: l.designation, tauxTvaBp: l.taux_tva_bp })), taux ?? []),
     ],
-    textesAVerifier: textesAVerifierFacture(emetteur, client, aControler), retractationJusquau: fin && dateIso <= fin ? fin : null,
-    logo: await chargerLogo(p.organisation_id, p.logo_chemin),
+    // Mention d'autoliquidation (texte des Paramètres) : plus rappelée une fois la validation des textes datée, comme sur le devis.
+    textesAVerifier: textesAVerifierFacture(emetteur, client, aControler)
+      .filter((t) => !(p.textes_legaux_valides_le && t.startsWith('Mention d’autoliquidation'))), retractationJusquau: fin && dateIso <= fin ? fin : null,
+    logo: await logoOuErreur(p.organisation_id, p.logo_chemin, (m) => new ErreurPreparationFacture(m)),
   };
 }
 

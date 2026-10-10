@@ -202,7 +202,8 @@ export function lignesAvoirMontant(netParTaux: Ventilation, montantTtcCents: big
         if (!(x instanceof ErreurFacture) || x.message.includes('le plus proche')) throw x;
       }
     }
-    throw e;
+    // Aucun montant voisin atteignable (net d'un taux hérité d'une déduction d'acompte) : orienter.
+    throw new ErreurFacture(`Avoir : ${formaterEuros(montantTtcCents)} n’est pas atteignable au centime près (arrondi de la TVA). Établissez un avoir sur la totalité, puis une nouvelle facture du montant juste.`);
   }
 }
 
