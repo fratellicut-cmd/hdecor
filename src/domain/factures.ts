@@ -8,7 +8,7 @@
 import { arrondi } from './chiffrage';
 import { ventiler, ventilationEcheance, type LigneDevis, type Regime, type Ventilation } from './devis';
 import { formaterEuros, formaterTaux } from './formats';
-import { ajouterJours, type CopieChantier, type CopieClient, type CopieEmetteur, type Manque } from './devis-document';
+import { ajouterJours, controlerTaux, type CopieChantier, type CopieClient, type CopieEmetteur, type LigneAControler, type Manque, type TauxActif } from './devis-document';
 
 export type TypeFacture = 'acompte' | 'situation' | 'finale' | 'libre' | 'avoir';
 
@@ -439,3 +439,16 @@ const formaterDateIso = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.s
 /** Date d'échéance = émission + délai (même calcul que la base). */
 export const dateEcheance = (dateEmission: string, delaiJours: number) => ajouterJours(dateEmission, delaiJours);
 
+
+/**
+ * Taux de TVA d'une facture à l'émission : les mêmes règles que le devis
+ * (franchise : tout à 0 % ; soumis à la TVA : pas de 0 % sans mention qui le
+ * justifie, taux présent dans les Paramètres, pas de taux réduit sans
+ * attestation). Avoir : il reprend les taux de la facture corrigée.
+ * Autoliquidation : aucune TVA facturée, la mention justifie l'absence de taux.
+ */
+export function controlesTauxFacture(type: string, regime: Regime, autoliquidation: boolean,
+  lignes: LigneAControler[], actifs: TauxActif[]): Manque[] {
+  if (type === 'avoir' || autoliquidation) return [];
+  return controlerTaux(lignes, regime, actifs);
+}

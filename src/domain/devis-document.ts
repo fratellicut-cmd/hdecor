@@ -224,7 +224,7 @@ export function controlerTaux(lignes: LigneAControler[], regime: Regime, actifs:
   }
   const aZero = noms((l) => l.tauxTvaBp === 0);
   if (aZero) {
-    m.push({ cle: 'taux_zero', message: `Lignes à 0 % sur un devis soumis à la TVA, sans mention qui le justifie (exonération, autoliquidation : À VÉRIFIER avec le comptable) : ${aZero}. Choisissez leur taux.`, ou: 'devis', bloquant: true });
+    m.push({ cle: 'taux_zero', message: `Lignes à 0 % alors que l’entreprise est soumise à la TVA, sans mention qui le justifie (exonération, autoliquidation : À VÉRIFIER avec le comptable) : ${aZero}. Choisissez leur taux.`, ou: 'devis', bloquant: true });
   }
   const inactifs = noms((l) => l.tauxTvaBp !== 0 && !actifs.some((t) => t.taux_bp === l.tauxTvaBp));
   if (inactifs) m.push({ cle: 'taux_inactif', message: `Taux de TVA absent des Paramètres (Taux de TVA) : ${inactifs}.`, ou: 'devis', bloquant: true });

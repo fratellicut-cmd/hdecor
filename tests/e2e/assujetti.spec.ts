@@ -130,3 +130,17 @@ test('assujetti : une facture libre à taux réduit est bloquée elle aussi (att
   await expect(page.getByText(/Taux réduit 10 % : une attestation du client est requise/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Émettre la facture' })).toBeDisabled();
 });
+
+test('assujetti : une facture libre avec une ligne à 0 % sans mention est bloquée (même règle que le devis)', async ({ page }) => {
+  const nom = `Libre-Zero-${unique()}`;
+  await chantierAvecClient(page, nom);
+  await page.goto('/factures/nouvelle');
+  await page.getByLabel('Type de facture').selectOption('libre');
+  await page.getByLabel('Client').selectOption({ label: `Client-${nom}` });
+  await page.getByRole('button', { name: 'Créer le brouillon' }).click();
+  await expect(page.getByText('Brouillon créé.')).toBeVisible();
+  await ligne(page, 'Peinture sans TVA', '100', '0');
+  await page.getByRole('link', { name: 'Émettre…' }).click();
+  await expect(page.getByText(/Lignes à 0 % alors que l’entreprise est soumise à la TVA/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Émettre la facture' })).toBeDisabled();
+});

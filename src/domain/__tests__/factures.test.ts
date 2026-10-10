@@ -4,6 +4,7 @@ import { totauxDevis, type LigneDevis, type Ventilation } from '../devis';
 import { arrondi } from '../chiffrage';
 import { copieClient, copieEmetteur, type ParametresEmetteur } from '../devis-document';
 import {
+  controlesTauxFacture,
   controlerMentionsFacture, deductionsDisponibles, ErreurFacture, formaterIban, ibanValide, lignesAcompte, lignesAvoirMontant,
   finRetractation, libelleDatesPrestation, lignesAvoirTotal, lignesDepuisDevis, mentionIndemnite, mentionPenalites, netAPayer, netParTaux, totalLigneFacture, totauxFacture,
   textesAVerifierFacture, type CopieEmetteurFacture, type FactureDuDevis, type LigneFacture,
@@ -392,5 +393,28 @@ describe('Factur-X (XML CII, préparé)', () => {
       totalTtcCents: ta.totalTtcCents, deductions: [], netAPayerCents: ta.totalTtcCents, factureOrigine: null,
     });
     expect(x).toMatch(/<ram:TypeCode>VAT<\/ram:TypeCode><ram:ExemptionReason>Autoliquidation<\/ram:ExemptionReason><ram:BasisAmount>1000.00<\/ram:BasisAmount><ram:CategoryCode>AE<\/ram:CategoryCode><ram:ExemptionReasonCode>VATEX-EU-AE<\/ram:ExemptionReasonCode><ram:RateApplicablePercent>/);
+  });
+});
+
+describe('Taux de TVA à l’émission d’une facture (mêmes règles que le devis)', () => {
+  const actifs = [{ taux_bp: 0, attestation_requise: false }, { taux_bp: 1000, attestation_requise: true }, { taux_bp: 2000, attestation_requise: false }];
+  const cles = (m: { cle: string; bloquant: boolean }[]) => m.filter((x) => x.bloquant).map((x) => x.cle);
+  it('assujetti : une ligne à 0 % sans mention est bloquante (facture libre)', () => {
+    expect(cles(controlesTauxFacture('libre', 'assujetti', false, [{ designation: 'Peinture', tauxTvaBp: 0 }], actifs))).toEqual(['taux_zero']);
+  });
+  it('assujetti : taux réduit avec attestation requise bloquant, taux absent des Paramètres bloquant', () => {
+    expect(cles(controlesTauxFacture('finale', 'assujetti', false, [{ designation: 'A', tauxTvaBp: 1000 }], actifs))).toEqual(['attestation_tva']);
+    expect(cles(controlesTauxFacture('libre', 'assujetti', false, [{ designation: 'A', tauxTvaBp: 850 }], actifs))).toEqual(['taux_inactif']);
+  });
+  it('assujetti à 20 % : rien à signaler', () => {
+    expect(controlesTauxFacture('acompte', 'assujetti', false, [{ designation: 'A', tauxTvaBp: 2000 }], actifs)).toEqual([]);
+  });
+  it('franchise : un taux non nul est bloquant, 0 % accepté', () => {
+    expect(cles(controlesTauxFacture('libre', 'franchise', false, [{ designation: 'A', tauxTvaBp: 2000 }], actifs))).toEqual(['taux_franchise']);
+    expect(controlesTauxFacture('libre', 'franchise', false, [{ designation: 'A', tauxTvaBp: 0 }], actifs)).toEqual([]);
+  });
+  it('avoir et autoliquidation : pas de contrôle de taux', () => {
+    expect(controlesTauxFacture('avoir', 'assujetti', false, [{ designation: 'A', tauxTvaBp: 0 }], actifs)).toEqual([]);
+    expect(controlesTauxFacture('libre', 'assujetti', true, [{ designation: 'A', tauxTvaBp: 0 }], actifs)).toEqual([]);
   });
 });

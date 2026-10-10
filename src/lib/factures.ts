@@ -6,11 +6,11 @@ import { envPublique } from '@/lib/env';
 import { clientServeur } from '@/lib/supabase/serveur';
 import type { Ligne, Vue } from '@/lib/supabase/types';
 import type { Regime, Ventilation } from '@/domain/devis';
-import { controlerAttestations, copieChantier, copieClient, copieEmetteur, type CopieChantier, type CopieClient, type Manque } from '@/domain/devis-document';
+import { copieChantier, copieClient, copieEmetteur, type CopieChantier, type CopieClient, type Manque } from '@/domain/devis-document';
 import { aujourdHuiParis } from '@/domain/dates';
 import { ajouterJours } from '@/domain/devis-document';
 import {
-  controlerMentionsFacture, ErreurFacture, finRetractation, netAPayer, textesAVerifierFacture, totauxFacture,
+  controlerMentionsFacture, controlesTauxFacture, ErreurFacture, finRetractation, netAPayer, textesAVerifierFacture, totauxFacture,
   type CopieEmetteurFacture, type Deduction, type LigneFacture, type TypeFacture,
 } from '@/domain/factures';
 import type { DonneesPdfFacture } from '@/lib/pdf/facture';
@@ -162,9 +162,10 @@ export async function preparerEmissionFacture(sb: Client, c: FactureComplete, da
     emetteur, client, chantier,
     manques: [
       ...controlerMentionsFacture(emetteur, client, chantier, aControler),
-      // Taux réduit sans attestation produite : bloquant (un avoir reprend les taux de la facture corrigée).
-      ...(f.type === 'avoir' ? [] : controlerAttestations(c.lignes.filter((l) => l.type === 'ligne')
-        .map((l) => ({ designation: l.designation, tauxTvaBp: l.taux_tva_bp })), taux ?? [], 'devis')),
+      // Mêmes règles de taux que le devis (0 % non justifié, taux absent, taux réduit sans attestation) ;
+      // un avoir reprend les taux de la facture corrigée ; en autoliquidation, aucune TVA n'est facturée.
+      ...controlesTauxFacture(f.type, f.regime_tva, f.autoliquidation!, c.lignes.filter((l) => l.type === 'ligne')
+        .map((l) => ({ designation: l.designation, tauxTvaBp: l.taux_tva_bp })), taux ?? []),
     ],
     textesAVerifier: textesAVerifierFacture(emetteur, client, aControler), retractationJusquau: fin && dateIso <= fin ? fin : null,
     logo: await chargerLogo(p.organisation_id, p.logo_chemin),
