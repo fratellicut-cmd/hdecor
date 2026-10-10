@@ -108,7 +108,7 @@ export const schemaSignature = z.object({
  */
 export const ENCRE_MIN_PIXELS = 300;
 export const ENCRE_MIN_ETENDUE = 40;
-export const ENCRE_MIN_ETENDUE_AUTRE_SENS = 20;
+export const ENCRE_MIN_ETENDUE_AUTRE_SENS = 30;
 
 export const MESSAGES_TRACE = {
   illisible: 'Signature illisible : effacez et recommencez.',

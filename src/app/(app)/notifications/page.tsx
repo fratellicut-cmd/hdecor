@@ -23,10 +23,10 @@ export default async function PageNotifications() {
         <ul className="flex flex-col gap-2">
           {data.map((n) => (
             <li key={n.id}>
-              <Link href={`/notifications/${n.id}`} prefetch={false} className={`flex min-h-14 flex-col justify-center rounded-xl border bg-white px-4 py-2 ${n.lu_le ? 'border-trait' : 'border-anthracite'}`}>
+              <a href={`/notifications/${n.id}`} className={`flex min-h-14 flex-col justify-center rounded-xl border bg-white px-4 py-2 ${n.lu_le ? 'border-trait' : 'border-anthracite'}`}>
                 <span className={n.lu_le ? '' : 'font-semibold'}>{n.lu_le ? '' : '● '}{n.titre}</span>
                 <span className="text-sm text-encre-douce">{formaterDateHeure(n.cree_le)}</span>
-              </Link>
+              </a>
             </li>
           ))}
         </ul>

@@ -16,7 +16,7 @@ export function ElementFin({ chantierId, rang, libelle, faitLe }: { chantierId: 
   const { etat, action, enCours, formRef, surEnvoi } = useFormulaire(null, cocherElementFin);
   const fait = !!faitLe;
   // Appui doublé (gant qui rebondit) : le second, trop proche, est ignoré au lieu de décocher aussitôt.
-  const dernierAppui = useRef(0);
+  const dernierAppui = useRef(-Infinity);
   return (
     <form ref={formRef} action={action} onSubmit={(ev) => {
       const maintenant = ev.timeStamp;

@@ -12,7 +12,7 @@ import { CaseACocher } from '@/components/ui/Autres';
 /** Longueur minimale du tracé (px à l'écran) : un tapotement n'est pas une signature. Le serveur revérifie l'encre. */
 const LONGUEUR_MIN = 80;
 /** Étendue minimale dans les deux sens (px à l'écran, au moins le seuil du serveur en px d'image) : un trait droit (glissement du pouce) n'est pas une signature. */
-const ETENDUE_MIN = 20;
+const ETENDUE_MIN = 30;
 
 /**
  * Cadre de signature au doigt (événements « pointer » : doigt, stylet, souris).
