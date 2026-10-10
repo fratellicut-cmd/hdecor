@@ -42,6 +42,10 @@ fi
 
 bash "$ICI/arreter.sh" >/dev/null 2>&1 || true
 
+case "$DB" in
+  hdecor_dev|hdecor_demo|hdecor_e2e*) ;;
+  *) echo "Base « $DB » refusée : ce script recrée la base (hdecor_dev, hdecor_demo ou hdecor_e2e…)." >&2; exit 1 ;;
+esac
 echo "Base $DB : création…"
 psql -q -X -v ON_ERROR_STOP=1 -d postgres -c "drop database if exists $DB" -c "create database $DB"
 psql -q -X -v ON_ERROR_STOP=1 -d "$DB" -f "$ICI/base_supabase.sql" -o /dev/null
@@ -103,8 +107,11 @@ echo $! > "$LOCAL/auth.pid"
 eval "$(node "$ICI/cles.mjs" "$JWT_SECRET")"
 
 echo "Passerelle (et stockage de fichiers émulé sur le disque)…"
-mkdir -p "$LOCAL/stockage"
-PORT_API=$PORT_API PORT_REST=$PORT_REST PORT_AUTH=$PORT_AUTH DOSSIER_STOCKAGE="$LOCAL/stockage" CLE_SERVICE="$SERVICE" \
+# Un dossier de fichiers par base, vidé avec elle (base recréée = fichiers effacés).
+STOCKAGE="$LOCAL/stockage/$DB"
+rm -rf "$STOCKAGE"
+mkdir -p "$STOCKAGE"
+PORT_API=$PORT_API PORT_REST=$PORT_REST PORT_AUTH=$PORT_AUTH DOSSIER_STOCKAGE="$STOCKAGE" CLE_SERVICE="$SERVICE" \
   nohup node "$ICI/proxy.mjs" > "$LOCAL/logs/proxy.log" 2>&1 &
 echo $! > "$LOCAL/proxy.pid"
 cat > "$RACINE/.env.local" <<ENVF
@@ -121,6 +128,7 @@ ENVF
 for i in $(seq 1 30); do
   if curl -fsS "http://127.0.0.1:$PORT_API/auth/v1/health" >/dev/null 2>&1 \
      && curl -fsS -H "apikey: $ANON" "http://127.0.0.1:$PORT_API/rest/v1/" >/dev/null 2>&1; then
+    echo "$DB" > "$LOCAL/base-active"
     echo "Pile prête : http://127.0.0.1:$PORT_API (base $DB). Clés écrites dans .env.local."
     exit 0
   fi
