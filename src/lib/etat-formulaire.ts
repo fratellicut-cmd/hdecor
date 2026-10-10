@@ -14,6 +14,8 @@ export type EtatFormulaire = {
   texte?: string;
   /** Niveau de relance préparé (impaye_1…3), noté seulement quand le message est copié ou partagé. */
   niveau?: string;
+  /** Identifiant (non secret) du lien créé pour ce message : le seul gardé valable quand il est partagé. */
+  lienId?: string;
 };
 
 export const ETAT_INITIAL: EtatFormulaire = {};

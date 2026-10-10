@@ -241,14 +241,14 @@ isOneToOne: false
                   ]
                 },"depenses": {
                   Row: {
-                    "categorie_id": string | null,"chantier_id": string | null,"created_at": string,"date_depense": string,"fournisseur": string,"id": string,"justificatif_chemin": string | null,"libelle": string | null,"mode_paiement": Database["public"]['Enums']["mode_paiement"] | null,"montant_ht_cents": number,"montant_ttc_cents": number,"organisation_id": string,"tva_cents": number
+                    "categorie_id": string | null,"chantier_id": string | null,"created_at": string,"date_depense": string,"fournisseur": string,"id": string,"justificatif_chemin": string | null,"libelle": string | null,"mode_paiement": Database["public"]['Enums']["mode_paiement"] | null,"montant_ht_cents": number,"montant_ttc_cents": number,"organisation_id": string,"tva_cents": number,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "categorie_id"?: string | null,"chantier_id"?: string | null,"created_at"?: string,"date_depense": string,"fournisseur": string,"id"?: string,"justificatif_chemin"?: string | null,"libelle"?: string | null,"mode_paiement"?: Database["public"]['Enums']["mode_paiement"] | null,"montant_ht_cents": number,"montant_ttc_cents": number,"organisation_id": string,"tva_cents"?: number
+                    "categorie_id"?: string | null,"chantier_id"?: string | null,"created_at"?: string,"date_depense": string,"fournisseur": string,"id"?: string,"justificatif_chemin"?: string | null,"libelle"?: string | null,"mode_paiement"?: Database["public"]['Enums']["mode_paiement"] | null,"montant_ht_cents": number,"montant_ttc_cents": number,"organisation_id": string,"tva_cents"?: number,"updated_at"?: string
                   }
                   Update: {
-                    "categorie_id"?: string | null,"chantier_id"?: string | null,"created_at"?: string,"date_depense"?: string,"fournisseur"?: string,"id"?: string,"justificatif_chemin"?: string | null,"libelle"?: string | null,"mode_paiement"?: Database["public"]['Enums']["mode_paiement"] | null,"montant_ht_cents"?: number,"montant_ttc_cents"?: number,"organisation_id"?: string,"tva_cents"?: number
+                    "categorie_id"?: string | null,"chantier_id"?: string | null,"created_at"?: string,"date_depense"?: string,"fournisseur"?: string,"id"?: string,"justificatif_chemin"?: string | null,"libelle"?: string | null,"mode_paiement"?: Database["public"]['Enums']["mode_paiement"] | null,"montant_ht_cents"?: number,"montant_ttc_cents"?: number,"organisation_id"?: string,"tva_cents"?: number,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -815,14 +815,14 @@ isOneToOne: false
                   ]
                 },"materiel": {
                   Row: {
-                    "date_achat": string | null,"depense_id": string | null,"id": string,"libelle": string,"notes": string | null,"organisation_id": string,"valeur_cents": number | null
+                    "created_at": string,"date_achat": string | null,"depense_id": string | null,"id": string,"libelle": string,"notes": string | null,"organisation_id": string,"valeur_cents": number | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "date_achat"?: string | null,"depense_id"?: string | null,"id"?: string,"libelle": string,"notes"?: string | null,"organisation_id": string,"valeur_cents"?: number | null
+                    "created_at"?: string,"date_achat"?: string | null,"depense_id"?: string | null,"id"?: string,"libelle": string,"notes"?: string | null,"organisation_id": string,"valeur_cents"?: number | null
                   }
                   Update: {
-                    "date_achat"?: string | null,"depense_id"?: string | null,"id"?: string,"libelle"?: string,"notes"?: string | null,"organisation_id"?: string,"valeur_cents"?: number | null
+                    "created_at"?: string,"date_achat"?: string | null,"depense_id"?: string | null,"id"?: string,"libelle"?: string,"notes"?: string | null,"organisation_id"?: string,"valeur_cents"?: number | null
                   }
                   Relationships: [
                     {
@@ -931,6 +931,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "paiements"
       referencedColumns: ["organisation_id","id"]
+    },{
+      foreignKeyName: "paiements_organisation_id_annule_paiement_id_fkey"
+      columns: ["organisation_id","annule_paiement_id"]
+isOneToOne: false
+      referencedRelation: "v_livre_recettes"
+      referencedColumns: ["organisation_id","paiement_id"]
     },{
       foreignKeyName: "paiements_organisation_id_facture_id_fkey"
       columns: ["organisation_id","facture_id"]
@@ -1516,7 +1522,7 @@ isOneToOne: false
                   ]
                 },"v_livre_recettes": {
                   Row: {
-                    "client": string | null,"date_paiement": string | null,"facture_id": string | null,"facture_numero": string | null,"mode": Database["public"]['Enums']["mode_paiement"] | null,"montant_cents": number | null,"nature": string | null,"organisation_id": string | null,"reference": string | null
+                    "chantier_id": string | null,"client": string | null,"date_paiement": string | null,"facture_id": string | null,"facture_net_ht_cents": number | null,"facture_net_ttc_cents": number | null,"facture_numero": string | null,"mode": Database["public"]['Enums']["mode_paiement"] | null,"montant_cents": number | null,"nature": string | null,"organisation_id": string | null,"paiement_id": string | null,"part_ht_cents": number | null,"reference": string | null,"regime_tva": Database["public"]['Enums']["regime_tva"] | null
                   }
                   ComputedFields: never
                   Relationships: [
@@ -1626,6 +1632,9 @@ isOneToOne: false
                            },
 "initialiser_catalogue":
 { Args: { "p_organisation_id": string }; Returns: undefined
+                           },
+"initialiser_categories_depenses":
+{ Args: Record<PropertyKey, never>; Returns: undefined
                            },
 "initialiser_messages":
 { Args: { "p_organisation_id": string }; Returns: undefined

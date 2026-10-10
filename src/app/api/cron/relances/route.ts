@@ -93,21 +93,24 @@ async function relancerImpayes(admin: ReturnType<typeof clientAdmin>): Promise<{
     });
     if (reservation === 'deja') continue;
     if (reservation === 'echec') { echecs++; continue; }
-    // Un seul lien valable à la fois : les liens précédents de la facture sont désactivés.
-    await admin.from('liens_publics').update({ revoque_le: new Date().toISOString() })
-      .eq('facture_id', f.facture_id).eq('organisation_id', f.organisation_id).is('revoque_le', null);
     const { jeton, sha256 } = nouveauJeton();
-    const { error: eLien } = await admin.from('liens_publics').insert({
+    const { data: lienCree, error: eLien } = await admin.from('liens_publics').insert({
       organisation_id: f.organisation_id, facture_id: f.facture_id, finalite: 'consultation', jeton_sha256: sha256,
       expire_le: expirationLienFacture(f.date_echeance).toISOString(),
-    });
-    if (eLien) { await conclureEnvoi(admin, envoiId, { ok: false, nonConfigure: false, erreur: 'Lien non créé.' }); echecs++; continue; }
+    }).select('id').single();
+    if (eLien || !lienCree) { await conclureEnvoi(admin, envoiId, { ok: false, nonConfigure: false, erreur: 'Lien non créé.' }); echecs++; continue; }
     const valeurs = {
       client: f.client, entreprise: f.entreprise, numero: f.numero, lien: urlPublique(jeton, 'f'),
       montant: formaterEuros(f.reste_cents), echeance: formaterDate(f.date_echeance),
     };
     const r = await envoyerEmail({ a: f.email, sujet: remplirModele(modele.sujet, valeurs), texte: remplirModele(modele.corps, valeurs), repondreA: p?.email });
     await conclureEnvoi(admin, envoiId, r);
+    // Un seul lien valable à la fois : email parti -> les anciens liens sont désactivés ; email en échec -> seul le
+    // nouveau lien (jamais transmis) l'est, et le client garde celui qu'il a déjà.
+    const desactiver = admin.from('liens_publics').update({ revoque_le: new Date().toISOString() })
+      .eq('facture_id', f.facture_id).eq('organisation_id', f.organisation_id).is('revoque_le', null);
+    const { error: eLiens } = await (r.ok ? desactiver.neq('id', lienCree.id) : desactiver.eq('id', lienCree.id));
+    if (eLiens) console.error('Relance : liens de la facture non mis à jour', f.facture_id, eLiens.code);
     if (r.ok) envoyees++; else echecs++;
   }
   return { ok: echecs === 0, envoyees, echecs };

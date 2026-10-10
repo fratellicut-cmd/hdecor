@@ -111,3 +111,30 @@ Points relevés par les agents de contrôle, acceptés pour la phase en cours ma
 | Phase 5 (calculs, boucles 1 à 3) | Restent ouverts : écart d'un centime possible sur le cumul par taux d'avoirs partiels successifs ; cumul des acomptes calculé avec les brouillons (échéance suivante faussée d'un centime si un brouillon est supprimé). | 8 (recette) |
 | Phase 5 (validation finale) | Améliorations non bloquantes relevées sur 47fe76d : `catch` à resserrer sur ErreurFacture (PDF d'avoir, lignesAvoirMontant) et commentaire en double ; erreur de désactivation des anciens liens à journaliser (noterRelancePartagee) ; garder le lien du message réellement partagé (identifiant du lien préparé) plutôt que le plus récent ; vérifier que la facture est émise avant de noter un rappel ; relance automatique qui désactive l'ancien lien avant l'email ; complément d'avoir parfois à refaire une 2e fois sur trois taux (14 cas sur 846). | 6 (début de phase) |
 
+
+## Phase 6 (pilotage) : points reportés et questions ouvertes
+
+À VÉRIFIER avec le comptable :
+- **Base du chiffre d'affaires** : encaissements (livre des recettes, date du paiement), remboursements déduits. Pour une entreprise soumise à la TVA, la part HT d'un encaissement est calculée au prorata HT / TTC de sa facture, **en cumulé** (les parts d'une facture totalisent exactement son HT net : 3 × 40 € sur 100 € HT / 120 € TTC donnent 33,33 + 33,34 + 33,33).
+- **Jauges des seuils** : comparées au CA HT encaissé de l'année civile en cours. Seuils et alertes (80 / 95 % par défaut) restent paramétrables et marqués À VÉRIFIER tant qu'ils ne sont pas confirmés dans Paramètres.
+- **Coût des achats dans la marge** : TTC en franchise (TVA non récupérable), HT sinon.
+- **Valeur du temps passé** : temps × taux horaire de vente. C'est un indicatif, pas une dépense.
+
+Limites connues (signalées dans l'interface) :
+- **Jours fériés** : la planification d'un chantier exclut les week-ends, pas les jours fériés. La date de fin est à vérifier.
+- **Export ICS** : c'est un fichier à importer, pas un abonnement (aucune adresse publique ne donne accès au planning).
+- **Photos de justificatif** : elles sont réduites dans le navigateur (2 000 px, JPEG) avant l'envoi, avec une limite de 5,5 Mo. Une photo HEIC que le navigateur ne sait pas lire (hors Safari) est refusée par le serveur, avec un message clair.
+- **Navigation** : Planning et Comptabilité s'ouvrent par les tuiles du tableau de bord ; l'onglet Accueil reste allumé sur ces pages (avis du testeur : acceptable ; si le planning devient quotidien, échanger Clients contre Planning plutôt qu'ajouter un 7e onglet).
+- **Rappels** : affichés dans « À faire » (tableau de bord) et dans le planning, sans alerte sur le téléphone (dit dans l'interface). Rappel sans heure : 8 h (affiché dans le formulaire).
+
+Avertissements des contrôles (boucle 1), laissés ouverts :
+- **Changement de régime de TVA** : le coût des achats dans la marge et la colonne « dont HT » de l'export suivent le régime ACTUEL, pas celui de la date. À reprendre si Yorick sort de la franchise en cours d'année.
+- **Matière prévue** : `cout_matiere_prevu_cents` des devis est un coût d'achat HT (catalogue) ; en franchise, il est comparé à des achats TTC. À VÉRIFIER.
+- **Suppression d'un achat** : le justificatif est retiré (trace d'audit conservée). Durée de conservation des pièces justificatives à confirmer (auditeur-legal, comptable).
+- **Jauge à exactement 100 %** : « critique », pas « dépassé » (dépassement strict). À confirmer.
+- **Email de facture en échec** : l'ancien et le nouveau lien restent valables (rien n'a été transmis) ; le prochain envoi réussi ne garde que le sien.
+- **Deux « Planifier » simultanés** sur le même chantier peuvent doubler les plages (bouton désactivé pendant l'envoi ; RPC transactionnelle si besoin).
+- **Plannings antérieurs à la Phase 6 (boucle 1)** : un chantier enregistré en un seul bloc s'affiche aussi le week-end ; le replanifier une fois suffit.
+- **Base existante** : la contrainte `justificatif_chemin_depense` est posée sans `NOT VALID` (aucune base de production à ce jour).
+
+Toujours ouverts depuis la Phase 5 : suspension des relances par facture, recherche dans la liste des factures, message « réseau revenu », taux de TVA par défaut, liste des chantiers limitée à 200.

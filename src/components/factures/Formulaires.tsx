@@ -391,6 +391,7 @@ export function RelanceFacture({ factureId, email, emailActif }: { factureId: st
           <form ref={noteRef} action={noterAction} onSubmit={surNote}>
             <input type="hidden" name="id" value={factureId} />
             <input type="hidden" name="niveau" value={etat.niveau} />
+            {etat.lienId ? <input type="hidden" name="lien_id" value={etat.lienId} /> : null}
             <RetourFormulaire etat={etatNote} />
           </form>
         </div>

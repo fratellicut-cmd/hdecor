@@ -62,7 +62,7 @@ Validation légale finale par le comptable de Yorick (TVA, mentions, rétractati
   `tests/db/concurrence.sh`. Prérequis : un rôle superuser au nom de l'utilisateur système
   (`sudo -u postgres createuser -s "$USER"`).
 - **Développement** : `npm run dev`
-- **Tests unitaires** : `npm run test` (le test du PDF de liste d'achat lit le texte avec `pdftotext` : paquet `poppler-utils`).
+- **Tests unitaires** : `npm run test` (le test du PDF de liste d'achat lit le texte avec `pdftotext` : paquet `poppler-utils` ; le test du classeur Excel relit le fichier avec `python3` et `openpyxl`).
 - **Parcours** (Playwright, pile locale et serveur lancés) : `npm run test:e2e`
   (Chromium préinstallé : `PW_CHROMIUM=/opt/pw-browsers/chromium`).
 - **Lint / types** : `npm run lint` et `npm run typecheck`
