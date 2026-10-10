@@ -17,6 +17,7 @@ export default async function PageParametres() {
   ]);
   const types = new Set((assurances ?? []).map((a) => a.type));
   const sections: { href: string; titre: string; detail: string; manque?: boolean; aVerifier?: boolean }[] = [
+    { href: '/parametres/premiere-facture', titre: 'Avant la première vraie facture', detail: 'Ce qui reste à compléter ou à faire valider' },
     { href: '/parametres/entreprise', titre: 'Entreprise', detail: 'Identité, SIRET, adresse, IBAN', manque: !p.siret || !p.iban || !p.adresse_ligne1 },
     { href: '/parametres/fiscal', titre: 'Statut fiscal', detail: p.regime_tva === 'franchise' ? 'Franchise en base de TVA' : 'Assujetti à la TVA', aVerifier: p.mention_franchise_a_verifier || !p.seuils_confirmes_le },
     { href: '/parametres/assurances', titre: 'Assurances', detail: 'Décennale et RC Pro', manque: !types.has('decennale') || !types.has('rc_pro') },
