@@ -83,7 +83,7 @@ const mention = z.preprocess((v) => (typeof v === 'string' ? v.trim().replace(/\
     .refine((s) => normaliserMention(s) === MENTION_ACCORD.toLowerCase(), { error: 'Écrivez exactement « Bon pour accord ».' }));
 
 export const TAILLE_MAX_SIGNATURE = 400_000;
-const signatureImage = z.string({ error: 'Signez dans le cadre.' })
+export const signatureImage = z.string({ error: 'Signez dans le cadre.' })
   .startsWith('data:image/png;base64,', { error: 'Signez dans le cadre.' })
   .max(Math.ceil((TAILLE_MAX_SIGNATURE * 4) / 3) + 40, { error: 'Signature trop lourde : effacez et recommencez.' });
 

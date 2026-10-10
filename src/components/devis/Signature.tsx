@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { EtatFormulaire } from '@/lib/etat-formulaire';
 import { useFormulaire } from '@/components/formulaire/useFormulaire';
 import { AlerteHorsLigne } from '@/components/formulaire/MessagesGarde';
@@ -18,7 +18,8 @@ const LONGUEUR_MIN = 80;
  * Si le cadre change de taille (téléphone tourné), il est remis à l'échelle et
  * vidé : on demande de signer à nouveau plutôt que de garder un tracé faux.
  */
-function PadSignature({ erreur }: { erreur?: string }) {
+export function PadSignature({ erreur, nom = 'image', libelle = 'Signature' }: { erreur?: string; nom?: string; libelle?: string }) {
+  const idLibelle = useId();
   const canvas = useRef<HTMLCanvasElement>(null);
   const champ = useRef<HTMLInputElement>(null);
   const [etatTrace, setEtatTrace] = useState<'vide' | 'court' | 'ok' | 'tourne'>('vide');
@@ -105,16 +106,16 @@ function PadSignature({ erreur }: { erreur?: string }) {
 
   return (
     <div className="flex flex-col gap-1">
-      <p id="libelle-signature" className="font-semibold">Signature</p>
+      <p id={idLibelle} className="font-semibold">{libelle}</p>
       {/* Au-dessus du cadre : reste visible en paysage, quand le cadre occupe l'écran. */}
       <div className="flex items-center justify-between gap-2">
         <p role="status" className={`text-sm ${etatTrace === 'court' || etatTrace === 'tourne' ? 'font-semibold text-alerte' : 'text-encre-douce'}`}>{MESSAGES[etatTrace]}</p>
         <Bouton type="button" variante="discret" onClick={effacer}>Effacer</Bouton>
       </div>
-      <canvas ref={canvas} aria-labelledby="libelle-signature" role="img"
+      <canvas ref={canvas} aria-labelledby={idLibelle} role="img"
         className={`h-44 w-full touch-none rounded-xl border-2 bg-white ${erreur && etatTrace !== 'ok' ? 'border-danger' : 'border-anthracite'}`}
         onPointerDown={debut} onPointerMove={trace} onPointerUp={fin} onPointerCancel={fin} onPointerLeave={fin} />
-      <input ref={champ} type="hidden" name="image" aria-invalid={erreur ? true : undefined} />
+      <input ref={champ} type="hidden" name={nom} aria-invalid={erreur ? true : undefined} />
       {/* Erreur du dernier envoi : masquée dès qu'une nouvelle signature est tracée. */}
       {erreur && etatTrace !== 'ok' ? <p className="text-sm font-semibold text-danger">{erreur}</p> : null}
     </div>

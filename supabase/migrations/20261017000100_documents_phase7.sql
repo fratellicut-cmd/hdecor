@@ -429,3 +429,36 @@ end;
 $$;
 revoke execute on function public.notifier_rappels_echus() from public, anon, authenticated;
 grant execute on function public.notifier_rappels_echus() to service_role;
+
+/**
+ * Archive du PV signé (PDF portant les deux signatures) : une seule fois, pour
+ * un PV signé de l'organisation, dans le dossier du PV.
+ */
+create or replace function public.archiver_pv_signe(p_pv_id uuid, p_chemin text, p_sha256 text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_pv public.pv_reception%rowtype;
+begin
+  select * into v_pv from public.pv_reception where id = p_pv_id;
+  if v_pv.id is null or not public.est_membre(v_pv.organisation_id) then
+    raise exception 'PV introuvable.' using errcode = 'P0002';
+  end if;
+  if v_pv.statut <> 'signe' then
+    raise exception 'Ce PV n''est pas signé.' using errcode = 'P0001';
+  end if;
+  if p_chemin !~ ('^' || v_pv.organisation_id::text || '/pv/' || v_pv.id::text || '/[0-9a-f-]{36}\.pdf$') or p_sha256 !~ '^[0-9a-f]{64}$' then
+    raise exception 'Archive invalide.' using errcode = 'P0001';
+  end if;
+  update public.signatures set pdf_signe_chemin = p_chemin, pdf_signe_sha256 = p_sha256
+  where id = v_pv.signature_id and pdf_signe_sha256 is null;
+  if not found then
+    raise exception 'PV signé déjà archivé.' using errcode = 'P0001';
+  end if;
+end;
+$$;
+revoke execute on function public.archiver_pv_signe(uuid, text, text) from public, anon;
+grant execute on function public.archiver_pv_signe(uuid, text, text) to authenticated;

@@ -795,13 +795,13 @@ select tests.egal((select copie_client ->> 'nom_affiche' from public.factures wh
 select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prosecdef and has_function_privilege('authenticated', p.oid, 'execute')),
-  'effacer_client,emettre_devis,emettre_facture,enregistrer_facturx,est_membre,lever_reserve,marquer_facture_envoyee,nouvelle_version_devis,presenter_pv,refuser_devis,signer_devis_sur_place,signer_pv_sur_place,supprimer_chantier',
+  'archiver_pv_signe,effacer_client,emettre_devis,emettre_facture,enregistrer_facturx,est_membre,lever_reserve,marquer_facture_envoyee,nouvelle_version_devis,presenter_pv,refuser_devis,signer_devis_sur_place,signer_pv_sur_place,supprimer_chantier',
   'sécurité : liste exacte des fonctions SECURITY DEFINER appelables par une session');
 select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prokind = 'f' and p.prorettype <> 'trigger'::regtype
      and has_function_privilege('authenticated', p.oid, 'execute')),
-  'aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,copier_poste,deductions_bien_formees,definir_preparations,deplacer_ligne_devis,deplacer_ligne_facture,dupliquer_devis,dupliquer_piece,effacer_client,emettre_devis,emettre_facture,emettre_facture_attendue,enregistrer_facturx,est_membre,importer_produits,initialiser_categories_depenses,lever_reserve,marquer_facture_envoyee,nouvelle_version_devis,numero_devis_previsionnel,numero_facture_previsionnel,organisation_du_chemin,presenter_pv,rechercher_clients,refuser_devis,remplacer_achats_devis,reserves_valides,signer_devis_sur_place,signer_pv_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,ventilation_attendue,ventilation_bien_formee',
+  'archiver_pv_signe,aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,copier_poste,deductions_bien_formees,definir_preparations,deplacer_ligne_devis,deplacer_ligne_facture,dupliquer_devis,dupliquer_piece,effacer_client,emettre_devis,emettre_facture,emettre_facture_attendue,enregistrer_facturx,est_membre,importer_produits,initialiser_categories_depenses,lever_reserve,marquer_facture_envoyee,nouvelle_version_devis,numero_devis_previsionnel,numero_facture_previsionnel,organisation_du_chemin,presenter_pv,rechercher_clients,refuser_devis,remplacer_achats_devis,reserves_valides,signer_devis_sur_place,signer_pv_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,ventilation_attendue,ventilation_bien_formee',
   'sécurité : liste COMPLÈTE des fonctions appelables par une session');
 select tests.echoue($$select public.purger_journal_audit(now() - interval '20 years')$$, 'permission denied',
   'sécurité : purge du journal réservée au serveur');
@@ -2089,6 +2089,13 @@ select tests.echoue($$update public.pv_reception set reserves = jsonb_set(reserv
   'Ce PV est signé', 'PV : une levée enregistrée ne s''efface pas');
 select tests.echoue($$delete from public.pv_reception where id = 'aaaaaaaa-0000-0000-0000-0000000b7101'$$,
   'PV signé ne peut pas être supprimé', 'PV signé non supprimable');
+select tests.echoue($$select public.archiver_pv_signe('aaaaaaaa-0000-0000-0000-0000000b7101', 'aaaaaaaa-0000-0000-0000-00000000000a/factures/x.pdf', repeat('3', 64))$$,
+  'Archive invalide', 'PV : archive rangée dans le dossier du PV');
+select public.archiver_pv_signe('aaaaaaaa-0000-0000-0000-0000000b7101',
+  'aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7101/aaaaaaaa-0000-0000-0000-0000000b7131.pdf', repeat('3', 64));
+select tests.echoue($$select public.archiver_pv_signe('aaaaaaaa-0000-0000-0000-0000000b7101',
+  'aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7101/aaaaaaaa-0000-0000-0000-0000000b7132.pdf', repeat('4', 64))$$,
+  'déjà archivé', 'PV : l''archive signée ne se remplace pas');
 reset role;
 select tests.egal(public.fichier_protege('aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7101/aaaaaaaa-0000-0000-0000-0000000b7112.pdf'),
   true, 'PV signé : son PDF est protégé de la file de suppression');

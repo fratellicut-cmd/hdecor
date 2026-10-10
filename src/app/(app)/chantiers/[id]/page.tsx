@@ -14,6 +14,8 @@ import { ActionConfirmee } from '@/components/formulaire/ActionConfirmee';
 import { EffacerBrouillon } from '@/components/formulaire/EffacerBrouillon';
 import { CartesPilotage } from '@/components/chantiers/CartesPilotage';
 import { Carte } from '@/components/ui/Carte';
+import { avancementFin, type ElementFin } from '@/domain/fin-chantier';
+import { etatReserves, type Reserve } from '@/domain/pv';
 import { Message } from '@/components/ui/Message';
 
 export const metadata: Metadata = { title: 'Chantier' };
@@ -32,11 +34,15 @@ export default async function PageChantier({ params, searchParams }: PageProps<'
   const totalPlafonds = pieces.reduce((t, p) => t + (p.surfaces?.totalPlafondMm2 ?? 0n), 0n);
   const incompletes = pieces.filter((p) => !p.surfaces || p.surfaces.totalPlafondMm2 === null).length;
   const sb = await clientServeur();
-  const [{ data: devis }, { count: nbPhotos }, { count: nbDocuments }] = await Promise.all([
+  const [{ data: devis }, { count: nbPhotos }, { count: nbDocuments }, { data: pvs }, { data: fin }] = await Promise.all([
     sb.from('v_devis').select('id, numero, version, statut_affiche, total_ttc_cents').eq('chantier_id', chantier.id!).order('created_at', { ascending: false }),
     sb.from('photos').select('id', { count: 'exact', head: true }).eq('chantier_id', chantier.id!),
     sb.from('documents_chantier').select('id', { count: 'exact', head: true }).eq('chantier_id', chantier.id!),
+    sb.from('pv_reception').select('id, statut, date_reception, reserves').eq('chantier_id', chantier.id!).order('date_reception', { ascending: false }).limit(1),
+    sb.from('checklists_fin_chantier').select('items').eq('chantier_id', chantier.id!).maybeSingle(),
   ]);
+  const dernierPv = pvs?.[0];
+  const avancement = fin ? avancementFin(fin.items as ElementFin[]) : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -110,6 +116,17 @@ export default async function PageChantier({ params, searchParams }: PageProps<'
         <div className="grid grid-cols-2 gap-2">
           <Link href={`/chantiers/${chantier.id}/photos`} className={`${bouton} border-2 border-anthracite bg-white`}>Photos ({nbPhotos ?? 0})</Link>
           <Link href={`/chantiers/${chantier.id}/documents`} className={`${bouton} border-2 border-anthracite bg-white`}>Documents ({nbDocuments ?? 0})</Link>
+        </div>
+      </Carte>
+
+      <Carte titre="Fin de chantier">
+        <p className="mb-2 text-sm">
+          {dernierPv ? `PV du ${formaterDate(dernierPv.date_reception)} : ${dernierPv.statut === 'signe' ? etatReserves(dernierPv.reserves as Reserve[]).libelle.toLowerCase() : 'brouillon à faire signer'}.` : 'Pas encore de PV de réception.'}
+          {avancement ? ` Liste : ${avancement.faits} sur ${avancement.total}.` : ''}
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <Link href={`/chantiers/${chantier.id}/fin`} className={`${bouton} border-2 border-anthracite bg-white`}>Liste de fin</Link>
+          <Link href={dernierPv ? `/chantiers/${chantier.id}/pv/${dernierPv.id}` : `/chantiers/${chantier.id}/pv`} className={`${bouton} border-2 border-anthracite bg-white`}>PV de réception</Link>
         </div>
       </Carte>
 

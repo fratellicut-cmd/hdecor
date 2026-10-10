@@ -1583,6 +1583,9 @@ isOneToOne: false
 "appliquer_rls_standard":
 { Args: { "p_table": unknown }; Returns: undefined
                            },
+"archiver_pv_signe":
+{ Args: { "p_chemin": string,"p_pv_id": string,"p_sha256": string }; Returns: undefined
+                           },
 "audit_sans_donnees_perso":
 { Args: { "p": Json }; Returns: Json
                            },

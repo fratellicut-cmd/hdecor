@@ -94,15 +94,15 @@ export async function completerEtEmettre(page: Page, horsEtablissement?: boolean
   return titre!.slice(0, 13);
 }
 
-export async function signerDansLeCadre(page: Page) {
-  const cadre = page.getByRole('img', { name: 'Signature' });
+export async function signerDansLeCadre(page: Page, nom = 'Signature') {
+  const cadre = page.getByRole('img', { name: nom, exact: true });
   await cadre.scrollIntoViewIfNeeded();
   const b = (await cadre.boundingBox())!;
   await page.mouse.move(b.x + 20, b.y + 40);
   await page.mouse.down();
   for (let i = 1; i <= 12; i++) await page.mouse.move(b.x + 20 + i * 15, b.y + 40 + (i % 2 ? 30 : -10));
   await page.mouse.up();
-  await expect(page.getByText('Signature tracée.')).toBeVisible();
+  await expect(cadre.locator('xpath=..').getByText('Signature tracée.')).toBeVisible();
 }
 
 
