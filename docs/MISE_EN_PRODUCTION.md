@@ -12,6 +12,7 @@ Chaque étape **non répétée** sur un vrai projet est signalée comme telle : 
 - [ ] Contrôles après déploiement (§ 6) : **tous verts** avant la première vraie facture.
 - [ ] Sauvegarde complémentaire faite et **restauration répétée** sur un projet de test (§ 5).
 - [ ] Check-list du comptable (`docs/CHECKLIST_PREMIERE_FACTURE.md`) et page **Réglages > Avant la première vraie facture** au vert.
+- [ ] **Limitation de débit** (Vercel Firewall) et **durée des sessions** (Supabase) réglées (§ 4).
 - [ ] Registre des traitements à jour (`docs/rgpd/registre-traitements.md`) : régions réelles de Supabase, Vercel et Resend, DPA acceptés, dates.
 
 ## 1. Projet Supabase
@@ -100,7 +101,10 @@ Le mot de passe est demandé au clavier, et la saisie est masquée. Yorick activ
   bash scripts/sauvegarde/sauvegarder.sh ~/Sauvegardes/hdecor
   ```
 
-  L'archive est chiffrée (AES-256) : la **phrase secrète** se garde à part (gestionnaire de mots de passe) ; sans elle, l'archive est irrécupérable. Copier l'archive hors de l'ordinateur (disque externe ou stockage en ligne).
+  L'archive est chiffrée (AES-256) : la **phrase secrète** se garde à part (gestionnaire de mots de passe) ; sans elle, l'archive est irrécupérable. Copier l'archive hors de l'ordinateur : disque externe, ou stockage en ligne **en UE** déclaré au registre des traitements (Traitement 5, sous-traitants).
+  - Mot de passe de la base dans `~/.pgpass` plutôt que dans `DB_URL` (sinon visible dans la liste des processus).
+  - **Rotation** : les archives de plus de 365 jours du dossier sont supprimées à chaque sauvegarde (`SAUVEGARDE_CONSERVATION_JOURS`, durée **À VÉRIFIER**). Les copies hors de l'ordinateur suivent la même règle (à supprimer à la main).
+  - **Effacements** : à chaque sauvegarde, garder aussi la liste des clients effacés (identifiants seulement) : `bash scripts/sauvegarde/effacements.sh > effacements.txt`.
 - **Restauration** dans une base **vide** (jamais par-dessus la base en service) :
 
   ```
@@ -108,7 +112,7 @@ Le mot de passe est demandé au clavier, et la saisie est masquée. Yorick activ
     bash scripts/sauvegarde/restaurer.sh <archive.tar.gz.enc>
   ```
 
-  Le script refuse une base non vide et une phrase fausse, puis contrôle que chaque fichier est présent et que l'empreinte SHA-256 de chaque document émis est identique à celle enregistrée.
+  Le script refuse une base non vide et une phrase fausse, puis contrôle que chaque fichier est présent et que l'empreinte SHA-256 de chaque document émis est identique à celle enregistrée. Avec `EFFACEMENTS=effacements.txt` (la liste la plus récente), les clients effacés après la date de l'archive sont de nouveau effacés : **obligatoire** après la restauration d'une archive ancienne (droit à l'effacement).
 - **Testé** sur la pile locale (`bash tests/sauvegarde/restauration.sh` sur la démo : mêmes comptages des 49 tables, invariants respectés, documents identiques). **Non répété** sur Supabase : restaurer une sauvegarde complète dans un projet Supabase neuf (schémas `auth` et `storage` déjà présents) est **À VÉRIFIER** ; à répéter une fois sur un projet de test avant la mise en service, puis une fois par an.
 
 ## 6. Contrôles après chaque déploiement
@@ -119,6 +123,7 @@ Le mot de passe est demandé au clavier, et la saisie est masquée. Yorick activ
 - [ ] Un email de test reçu (envoi d'un devis de test à sa propre adresse) : expéditeur du domaine, pas en indésirables, lien qui s'ouvre.
 - [ ] En-têtes de sécurité présents (outil du navigateur > Réseau > en-têtes de la page) : `Content-Security-Policy`, `Strict-Transport-Security`, `X-Content-Type-Options`.
 - [ ] Un aperçu de devis en PDF s'ouvre (logo, mentions).
+- [ ] Limitation de débit active : une rafale de 50 requêtes en une minute sur `/connexion` depuis la même adresse reçoit des réponses 429. Durée de session réglée (Supabase > Authentication > Sessions).
 
 ## 7. Migrations après la mise en service
 

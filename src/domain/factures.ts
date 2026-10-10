@@ -218,30 +218,61 @@ function lignesAvoirMontantExact(netParTaux: Ventilation, montantTtcCents: bigin
   if (montantTtcCents <= 0n || montantTtcCents > netTtc) throw new ErreurFacture('Montant de l’avoir : entre 0,01 € et le net à payer.');
   const sansTva = regime === 'franchise' || autoliquidation;
   const ttcDe = (base: bigint, taux: number) => base + (sansTva ? 0n : arrondi(base * BigInt(taux), 10_000n));
-  // Répartition proportionnelle du TTC demandé, le dernier taux prenant le reste.
   const parts = netParTaux.filter((v) => v.base_ht_cents + v.tva_cents > 0n);
-  let reste = montantTtcCents;
-  const lignes: LigneFacture[] = [];
-  parts.forEach((v, i) => {
-    const netT = v.base_ht_cents + v.tva_cents;
-    const cible = i === parts.length - 1 ? reste : (montantTtcCents * netT) / netTtc;
-    reste -= cible;
-    // Base telle que base + TVA(base) = cible (recherche autour de cible / (1 + taux)).
+
+  /**
+   * Base d'un taux pour un TTC cible, ou null : TTC exact, au plus le net du
+   * taux, et RESTE du taux cohérent (sa TVA = TVA R6 de sa base) ; l'avoir qui
+   * soldera la facture reprendra ainsi exactement la TVA restante, jamais un
+   * centime de plus ou de moins que la TVA facturée.
+   */
+  const baseDe = (v: Ventilation[number], cible: bigint): bigint | null => {
+    if (cible < 0n) return null;
     const t = sansTva ? 0 : v.taux_bp;
     let base = (cible * 10_000n) / BigInt(10_000 + t);
     while (ttcDe(base, t) < cible) base += 1n;
     while (base > 0n && ttcDe(base, t) > cible) base -= 1n;
-    if (ttcDe(base, t) !== cible) {
-      throw new ErreurFacture(`Avoir : ${formaterEuros(cible)} TTC n’est pas atteignable au centime près au taux de ${formaterTaux(t)} (arrondi de la TVA).`);
+    if (ttcDe(base, t) !== cible || base > v.base_ht_cents) return null;
+    const resteBase = v.base_ht_cents - base;
+    const resteTva = v.tva_cents - (ttcDe(base, t) - base);
+    return resteTva >= 0n && resteTva === ttcDe(resteBase, t) - resteBase ? base : null;
+  };
+
+  // Répartition au prorata du net de chaque taux, le dernier prenant le reste ; si un taux ne
+  // tombe pas juste, quelques centimes passent d'un taux à l'autre (même total, toujours exact).
+  const prorata = parts.map((v) => (montantTtcCents * (v.base_ht_cents + v.tva_cents)) / netTtc);
+  const decalages = [0n];
+  for (let k = 1n; k <= 60n; k++) decalages.push(k, -k);
+  const essayer = (d1: bigint, d2: bigint): bigint[] | null => {
+    const cibles = prorata.map((c, i) => c + (i === 0 ? d1 : i === 1 && parts.length > 2 ? d2 : 0n));
+    cibles[cibles.length - 1] = montantTtcCents - cibles.slice(0, -1).reduce((a, c) => a + c, 0n);
+    const bases: bigint[] = [];
+    for (const [i, v] of parts.entries()) {
+      const b = baseDe(v, cibles[i]!);
+      if (b === null) return null;
+      bases.push(b);
     }
-    if (base > v.base_ht_cents) throw new ErreurFacture('Avoir : supérieur au net de la facture pour ce taux.');
-    lignes.push({
-      type: 'ligne', designation: parts.length > 1 ? `${libelle} (TVA ${v.taux_bp / 100} %)`.replace('.', ',') : libelle, description: null,
-      quantiteE4: 10_000n, unite: 'forfait', prixUnitaireCents: base, remiseBp: 0, tauxTvaBp: v.taux_bp, optionnelle: false,
-      avancementBp: null, devisLigneId: null,
-    });
-  });
-  return lignes;
+    return bases;
+  };
+  let bases: bigint[] | null = null;
+  for (const d1 of parts.length > 1 ? decalages : [0n]) {
+    for (const d2 of parts.length > 2 ? decalages.slice(0, 41) : [0n]) {
+      bases = essayer(d1, d2);
+      if (bases) break;
+    }
+    if (bases) break;
+  }
+  if (!bases) {
+    if (parts.length === 1 && ttcDe(parts[0]!.base_ht_cents, sansTva ? 0 : parts[0]!.taux_bp) - parts[0]!.base_ht_cents === 0n && montantTtcCents > parts[0]!.base_ht_cents) {
+      throw new ErreurFacture('Avoir : supérieur au net de la facture pour ce taux.');
+    }
+    throw new ErreurFacture(`Avoir : ${formaterEuros(montantTtcCents)} TTC n’est pas atteignable au centime près (arrondi de la TVA).`);
+  }
+  return parts.map((v, i) => ({
+    type: 'ligne' as const, designation: parts.length > 1 ? `${libelle} (TVA ${v.taux_bp / 100} %)`.replace('.', ',') : libelle, description: null,
+    quantiteE4: 10_000n, unite: 'forfait', prixUnitaireCents: bases![i]!, remiseBp: 0, tauxTvaBp: v.taux_bp, optionnelle: false,
+    avancementBp: null, devisLigneId: null,
+  }));
 }
 
 /**

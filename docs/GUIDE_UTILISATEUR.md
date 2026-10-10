@@ -34,7 +34,7 @@ Onglet **Réglages**. Commencez par **Avant la première vraie facture** : la pa
 1. **Entreprise** : SIRET, adresse, téléphone, email, IBAN et BIC, immatriculation.
 2. **Statut fiscal** : franchise de TVA. Faites confirmer la mention et les seuils par votre comptable, puis cochez la confirmation.
 3. **Assurances** : décennale et RC Pro (assureur, numéro de contrat, dates).
-4. **Conditions et tarifs** : taux des pénalités de retard (obligatoire), délais, acompte, taux horaire. Confirmez chaque valeur après avis du comptable.
+4. **Conditions et tarifs** : taux des pénalités de retard (exigé par l'application avant toute facture), délais, acompte, taux horaire. Confirmez chaque valeur après avis du comptable.
 5. **Médiateur et mentions** : médiateur de la consommation, lien de demande d'avis Google.
 6. **Textes des documents** : rétractation, médiateur, réception… Le texte proposé reste « À VÉRIFIER » tant que vous n'avez pas saisi la date de validation par le comptable.
 7. **Logo** (en bas de Réglages) : PNG ou JPEG, 2 Mo au plus.
@@ -60,7 +60,7 @@ Pièce de référence : 4 × 3 m, hauteur 2,50 m, une porte et une fenêtre, soi
 ## 3. Peinture et liste d'achat
 
 1. Sur la pièce : **Peinture de cette pièce**. Choisissez le support, le produit et le nombre de couches, puis **Enregistrer et calculer**.
-2. L'application donne les litres, les pots (le moins de pots, ou le moins cher si les prix sont connus), les temps et le coût.
+2. L'application donne les litres et les pots : le moins cher si les prix d'achat sont saisis au catalogue, sinon le moins de pots (à ajuster : un seul gros pot est souvent plus pratique). Les temps et le coût s'affichent une fois les **Réglages de calcul** (temps de pose, préparation) et les prix renseignés.
 3. Sur le chantier : **Liste d'achat**, à partager au fournisseur ou en PDF.
 
 ![Calcul peinture](guide/captures/04-peinture.png)
@@ -132,7 +132,7 @@ Ensuite : **Émettre…**, cochez, **Émettre la facture** (FAC-AAAA-NNNN). Pour
 
 - **Accueil** :
   - chiffre d'affaires encaissé ;
-  - jauges des seuils (visibles une fois les seuils saisis et confirmés) ;
+  - jauges des seuils (visibles une fois les seuils saisis ; « À VÉRIFIER » tant qu'ils ne sont pas confirmés) ;
   - tâches à faire et impayés.
 - **Planning** :
   - un chantier se planifie en jours ouvrés depuis sa fiche (**Planifier**) ;
@@ -141,7 +141,7 @@ Ensuite : **Émettre…**, cochez, **Émettre la facture** (FAC-AAAA-NNNN). Pour
 - **Sur le chantier** :
   - **Noter mon temps** (par exemple « 7h30 ») ;
   - **Noter un achat** (photo du ticket) ;
-  - la rentabilité se calcule toute seule.
+  - la rentabilité se calcule toute seule ; le prévu (matière, temps) n'est comparé que si toutes les lignes du devis en ont un (sinon « prévu non calculé »).
 - **Comptabilité** :
   - livre des recettes, registre des achats, matériel ;
   - exports CSV, Excel et PDF par mois ou par année, à transmettre au comptable.

@@ -308,7 +308,9 @@ select tests.echoue(
 select tests.echoue(
   $$insert into storage.objects (bucket_id, name) values ('photos', 'aaaaaaaa-0000-0000-0000-00000000000a/chantiers/c/photos/p.jpg')$$,
   'row-level security', 'une photo de chantier n''est déposée que par le serveur (contenu vérifié, rangée)');
-insert into storage.objects (bucket_id, name) values ('marque', 'aaaaaaaa-0000-0000-0000-00000000000a/logo.png');
+select tests.echoue(
+  $$insert into storage.objects (bucket_id, name) values ('marque', 'aaaaaaaa-0000-0000-0000-00000000000a/logo/aaaaaaaa-0000-0000-0000-0000000000c1.png')$$,
+  'row-level security', 'le logo n''est déposé que par le serveur (contenu et dimensions vérifiés)');
 reset role;
 insert into storage.objects (bucket_id, name) values ('documents', 'aaaaaaaa-0000-0000-0000-00000000000a/factures/f2.pdf');
 set role authenticated;
@@ -2245,17 +2247,65 @@ select tests.echoue($$update public.parametres_entreprise set textes_legaux = '{
   'textes_legaux_forme', 'textes légaux : texte vide refusé');
 select tests.egal(tests.lignes($$update public.parametres_entreprise set textes_legaux = jsonb_build_object('devis_recu', 'Devis reçu.' || chr(10) || 'Merci.')
   where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'$$), 1::bigint, 'textes légaux : texte personnalisé sur plusieurs lignes accepté');
+select tests.echoue($$update public.parametres_entreprise set logo_chemin = 'aaaaaaaa-0000-0000-0000-00000000000a/logo/aaaaaaaa-0000-0000-0000-0000000000c1.png' where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'$$,
+  'permission denied', 'logo : chemin écrit par le serveur seulement, jamais par une session');
+select tests.egal(tests.lignes($$update public.parametres_entreprise set textes_legaux = '{}' where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'$$),
+  1::bigint, 'paramètres : les autres colonnes restent modifiables par la session');
+reset role;
 select tests.echoue($$update public.parametres_entreprise set logo_chemin = 'aaaaaaaa-0000-0000-0000-00000000000a/logo/x.svg' where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'$$,
-  'logo_chemin_range', 'logo : rangé sous logo/<uuid>.(png|jpg), jamais un SVG');
+  'logo_chemin_range', 'logo : rangé sous logo/<uuid>.(png|jpg), jamais un SVG (même par le serveur)');
 select tests.echoue($$update public.parametres_entreprise set logo_chemin = 'aaaaaaaa-0000-0000-0000-00000000000b/logo/aaaaaaaa-0000-0000-0000-0000000000c1.png' where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'$$,
   'logo_chemin', 'logo : dans le dossier de l''organisation seulement');
-select tests.egal(tests.lignes($$update public.parametres_entreprise set logo_chemin = 'aaaaaaaa-0000-0000-0000-00000000000a/logo/aaaaaaaa-0000-0000-0000-0000000000c1.png', textes_legaux = '{}'
-  where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'$$), 1::bigint, 'logo : chemin rangé accepté');
-update public.parametres_entreprise set logo_chemin = null where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a';
+set role authenticated;
 reset role;
 select tests.egal(has_column_privilege('authenticated', 'public.factures', 'acompte_cumul_avant_bp', 'INSERT')
   and not has_column_privilege('authenticated', 'public.factures', 'acompte_cumul_avant_bp', 'UPDATE'), true,
   'acompte : cumul de calcul fixé à la création, jamais modifié par une session');
+
+-- Phase 8 (recette) : avoirs soldés taux par taux, cumul de calcul des acomptes.
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+insert into public.factures (id, organisation_id, type, client_id, delai_paiement_jours, regime_tva,
+  total_ht_cents, total_tva_cents, total_ttc_cents, ventilation_tva, net_a_payer_cents)
+values ('aaaaaaaa-0000-0000-0000-0000000f8001', 'aaaaaaaa-0000-0000-0000-00000000000a', 'libre',
+  'aaaaaaaa-0000-0000-0000-0000000c0001', 30, 'assujetti', 100002, 20000, 120002,
+  '[{"taux_bp":2000,"base_ht_cents":100002,"tva_cents":20000}]', 120002);
+insert into public.facture_lignes (organisation_id, facture_id, ordre, designation, quantite_e4, unite, prix_unitaire_ht_cents, taux_tva_bp, total_ht_cents)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f8001', 1, 'Travaux', 10000, 'forfait', 100002, 2000, 100002);
+select public.emettre_facture('aaaaaaaa-0000-0000-0000-0000000f8001', '{}', '{}', '{}', 'aaaaaaaa-0000-0000-0000-00000000000a/f8001.pdf', repeat('8', 64));
+insert into public.factures (id, organisation_id, type, nature_avoir, client_id, facture_origine_id, delai_paiement_jours, regime_tva,
+  total_ht_cents, total_tva_cents, total_ttc_cents, ventilation_tva, net_a_payer_cents)
+values ('aaaaaaaa-0000-0000-0000-0000000f8002', 'aaaaaaaa-0000-0000-0000-00000000000a', 'avoir', 'reduction',
+  'aaaaaaaa-0000-0000-0000-0000000c0001', 'aaaaaaaa-0000-0000-0000-0000000f8001', 0, 'assujetti', 833, 167, 1000,
+  '[{"taux_bp":2000,"base_ht_cents":833,"tva_cents":167}]', 1000);
+insert into public.facture_lignes (organisation_id, facture_id, ordre, designation, quantite_e4, unite, prix_unitaire_ht_cents, taux_tva_bp, total_ht_cents)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f8002', 1, 'Geste', 10000, 'forfait', 833, 2000, 833);
+select public.emettre_facture('aaaaaaaa-0000-0000-0000-0000000f8002', '{}', '{}', '{}', 'aaaaaaaa-0000-0000-0000-00000000000a/a8002.pdf', repeat('8', 64));
+-- Reste 991,69 HT + 198,33 TVA ; un avoir de 991,68 + 198,34 (même TTC) créditerait 200,01 de TVA pour 200,00 facturés.
+insert into public.factures (id, organisation_id, type, nature_avoir, client_id, facture_origine_id, delai_paiement_jours, regime_tva,
+  total_ht_cents, total_tva_cents, total_ttc_cents, ventilation_tva, net_a_payer_cents)
+values ('aaaaaaaa-0000-0000-0000-0000000f8003', 'aaaaaaaa-0000-0000-0000-00000000000a', 'avoir', 'correction',
+  'aaaaaaaa-0000-0000-0000-0000000c0001', 'aaaaaaaa-0000-0000-0000-0000000f8001', 0, 'assujetti', 99168, 19834, 119002,
+  '[{"taux_bp":2000,"base_ht_cents":99168,"tva_cents":19834}]', 119002);
+insert into public.facture_lignes (organisation_id, facture_id, ordre, designation, quantite_e4, unite, prix_unitaire_ht_cents, taux_tva_bp, total_ht_cents)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f8003', 1, 'Solde', 10000, 'forfait', 99168, 2000, 99168);
+select tests.echoue($$select public.emettre_facture('aaaaaaaa-0000-0000-0000-0000000f8003', '{}', '{}', '{}', 'aaaaaaaa-0000-0000-0000-00000000000a/a8003.pdf', repeat('8', 64))$$,
+  'dépasserait la facture d''origine', 'avoir : TVA créditée par taux jamais supérieure à la TVA facturée');
+select tests.egal((select statut from public.factures where id = 'aaaaaaaa-0000-0000-0000-0000000f8001'), 'emise'::public.statut_facture,
+  'avoir refusé : la facture d''origine reste émise');
+
+-- Acompte calculé sur un cumul (30 %) qui ne correspond pas aux acomptes émis (aucun) : refusé.
+select verif.devis('aaaaaaaa-0000-0000-0000-0000000ca001', 100000) as devis_recette \gset
+insert into public.factures (id, organisation_id, type, client_id, chantier_id, devis_id, delai_paiement_jours, regime_tva,
+  acompte_pct_bp, acompte_cumul_avant_bp, total_ht_cents, total_tva_cents, total_ttc_cents, ventilation_tva, net_a_payer_cents)
+values ('aaaaaaaa-0000-0000-0000-0000000f8011', 'aaaaaaaa-0000-0000-0000-00000000000a', 'acompte', 'aaaaaaaa-0000-0000-0000-0000000c0001',
+  'aaaaaaaa-0000-0000-0000-0000000ca001', :'devis_recette', 30, 'franchise', 3000, 3000, 30000, 0, 30000,
+  '[{"taux_bp":0,"base_ht_cents":30000,"tva_cents":0}]', 30000);
+insert into public.facture_lignes (organisation_id, facture_id, ordre, designation, quantite_e4, unite, prix_unitaire_ht_cents, taux_tva_bp, total_ht_cents)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f8011', 1, 'Acompte', 10000, 'forfait', 30000, 0, 30000);
+select tests.echoue($$select public.emettre_facture('aaaaaaaa-0000-0000-0000-0000000f8011', '{}', '{}', '{}', 'aaaaaaaa-0000-0000-0000-00000000000a/f8011.pdf', repeat('8', 64))$$,
+  'recréez-le', 'acompte : cumul de calcul différent des acomptes émis, émission refusée par la base');
+reset role;
 
 -- Triggers : même le propriétaire de la base ne modifie pas une facture émise
 reset role;

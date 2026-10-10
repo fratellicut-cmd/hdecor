@@ -11,7 +11,7 @@
  * Effacement : relancer npm run demo:pile (base et fichiers recréés vides).
  */
 import { randomBytes } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { loadEnvFile } from 'node:process';
 import { expect, test, type Page } from '@playwright/test';
@@ -59,6 +59,7 @@ test.beforeAll(async () => {
   if (eA) throw new Error(`Assurance de démo : ${eA.message}`);
   const acces = path.join(RACINE, '.supabase-local/demo-acces.txt');
   writeFileSync(acces, `Démonstration H'DECOR (données fictives)\nEmail : ${DEMO.email}\nMot de passe : ${DEMO.motDePasse}\n`, { mode: 0o600 });
+  chmodSync(acces, 0o600);
   console.log(`Accès de démonstration écrit dans ${acces}`);
 });
 
@@ -151,12 +152,13 @@ async function paiement(page: Page, montant: string, mode: 'virement' | 'especes
 }
 
 /** Lignes reprises du métré sans prix : prix au m² saisi, ligne par ligne. */
-async function completerPrix(page: Page, prix: string) {
+async function completerPrix(page: Page, prix: (designation: string) => string) {
   const aCompleter = page.getByRole('listitem').filter({ hasText: 'PRIX À COMPLÉTER' });
   for (let n = await aCompleter.count(); n > 0; n--) {
     const ligne = aCompleter.first();
+    const texte = (await ligne.locator('p').first().textContent()) ?? '';
     await ligne.locator('summary', { hasText: 'Modifier' }).click();
-    await ligne.getByLabel('Prix unitaire HT (€)').fill(prix);
+    await ligne.getByLabel('Prix unitaire HT (€)').fill(prix(texte));
     await ligne.getByRole('button', { name: 'Enregistrer la ligne' }).click();
     await expect(aCompleter).toHaveCount(n - 1);
   }
@@ -191,11 +193,17 @@ test('chantier de 4 pièces : métré, duplication, peinture et liste d’achat'
   await page.getByLabel('Nom de la copie').fill('Chambre 2');
   await page.getByRole('button', { name: 'Dupliquer la pièce' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Chambre 2' })).toBeVisible();
-  const chambre2 = page.url().split('?')[0]!;
-  // Peinture des deux chambres (référentiel indicatif, produits « fictif » du catalogue d'exemple).
-  for (const url of [chambre, chambre2]) {
-    await page.goto(url);
-    await page.getByRole('link', { name: /Peinture de cette pièce/ }).click();
+  // Peinture de TOUT le chantier (murs puis plafonds des 4 pièces, ancienne peinture : lessivage et
+  // ponçage) : la liste d'achat et les postes repris dans le devis couvrent ainsi tout le devis.
+  // Type de produit « acrylique » du référentiel (rendements indicatifs, À VÉRIFIER).
+  for (const cible of ['Murs', 'Plafond'] as const) {
+    await page.goto(`${urls.chMartin}/peinture/nouveau`);
+    await page.getByLabel('Pièce', { exact: true }).selectOption({ label: 'Chambre' });
+    await page.locator('label', { hasText: new RegExp(`^${cible}$`) }).click();
+    await page.locator('summary', { hasText: /^Préparation/ }).click();
+    await page.getByLabel(/^Lessivage/).check();
+    await page.getByLabel(/^Ponçage/).check();
+    for (const autre of ['Séjour', 'Couloir', 'Chambre 2']) await page.getByLabel(autre, { exact: true }).check();
     await page.getByRole('button', { name: 'Enregistrer et calculer' }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'Calcul peinture' })).toBeVisible();
   }
@@ -205,10 +213,8 @@ test('chantier de 4 pièces : métré, duplication, peinture et liste d’achat'
 
 test('devis signé sur place, acompte payé par virement, finale payée en espèces', async ({ page }) => {
   urls.devisMartin = await devis(page, urls.chMartin!, 'Peinture des chambres, du séjour et du couloir');
-  // Postes des chambres repris du métré à la création : prix de vente à compléter (catalogue d'exemple sans prix).
-  await completerPrix(page, '18');
-  await ajouterLigne(page, { designation: 'Plafonds des deux chambres : 2 couches', quantite: '24', prix: '20', unite: 'm2' });
-  await ajouterLigne(page, { designation: 'Séjour et couloir : murs, 2 couches', quantite: '70', prix: '17', unite: 'm2' });
+  // Les 8 postes du métré sont repris à la création : prix de vente à compléter (temps de pose et prix d'achat non saisis).
+  await completerPrix(page, (texte) => (/plafond/i.test(texte) ? '20' : '18'));
   await ajouterLigne(page, { designation: 'Protection et nettoyage du chantier', quantite: '1', prix: '150', unite: 'forfait' });
   await emettreDevis(page, false, '6');
   await page.getByRole('link', { name: 'Faire signer sur place' }).click();
@@ -261,8 +267,8 @@ test('autres devis : émis hors établissement en attente, brouillon repris du m
   urls.chDurand = await chantier(page, urls.durand!, 'Maison Durand (démo)');
   await devis(page, urls.chDurand, 'Façade du garage et portail');
   await ajouterLigne(page, { designation: 'Façade du garage : lavage, fixateur, 2 couches', quantite: '28', prix: '24', unite: 'm2' });
-  await ajouterLigne(page, { designation: 'Portail métallique : ponçage et laque', quantite: '1', prix: '320', unite: 'forfait' });
-  await ajouterLigne(page, { designation: 'Option : peinture de la porte de garage', quantite: '1', prix: '180', unite: 'forfait', option: true });
+  await ajouterLigne(page, { designation: 'Portail métallique : brossage et ponçage, primaire antirouille, 2 couches de laque extérieure', quantite: '1', prix: '380', unite: 'forfait' });
+  await ajouterLigne(page, { designation: 'Peinture de la porte de garage', quantite: '1', prix: '180', unite: 'forfait', option: true });
   await emettreDevis(page, true, '3');
 
   // SCI : chantier mesuré, devis brouillon avec les postes repris du métré (prix à compléter).

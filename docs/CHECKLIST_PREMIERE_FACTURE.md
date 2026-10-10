@@ -13,7 +13,7 @@ Abréviations : D = devis, F = facture, A = avoir, PV = procès-verbal de récep
 | N° | Question | Ce que fait l'application | Imprimé | Décision | Date | Initiales |
 |---|---|---|---|---|---|---|
 | 1.1 | Libellé exact de la mention de franchise. | « TVA non applicable, art. 293 B du CGI », modifiable (Réglages > Statut fiscal), marqué À VÉRIFIER jusqu'à confirmation. | D, F, A (sous les totaux) | | | |
-| 1.2 | Seuils de la micro-entreprise et de la franchise en vigueur ; règle en cas de dépassement en cours d'année. | Aucune valeur préremplie ; jauges du tableau de bord masquées tant qu'ils ne sont pas saisis et confirmés. Alertes à 80 % et 95 % (modifiables). Jauge à exactement 100 % = « critique », pas « dépassé ». | Tableau de bord | | | |
+| 1.2 | Seuils de la micro-entreprise et de la franchise en vigueur ; règle en cas de dépassement en cours d'année. | Aucune valeur préremplie ; jauge masquée tant que le seuil n'est pas saisi, affichée avec « À VÉRIFIER » tant qu'il n'est pas confirmé. Alertes à 80 % et 95 % (modifiables). Jauge à exactement 100 % = « critique », pas « dépassé ». | Tableau de bord | | | |
 | 1.3 | Base des jauges : chiffre d'affaires encaissé (date du paiement) de l'année civile. | Encaissements nets des remboursements, par année civile. | Tableau de bord | | | |
 | 1.4 | Changement de régime en cours d'année. | Facturer depuis un devis émis sous un autre régime est refusé (facture libre conseillée). Un avoir garde le régime de la facture d'origine. Reprise de la mention 293 B sur un tel avoir : à trancher. | F, A | | | |
 | 1.5 | Taux réduits (10 %, 5,5 %) et attestation du client. | **Bloqués** tant que l'application ne produit pas l'attestation (décision de Yorick, Phase 8). Sans objet en franchise. | D | | | |
@@ -24,7 +24,7 @@ Abréviations : D = devis, F = facture, A = avoir, PV = procès-verbal de récep
 
 | N° | Question | Ce que fait l'application | Imprimé | Décision | Date | Initiales |
 |---|---|---|---|---|---|---|
-| 2.1 | Mentions propres à l'EI et à l'artisan (« EI », immatriculation RNE / RM). | « EI » ajouté au nom ; immatriculation imprimée si saisie (son absence est signalée, non bloquante). | D, F, A, PV | | | |
+| 2.1 | Mentions propres à l'EI et à l'artisan (« EI », immatriculation RNE / RM). | « EI » ajouté au nom ; immatriculation imprimée si saisie. Son absence est signalée (non bloquante) à l'émission d'un devis seulement, pas d'une facture. | D, F, A, PV | | | |
 | 2.2 | Assurances sur le devis : décennale, RC Pro (obligatoire ou non pour un peintre), coordonnées de l'assureur. | Assureur, n° de contrat, période et zone des assurances en cours à la date du document. Absence de RC Pro signalée, non bloquante. | D, F | | | |
 | 2.3 | « Devis reçu avant l'exécution des travaux » : obligation et libellé. | Texte par défaut modifiable (Réglages > Textes). | D (cadre Bon pour accord) | | | |
 | 2.4 | Mention « Bon pour accord » saisie au clavier lors d'une signature électronique : valeur équivalente à la mention manuscrite ? | Acceptée (casse et ponctuation libres), conservée telle que tapée, avec nom, date, heure, adresse IP et empreinte du PDF signé. | Page de signature du D | | | |
@@ -39,6 +39,7 @@ Abréviations : D = devis, F = facture, A = avoir, PV = procès-verbal de récep
 | 3.1 | Droit de rétractation de 14 jours, point de départ (« à compter de la signature »), texte d'information. | Texte modifiable (Réglages > Textes) et formulaire type joint en page détachable. | D | | | |
 | 3.2 | Formulaire de rétractation conforme au modèle en vigueur. | Modèle fixe dans l'application (non modifiable dans les Réglages). | D | | | |
 | 3.3 | Interdiction de recevoir un paiement pendant un délai après la signature (7 jours ?). | Paiement demandé à la signature : **signalé** (non bloquant). Facture émise pendant les 14 jours : aucun paiement demandé avant leur terme (texte, ni QR ni paiement en ligne) ; échéance dans le délai bloquante ; paiement saisi pendant le délai : avertissement. | D, F | | | |
+| 3.3 bis | Facture **libre** pour un particulier (sans devis) : délai de rétractation applicable ? | Non contrôlé : un signal « délai de rétractation non contrôlé ici » s'affiche à l'émission. | F | | | |
 | 3.4 | Début des travaux pendant le délai : demande expresse du client. | Texte d'information modifiable (Réglages > Textes) ; un début prévu dans les 14 jours est signalé. | D | | | |
 
 ## 4. Factures, acomptes, avoirs
@@ -70,7 +71,9 @@ Abréviations : D = devis, F = facture, A = avoir, PV = procès-verbal de récep
 |---|---|---|---|---|---|---|
 | 6.1 | Livre des recettes : date d'encaissement, remboursements en négatif. | Exports CSV, Excel et PDF par mois ou par année. | Exports | | | |
 | 6.2 | Coût des achats dans la marge : TTC en franchise (TVA non récupérée). | Comme décrit, selon le régime actuel (pas celui de la date de l'achat). | Fiche chantier | | | |
-| 6.3 | Durée de conservation des factures et pièces justificatives (10 ans ?). | Documents émis immuables ; justificatifs protégés ; anonymisation RGPD qui garde les pièces comptables. | — | | | |
+| 6.2 bis | « Matière prévue » d'un devis (coût d'achat HT du catalogue) comparée aux achats réels (TTC en franchise). | Comparaison affichée sur la fiche du chantier ; « prévu non calculé » dès qu'une ligne du devis n'a pas de prévision. | Fiche chantier | | | |
+| 6.2 ter | « Valeur du temps passé » (heures × taux horaire de vente) et « reste après le temps ». | Indicatifs, présentés comme tels : ce ne sont pas des dépenses. | Fiche chantier | | | |
+| 6.3 | Durée de conservation des factures et pièces justificatives (10 ans ?) ; registre des achats obligatoire ou non pour un prestataire de services. | Devis et factures émis immuables, gardés à l'anonymisation RGPD. **Supprimer un achat retire aussi son justificatif** (la trace reste dans le journal) : à confirmer ou à interdire. | — | | | |
 | 6.4 | Durée de conservation du journal d'audit. | Conservé sans purge tant que la durée n'est pas donnée. | — | | | |
 | 6.5 | Durée de conservation d'une attestation de TVA signée pour un devis refusé. | Conservée comme preuve, même après anonymisation. | — | | | |
 
@@ -88,8 +91,9 @@ Abréviations : D = devis, F = facture, A = avoir, PV = procès-verbal de récep
 
 - [ ] Réglages complétés jusqu'au vert dans **Réglages > Avant la première vraie facture** : SIRET, adresse, IBAN et BIC, immatriculation, assurances décennale et RC Pro, médiateur, taux des pénalités, conditions confirmées, statut fiscal confirmé, textes validés, logo, double authentification.
 - [ ] Produits d'exemple (marqués « fictif ») archivés ; vrais produits saisis et vérifiés sur la fiche technique du fabricant (statut « vérifié », date et source).
-- [ ] Réglages de calcul (rendements, temps) vérifiés ou laissés « indicatifs » en connaissance de cause.
-- [ ] Un devis et une facture **de test** relus ligne par ligne avec le comptable (puis annulés par un avoir s'ils ont été émis).
+- [ ] Réglages de calcul vérifiés : rendements par type de produit, **coefficients de support** (tous à 1,00 au départ), **temps de pose et des étapes de préparation**, **séchage entre couches**, **consommables** (bâches, adhésif, abrasif, lessive : à créer). Sans eux, ni temps ni prix calculés, et une préparation non chiffrée.
+- [ ] Prix d'achat des formats saisis au catalogue (sans prix, le choix des pots est indicatif : le moins de pots).
+- [ ] Les documents de la **démonstration** (devis, factures, avoir, PV) relus ligne par ligne avec le comptable. Éviter d'émettre une facture « de test » en production : elle prendrait le numéro FAC-AAAA-0001 et devrait être annulée par un avoir.
 - [ ] Signature d'un devis et d'un PV essayée sur **votre propre téléphone** (Android ou iPhone), dates au format JJ/MM/AAAA vérifiées.
 - [ ] Sauvegarde complémentaire faite et **restauration testée** (voir docs/MISE_EN_PRODUCTION.md).
 - [ ] Guide utilisateur lu (docs/GUIDE_UTILISATEUR.md).

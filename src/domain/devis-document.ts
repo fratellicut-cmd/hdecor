@@ -8,7 +8,7 @@
  * apparaissent. L'interface les signale tant qu'ils ne sont pas confirmés.
  */
 
-import { CODES_TEXTES, texteLegal, type TextesLegaux } from './textes-legaux';
+import { CODES_TEXTES, texteLegal, textesEffectifs, type TextesLegaux } from './textes-legaux';
 import { nomAffiche } from './clients';
 import { formaterDate } from './formats';
 import type { Regime } from './devis';
@@ -92,7 +92,7 @@ export function copieEmetteur(p: ParametresEmetteur, assurances: AssuranceSaisie
     assurances: assurances.filter((a) => assuranceEnCours(a, dateIso))
       .map(({ type, assureur, numero_contrat, debut, fin, zone_couverte }) => ({ type, assureur, numero_contrat, debut, fin, zone_couverte })),
     mentions_pied: net(p.mentions_pied),
-    textes: lireTextesStockes(p.textes_legaux),
+    textes: textesEffectifs(lireTextesStockes(p.textes_legaux)),
   };
 }
 
@@ -228,11 +228,19 @@ export function controlerTaux(lignes: LigneAControler[], regime: Regime, actifs:
   }
   const inactifs = noms((l) => l.tauxTvaBp !== 0 && !actifs.some((t) => t.taux_bp === l.tauxTvaBp));
   if (inactifs) m.push({ cle: 'taux_inactif', message: `Taux de TVA absent des Paramètres (Taux de TVA) : ${inactifs}.`, ou: 'devis', bloquant: true });
-  const attestations = [...new Set(lignes.filter((l) => actifs.some((t) => t.taux_bp === l.tauxTvaBp && t.attestation_requise)).map((l) => l.tauxTvaBp!))];
-  if (attestations.length) {
-    m.push({ cle: 'attestation_tva', message: `Taux réduit ${attestations.map((t) => `${t / 100} %`.replace('.', ',')).join(' et ')} : une attestation du client est requise et l’application ne la produit pas encore. Appliquez le taux normal, ou voyez avec votre comptable avant d’utiliser un taux réduit.`, ou: 'devis', bloquant: true });
-  }
+  m.push(...controlerAttestations(lignes, actifs, 'devis'));
   return m;
+}
+
+/**
+ * Taux réduit avec « attestation requise » : BLOQUANT sur un devis comme sur
+ * une facture, tant que l'application ne produit pas l'attestation (décision
+ * de Yorick, Phase 8).
+ */
+export function controlerAttestations(lignes: LigneAControler[], actifs: TauxActif[], ou: Manque['ou']): Manque[] {
+  const attestations = [...new Set(lignes.filter((l) => actifs.some((t) => t.taux_bp === l.tauxTvaBp && t.attestation_requise)).map((l) => l.tauxTvaBp!))];
+  if (!attestations.length) return [];
+  return [{ cle: 'attestation_tva', message: `Taux réduit ${attestations.map((t) => `${t / 100} %`.replace('.', ',')).join(' et ')} : une attestation du client est requise et l’application ne la produit pas encore. Appliquez le taux normal, ou voyez avec votre comptable avant d’utiliser un taux réduit.`, ou, bloquant: true }];
 }
 
 /**

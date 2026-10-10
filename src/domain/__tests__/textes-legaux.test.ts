@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CODES_TEXTES, lireTexte, TEXTES, texteLegal, textesAValider } from '../textes-legaux';
+import { CODES_TEXTES, lireTexte, TEXTES, texteLegal, textesAValider, textesEffectifs } from '../textes-legaux';
 import { controlerCumulAcompte, cumulAcomptesEmis } from '../factures';
 
 describe('textes légaux modifiables', () => {
@@ -19,6 +19,13 @@ describe('textes légaux modifiables', () => {
     expect(lireTexte('retractation', 'Écrivez à {contact}.\r\nMerci.')).toEqual({ texte: 'Écrivez à {contact}.\nMerci.' });
     expect(lireTexte('devis_recu', 'a\u0007b')).toEqual({ erreur: 'Caractère non autorisé.' });
     expect('erreur' in lireTexte('devis_recu', 'x'.repeat(3001))).toBe(true);
+  });
+  it('textes effectifs figés dans le document : tous les codes, personnalisés ou par défaut ; textes courts bornés', () => {
+    const t = textesEffectifs({ devis_recu: 'Reçu.' });
+    expect(Object.keys(t).sort()).toEqual([...CODES_TEXTES].sort());
+    expect(t.devis_recu).toBe('Reçu.');
+    expect(t.mediateur).toBe(TEXTES.mediateur.defaut);
+    expect(lireTexte('devis_recu', 'x'.repeat(301))).toEqual({ erreur: '300 caractères au maximum.' });
   });
   it('tous les textes sont à faire valider tant qu’aucune date n’est saisie', () => {
     expect(textesAValider(null)).toHaveLength(CODES_TEXTES.length);

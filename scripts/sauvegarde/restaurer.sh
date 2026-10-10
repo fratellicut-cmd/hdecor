@@ -11,6 +11,9 @@
 #   [dossier-fichiers] si ce dossier est donné (contrôle, test de restauration).
 # - Contrôle final : présence de chaque fichier et empreinte SHA-256 de chaque
 #   document émis ou signé, comparée à celle enregistrée en base.
+# - EFFACEMENTS=<fichier> (effacements.sh, base en service) : les clients effacés
+#   APRÈS la date de l'archive sont de nouveau effacés dans la base restaurée
+#   (droit à l'effacement), et leurs fichiers mis en file de suppression.
 # =============================================================================
 set -euo pipefail
 ICI="$(cd "$(dirname "$0")" && pwd)"
@@ -40,5 +43,24 @@ else
   node "$ICI/fichiers.mjs" importer "$TRAVAIL/fichiers-restaures.csv" "$TRAVAIL/fichiers"
   node "$ICI/fichiers.mjs" exporter "$TRAVAIL/fichiers-restaures.csv" "$TRAVAIL/relus"
   node "$ICI/fichiers.mjs" verifier "$TRAVAIL/fichiers-restaures.csv" "$TRAVAIL/relus"
+fi
+if [ -n "${EFFACEMENTS:-}" ]; then
+  IDS=$(grep -E '^[0-9a-f-]{36}$' "$EFFACEMENTS" | paste -sd, - || true)
+  if [ -n "$IDS" ]; then
+    N=$(psql -X -At -v ON_ERROR_STOP=1 -d "$DB_CIBLE" -v ids="{$IDS}" <<'SQL'
+with ids as (select unnest(:'ids'::uuid[]) id),
+fichiers as (
+  insert into public.fichiers_a_supprimer (organisation_id, espace, chemin)
+  select c.organisation_id, f.espace, f.chemin
+  from public.clients c join ids using (id), lateral public.anonymiser_client_interne(c.id) f
+  where c.anonymise_le is null
+  returning 1)
+select count(*) from fichiers;
+SQL
+)
+    N=$(echo "select count(*) from public.clients where id = any(:'ids'::uuid[]) and anonymise_le is not null;" \
+      | psql -X -At -v ON_ERROR_STOP=1 -d "$DB_CIBLE" -v ids="{$IDS}")
+    echo "Effacements réappliqués : $N client(s) effacé(s) dans la base restaurée."
+  fi
 fi
 echo "Restauration terminée et contrôlée."

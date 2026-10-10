@@ -11,6 +11,8 @@ export type CodeTexte = (typeof CODES_TEXTES)[number];
 export type TextesLegaux = Partial<Record<CodeTexte, string>>;
 
 export const LONGUEUR_TEXTE_MAX = 3000;
+/** Textes courts : ils tiennent dans un cadre (« Bon pour accord ») ou sous les totaux. */
+const LONGUEUR_COURTE: Partial<Record<CodeTexte, number>> = { devis_recu: 300, autoliquidation: 300 };
 
 type Definition = { libelle: string; ou: string; defaut: string; reperes: readonly string[] };
 
@@ -59,6 +61,15 @@ export const TEXTES: Record<CodeTexte, Definition> = {
   },
 };
 
+/**
+ * Textes en vigueur (personnalisés, sinon par défaut), repères non remplacés :
+ * copiés tels quels dans le document émis, ils ne dépendent plus des textes par
+ * défaut d'une version future de l'application.
+ */
+export function textesEffectifs(personnalises: TextesLegaux | null | undefined): Record<CodeTexte, string> {
+  return Object.fromEntries(CODES_TEXTES.map((c) => [c, personnalises?.[c]?.trim() || TEXTES[c].defaut])) as Record<CodeTexte, string>;
+}
+
 /** Texte à imprimer : personnalisé s'il existe, sinon par défaut ; repères remplacés. */
 export function texteLegal(code: CodeTexte, textes: TextesLegaux | null | undefined, valeurs: Record<string, string> = {}): string {
   const brut = textes?.[code]?.trim() || TEXTES[code].defaut;
@@ -73,7 +84,8 @@ export function texteLegal(code: CodeTexte, textes: TextesLegaux | null | undefi
 export function lireTexte(code: CodeTexte, saisie: string): { texte: string | null } | { erreur: string } {
   const t = saisie.replace(/\r\n?/g, '\n').trim();
   if (!t || t === TEXTES[code].defaut) return { texte: null };
-  if (t.length > LONGUEUR_TEXTE_MAX) return { erreur: `${LONGUEUR_TEXTE_MAX} caractères au maximum.` };
+  const max = LONGUEUR_COURTE[code] ?? LONGUEUR_TEXTE_MAX;
+  if (t.length > max) return { erreur: `${max} caractères au maximum.` };
   if (/[\u0001-\u0009\u000b-\u001f\u007f]/.test(t)) return { erreur: 'Caractère non autorisé.' };
   const manquants = TEXTES[code].reperes.filter((r) => !t.includes(r));
   if (manquants.length) return { erreur: `Gardez ${manquants.join(' et ')} : remplacé à l’impression.` };

@@ -191,9 +191,10 @@ export function posteAReprendre(c: { poste: PosteCalc; resultat: ResultatPoste }
     designation: p.libelle,
     description,
     surfaceMm2: r.surfaceMm2,
-    coutMatiereCents: r.coutMatiereCents,
+    // Prévu (pilotage) : seulement si son calcul est complet ; un prévu partiel n'est jamais présenté comme sûr.
+    coutMatiereCents: r.incomplet.matiere || r.incomplet.quantite ? null : r.coutMatiereCents,
     coutMainOeuvreCents: r.coutMainOeuvreCents,
-    minutes: r.temps?.minutes ?? null,
+    minutes: r.incomplet.temps || !r.temps ? null : r.temps.minutes,
     incomplet: r.incomplet.quantite || r.incomplet.temps || r.incomplet.matiere,
     // Raison d'un prix non calculé : montrée sur la ligne « à compléter ».
     origine: { poste_id: p.id, chantier_id: chantierId, ...(r.manques[0] ? { manque: r.manques[0] } : 'manque' in p.surface ? { manque: p.surface.manque } : {}) },

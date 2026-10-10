@@ -49,6 +49,18 @@
 | Durées | PV signé : durée des garanties **À VÉRIFIER**. Photos et documents : avec le chantier ; effacés à l'effacement du client (la file de suppression ne touche jamais un document signé). Historique des accords de diffusion : conservé comme preuve avec la fiche du chantier, supprimé avec celle-ci **À VÉRIFIER**. Notifications : 90 jours, et supprimées à l'anonymisation du client. |
 | Mesures | Photos et documents déposés par le serveur seulement (contenu vérifié, chemins rangés), lus sous RLS ; PV signé immuable (déclencheur), levée des réserves seulement par fonction contrôlée ; notifications non modifiables par une session (hors « lu »). |
 
+## Traitement 5 : sauvegardes complémentaires (Phase 8)
+
+| Rubrique | Contenu |
+|---|---|
+| Finalités | Pouvoir restaurer l'application (base et fichiers) après un incident, en plus des sauvegardes de l'hébergeur. |
+| Base légale | Intérêt légitime (continuité de l'activité) et obligation de conservation des pièces comptables. **À VÉRIFIER** |
+| Données | Copie complète de la base (dont comptes, secrets de double authentification, clients, documents, signatures, adresses IP, photos) et des fichiers référencés. |
+| Lieu | Ordinateur du dirigeant, et une copie hors de cet ordinateur : disque externe, ou stockage en ligne **en UE** (prestataire à désigner, à ajouter aux sous-traitants ci-dessous avec son DPA). **À VÉRIFIER** |
+| Mesures | Archive chiffrée (AES-256, clé dérivée d'une phrase secrète gardée à part) ; restauration seulement dans une base vide, empreintes des documents émis contrôlées. |
+| Durée | 365 jours glissants (rotation automatique à chaque sauvegarde, `SAUVEGARDE_CONSERVATION_JOURS`). **À VÉRIFIER** |
+| Effacement | Un client effacé reste dans les archives antérieures jusqu'à leur rotation. Après une restauration, ses effacements sont réappliqués à partir de la liste des identifiants effacés (sans donnée personnelle), tenue à part (`scripts/sauvegarde/effacements.sh`, puis `EFFACEMENTS=…` à la restauration). |
+
 ## Sous-traitants (article 28)
 
 | Sous-traitant | Rôle | Localisation | Statut |

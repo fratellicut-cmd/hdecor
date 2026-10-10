@@ -8,7 +8,7 @@ Points relevés par les agents de contrôle, acceptés pour la phase en cours ma
 | Sécurité (boucle 3) | La politique `hdecor_suppr` laisse une session supprimer des fichiers de l'espace `justificatifs`. Il faut protéger les justificatifs comptables (`depenses.justificatif_chemin`) comme les PDF émis. | 6 (pilotage) |
 | Sécurité M4 | La limitation des tentatives de connexion et d'envoi d'emails se fait sur l'IP du serveur, pas sur celle du visiteur. Prévoir une limite applicative par IP cliente et par email, et un SMTP dédié. | Avant mise en production |
 | Sécurité B5 | Pas de durée maximale ni de délai d'inactivité de session (`[auth.sessions]`, offre Pro), ou redemander l'authentification avant les actions sensibles. | Avant mise en production |
-| Sécurité B7 | Actions GitHub non épinglées par empreinte (SHA). | Avant mise en production |
+| Sécurité B7 | Actions GitHub non épinglées par empreinte (SHA). **Traité en Phase 8.** | Fait |
 | Sécurité B10 | La purge du journal d'audit n'est pas planifiée, la durée étant À VÉRIFIER par le comptable. | Après validation de la durée |
 | Fichiers | `src/lib/fichiers.ts` (signature binaire) doit être branché sur le premier dépôt de fichier (logo, photos). | 2 ou 7 |
 | Logo | Dépôt du logo officiel. Le service de stockage local est indisponible dans l'environnement de développement actuel. | 7 (documents) |

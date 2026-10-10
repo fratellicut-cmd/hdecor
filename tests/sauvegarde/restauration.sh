@@ -50,4 +50,21 @@ end \$\$;
 rollback;
 SQL
 echo "OK invariants respectés sur la base restaurée"
+
+# Droit à l'effacement : un client effacé APRÈS l'archive l'est de nouveau après restauration.
+EFFACE="$(psql -X -At -d "$SOURCE" -c "select id from public.clients where anonymise_le is null order by id limit 1")"
+echo "$EFFACE" > "$TRAVAIL/effacements.txt"
+dropdb --if-exists "$CIBLE"; createdb "$CIBLE"
+SORTIE="$(EFFACEMENTS="$TRAVAIL/effacements.txt" DB_CIBLE="postgres:///$CIBLE" bash "$RACINE/scripts/sauvegarde/restaurer.sh" "$ARCHIVE" "$TRAVAIL/fichiers2")"
+grep -q "1 client(s) effacé(s)" <<< "$SORTIE" || { echo "ÉCHEC : effacement non réappliqué." >&2; echo "$SORTIE" >&2; exit 1; }
+[ "$(psql -X -At -d "$CIBLE" -c "select (anonymise_le is not null)::text from public.clients where id = '$EFFACE'")" = "true" ] \
+  || { echo "ÉCHEC : client toujours présent après restauration." >&2; exit 1; }
+echo "OK effacement réappliqué après restauration"
+
+# Rotation : une archive de plus de 365 jours est supprimée à la sauvegarde suivante.
+touch -d '400 days ago' "$TRAVAIL/archives/hdecor-20250101-000000.tar.gz.enc"
+ROT="$(DB_URL="postgres:///$SOURCE" bash "$RACINE/scripts/sauvegarde/sauvegarder.sh" "$TRAVAIL/archives")"
+grep -q "Archive ancienne supprimée" <<< "$ROT" && [ ! -e "$TRAVAIL/archives/hdecor-20250101-000000.tar.gz.enc" ] \
+  || { echo "ÉCHEC : rotation." >&2; exit 1; }
+echo "OK rotation des archives"
 echo "Test de sauvegarde et de restauration : réussi."

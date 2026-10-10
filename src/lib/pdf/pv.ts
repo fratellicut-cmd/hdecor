@@ -80,6 +80,7 @@ export async function pdfPv(d: DonneesPv): Promise<Uint8Array> {
   }
   c.y -= 8;
   ecrire(c, texteLegal('rappel_reception', d.emetteur.textes), { taille: 8.5, couleur: ALERTE });
+  if (d.emetteur.mentions_pied) ecrire(c, d.emetteur.mentions_pied, { taille: 8, couleur: GRIS });
   c.y -= 10;
 
   // Cadres de signature (vides) : les tracés sont apposés sur une page ajoutée à CE document (pdfPvSigne).

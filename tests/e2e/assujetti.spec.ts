@@ -116,3 +116,17 @@ test('assujetti : taux réduit bloqué sans attestation ; 5 000 € HT à 20 %, 
   expect(finale).toMatch(/Acompte FAC-\d{4}-\d{4} déduit -1 800,00 €/);
   expect(finale).toContain('Net à payer 4 200,00 €');
 });
+
+test('assujetti : une facture libre à taux réduit est bloquée elle aussi (attestation non produite)', async ({ page }) => {
+  const nom = `Libre-TVA-${unique()}`;
+  await chantierAvecClient(page, nom);
+  await page.goto('/factures/nouvelle');
+  await page.getByLabel('Type de facture').selectOption('libre');
+  await page.getByLabel('Client').selectOption({ label: `Client-${nom}` });
+  await page.getByRole('button', { name: 'Créer le brouillon' }).click();
+  await expect(page.getByText('Brouillon créé.')).toBeVisible();
+  await ligne(page, 'Peinture intérieure (taux réduit)', '100', '1000');
+  await page.getByRole('link', { name: 'Émettre…' }).click();
+  await expect(page.getByText(/Taux réduit 10 % : une attestation du client est requise/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Émettre la facture' })).toBeDisabled();
+});

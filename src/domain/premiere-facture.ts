@@ -20,10 +20,10 @@ export function pointsAvantFacture(e: EtatAvantFacture): PointAvantFacture[] {
   const p: PointAvantFacture[] = [
     { code: 'identite', titre: 'Identité de l’entreprise complète', fait: e.siret && e.adresse && e.iban, lien: '/parametres/entreprise',
       aide: 'SIRET, adresse et IBAN imprimés sur chaque devis et facture.' },
-    { code: 'immatriculation', titre: 'Immatriculation (RNE / RM) renseignée ou mention tranchée', fait: e.immatriculation, lien: '/parametres/entreprise',
+    { code: 'immatriculation', titre: 'Immatriculation (RNE / RM) renseignée', fait: e.immatriculation, lien: '/parametres/entreprise',
       aide: 'Mention à faire confirmer par le comptable.' },
     { code: 'penalites', titre: 'Taux des pénalités de retard saisi', fait: e.tauxPenalites, lien: '/parametres/conditions',
-      aide: 'Obligatoire sur les factures : aucune valeur par défaut n’est inventée.' },
+      aide: 'Exigé par l’application avant toute facture (aucune valeur par défaut n’est inventée) ; taux à confirmer avec le comptable.' },
     { code: 'conditions', titre: 'Conditions de paiement confirmées', fait: e.valeursAVerifier === 0, lien: '/parametres/conditions',
       aide: `${e.valeursAVerifier} valeur(s) encore « À VÉRIFIER » (délais, indemnité, escompte, validité, acompte).` },
     { code: 'fiscal', titre: 'Statut fiscal confirmé', fait: !e.mentionFranchiseAVerifier && e.seuilsConfirmes, lien: '/parametres/fiscal',
@@ -31,7 +31,7 @@ export function pointsAvantFacture(e: EtatAvantFacture): PointAvantFacture[] {
     { code: 'assurances', titre: 'Assurances décennale et RC Pro en cours', fait: e.decennale && e.rcPro, lien: '/parametres/assurances',
       aide: 'Assureur, numéro de contrat et période, imprimés sur les devis et factures.' },
     { code: 'mediateur', titre: 'Médiateur de la consommation renseigné', fait: e.mediateur, lien: '/parametres/mentions',
-      aide: 'Obligatoire pour les clients particuliers.' },
+      aide: 'Imprimé sur les devis ; obligation pour les clients particuliers à confirmer avec le comptable.' },
     { code: 'textes', titre: 'Textes des documents validés par le comptable', fait: e.textesValides, lien: '/parametres/textes',
       aide: 'Rétractation, médiateur, réception, autoliquidation : date de validation à saisir.' },
     { code: 'catalogue', titre: 'Produits d’exemple remplacés par vos vrais produits', fait: e.produitsExempleActifs === 0 && e.produitsAVerifierActifs === 0, lien: '/catalogue',
@@ -44,7 +44,7 @@ export function pointsAvantFacture(e: EtatAvantFacture): PointAvantFacture[] {
   ];
   if (e.regime === 'assujetti') {
     p.splice(5, 0,
-      { code: 'tva_intra', titre: 'Numéro de TVA intracommunautaire renseigné', fait: e.numeroTvaIntra, lien: '/parametres/entreprise', aide: 'Obligatoire sur les factures d’une entreprise assujettie.' },
+      { code: 'tva_intra', titre: 'Numéro de TVA intracommunautaire renseigné', fait: e.numeroTvaIntra, lien: '/parametres/entreprise', aide: 'Exigé par l’application sur les factures d’une entreprise assujettie ; à confirmer avec le comptable.' },
       { code: 'taux_tva', titre: 'Taux de TVA confirmés', fait: e.tauxTvaAVerifier === 0, lien: '/parametres/taux-tva', aide: `${e.tauxTvaAVerifier} taux encore « À VÉRIFIER ».` });
   }
   return p;

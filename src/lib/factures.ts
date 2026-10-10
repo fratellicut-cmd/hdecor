@@ -6,7 +6,7 @@ import { envPublique } from '@/lib/env';
 import { clientServeur } from '@/lib/supabase/serveur';
 import type { Ligne, Vue } from '@/lib/supabase/types';
 import type { Regime, Ventilation } from '@/domain/devis';
-import { copieChantier, copieClient, copieEmetteur, type CopieChantier, type CopieClient, type Manque } from '@/domain/devis-document';
+import { controlerAttestations, copieChantier, copieClient, copieEmetteur, type CopieChantier, type CopieClient, type Manque } from '@/domain/devis-document';
 import { aujourdHuiParis } from '@/domain/dates';
 import { ajouterJours } from '@/domain/devis-document';
 import {
@@ -134,10 +134,12 @@ export function finRetractationFacture(c: Pick<FactureComplete, 'devis'>, typeCl
 
 /** Copies figées (à la date d'émission) et contrôle des mentions : rien n'est inventé pour combler un manque. */
 export async function preparerEmissionFacture(sb: Client, c: FactureComplete, dateIso: string): Promise<PreparationFacture> {
-  const [{ data: p, error }, { data: assurances }] = await Promise.all([
+  const [{ data: p, error }, { data: assurances }, { data: taux, error: eTaux }] = await Promise.all([
     sb.from('parametres_entreprise').select('*').eq('organisation_id', c.facture.organisation_id).single(),
     sb.from('assurances').select('type, assureur, numero_contrat, debut, fin, zone_couverte'),
+    sb.from('taux_tva').select('taux_bp, attestation_requise').eq('actif', true),
   ]);
+  if (eTaux) throw new ErreurPreparationFacture('Taux de TVA illisibles : réessayez.');
   if (error || !p) throw new ErreurPreparationFacture('Paramètres de l’entreprise illisibles : réessayez.');
   if (!c.client || c.client.anonymise_le) throw new ErreurPreparationFacture('Client introuvable ou anonymisé.');
   const emetteur: CopieEmetteurFacture = {
@@ -157,7 +159,13 @@ export async function preparerEmissionFacture(sb: Client, c: FactureComplete, da
     date_emission: dateIso, date_echeance: ajouterJours(dateIso, f.delai_paiement_jours!), fin_retractation: fin,
   };
   return {
-    emetteur, client, chantier, manques: controlerMentionsFacture(emetteur, client, chantier, aControler),
+    emetteur, client, chantier,
+    manques: [
+      ...controlerMentionsFacture(emetteur, client, chantier, aControler),
+      // Taux réduit sans attestation produite : bloquant (un avoir reprend les taux de la facture corrigée).
+      ...(f.type === 'avoir' ? [] : controlerAttestations(c.lignes.filter((l) => l.type === 'ligne')
+        .map((l) => ({ designation: l.designation, tauxTvaBp: l.taux_tva_bp })), taux ?? [], 'devis')),
+    ],
     textesAVerifier: textesAVerifierFacture(emetteur, client, aControler), retractationJusquau: fin && dateIso <= fin ? fin : null,
     logo: await chargerLogo(p.organisation_id, p.logo_chemin),
   };

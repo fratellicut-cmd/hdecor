@@ -1871,6 +1871,11 @@ isOneToOne: false
 "ventilation_bien_formee":
 { Args: { "p": Json }; Returns: boolean
                            },
+"ventilation_nette":
+{ Args: { "p_deductions": Json,"p_ventilation": Json }; Returns: {
+              "base": number,"taux_bp": number,"tva": number
+            }[]
+                           },
 "vider_fiche_client":
 { Args: { "p_client_id": string }; Returns: undefined
                            }

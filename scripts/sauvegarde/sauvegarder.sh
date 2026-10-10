@@ -11,6 +11,10 @@
 # SUPABASE_SERVICE_ROLE_KEY (lecture des fichiers), SAUVEGARDE_PHRASE (16
 # caractères au moins ; jamais en argument, jamais dans git ; SANS elle,
 # l'archive est irrécupérable : la garder hors du téléphone et de l'ordinateur).
+# SAUVEGARDE_CONSERVATION_JOURS : les archives plus anciennes du dossier sont
+# supprimées (365 jours par défaut, durée À VÉRIFIER, registre des traitements).
+# Mot de passe de la base : de préférence dans ~/.pgpass (pas dans DB_URL, qui
+# serait visible dans la liste des processus).
 # =============================================================================
 set -euo pipefail
 ICI="$(cd "$(dirname "$0")" && pwd)"
@@ -35,3 +39,8 @@ NOM="hdecor-$(date -u +%Y%m%d-%H%M%S).tar.gz.enc"
 tar -C "$TRAVAIL" -czf - base.dump fichiers.csv date.txt fichiers \
   | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:SAUVEGARDE_PHRASE -out "$SORTIE/$NOM"
 echo "Sauvegarde chiffrée : $SORTIE/$NOM ($(du -h "$SORTIE/$NOM" | cut -f1))."
+
+# Rotation : jamais de conservation sans fin (chaque archive contient des données personnelles).
+JOURS="${SAUVEGARDE_CONSERVATION_JOURS:-365}"
+[[ "$JOURS" =~ ^[0-9]+$ ]] && [ "$JOURS" -ge 7 ] || { echo "SAUVEGARDE_CONSERVATION_JOURS : nombre de jours (7 au moins)." >&2; exit 1; }
+find "$SORTIE" -maxdepth 1 -type f -name 'hdecor-*.tar.gz.enc' -mtime +"$JOURS" -print -delete | sed 's/^/Archive ancienne supprimée : /'

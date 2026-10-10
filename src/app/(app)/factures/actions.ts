@@ -186,7 +186,8 @@ export async function creerAvoir(_: EtatFormulaire, fd: FormData): Promise<EtatF
   let remise = 0;
   let deductions: Deduction[] = [];
   try {
-    if (lu.data.mode === 'total' && avoirsEmis === 0n) {
+    // Tout le dû sans avoir antérieur (choisi « en totalité » ou saisi en montant) : annulation exacte.
+    if ((lu.data.mode === 'total' || BigInt(lu.data.montant_ttc_cents ?? -1) === du) && avoirsEmis === 0n) {
       // Annulation : mêmes lignes, même remise et mêmes déductions -> même net, même TVA nette par taux, au centime.
       lignes = lignesAvoirTotal(c.lignes.map(ligneFactureDomaine));
       remise = o.remise_globale_bp!;
