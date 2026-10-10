@@ -108,7 +108,7 @@ Le mot de passe est demandé au clavier, et la saisie est masquée. Yorick activ
 - **Restauration** dans une base **vide** (jamais par-dessus la base en service) :
 
   ```
-  DB_CIBLE='<base vide>' NEXT_PUBLIC_SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… \
+  DB_CIBLE='<base vide>' EFFACEMENTS=effacements.txt NEXT_PUBLIC_SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… \
     bash scripts/sauvegarde/restaurer.sh <archive.tar.gz.enc>
   ```
 

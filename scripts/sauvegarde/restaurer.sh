@@ -11,7 +11,8 @@
 #   [dossier-fichiers] si ce dossier est donné (contrôle, test de restauration).
 # - Contrôle final : présence de chaque fichier et empreinte SHA-256 de chaque
 #   document émis ou signé, comparée à celle enregistrée en base.
-# - EFFACEMENTS=<fichier> (effacements.sh, base en service) : les clients effacés
+# - EFFACEMENTS=<fichier> OBLIGATOIRE (effacements.sh, base en service ; ou
+#   EFFACEMENTS=aucune si cette liste n'existe pas) : les clients effacés
 #   APRÈS la date de l'archive sont de nouveau effacés dans la base restaurée
 #   (droit à l'effacement), et leurs fichiers mis en file de suppression.
 # =============================================================================
@@ -20,6 +21,8 @@ ICI="$(cd "$(dirname "$0")" && pwd)"
 ARCHIVE="${1:?archive manquante}"
 : "${DB_CIBLE:?DB_CIBLE manquante}"
 : "${SAUVEGARDE_PHRASE:?SAUVEGARDE_PHRASE manquante}"
+: "${EFFACEMENTS:?EFFACEMENTS manquante : liste des clients effacés (scripts/sauvegarde/effacements.sh), ou EFFACEMENTS=aucune}"
+[ "$EFFACEMENTS" = "aucune" ] || [ -r "$EFFACEMENTS" ] || { echo "EFFACEMENTS : fichier illisible." >&2; exit 1; }
 EXTRAIRE="${2:-}"
 TRAVAIL="$(mktemp -d)"
 trap 'rm -rf "$TRAVAIL"' EXIT
@@ -44,10 +47,10 @@ else
   node "$ICI/fichiers.mjs" exporter "$TRAVAIL/fichiers-restaures.csv" "$TRAVAIL/relus"
   node "$ICI/fichiers.mjs" verifier "$TRAVAIL/fichiers-restaures.csv" "$TRAVAIL/relus"
 fi
-if [ -n "${EFFACEMENTS:-}" ]; then
+if [ "$EFFACEMENTS" != "aucune" ]; then
   IDS=$(grep -E '^[0-9a-f-]{36}$' "$EFFACEMENTS" | paste -sd, - || true)
   if [ -n "$IDS" ]; then
-    N=$(psql -X -At -v ON_ERROR_STOP=1 -d "$DB_CIBLE" -v ids="{$IDS}" <<'SQL'
+    REAPPLIQUES=$(psql -X -At -v ON_ERROR_STOP=1 -d "$DB_CIBLE" -v ids="{$IDS}" <<'SQL'
 with ids as (select unnest(:'ids'::uuid[]) id),
 fichiers as (
   insert into public.fichiers_a_supprimer (organisation_id, espace, chemin)

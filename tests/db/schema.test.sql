@@ -97,6 +97,9 @@ insert into public.taux_tva (organisation_id, taux_bp, libelle, attestation_requ
   ('aaaaaaaa-0000-0000-0000-00000000000a', 550, '5,5 %', true, true),
   ('aaaaaaaa-0000-0000-0000-00000000000a', 1000, '10 %', true, true),
   ('aaaaaaaa-0000-0000-0000-00000000000a', 2000, '20 %', false, true);
+-- Ligne des paramètres (créée par initialiser_organisation, jamais par une session).
+insert into public.parametres_entreprise (organisation_id, raison_sociale)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'Entreprise A');
 
 -- -----------------------------------------------------------------------------
 -- 3. Utilisateur A
@@ -104,8 +107,6 @@ insert into public.taux_tva (organisation_id, taux_bp, libelle, attestation_requ
 set role authenticated;
 set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
 
-insert into public.parametres_entreprise (organisation_id, raison_sociale)
-values ('aaaaaaaa-0000-0000-0000-00000000000a', 'Entreprise A');
 insert into public.clients (id, organisation_id, nom, prenom)
 values ('aaaaaaaa-0000-0000-0000-0000000c0001', 'aaaaaaaa-0000-0000-0000-00000000000a', 'Durand', 'Paul');
 insert into public.chantiers (id, organisation_id, client_id, nom)
@@ -2251,6 +2252,10 @@ select tests.echoue($$update public.parametres_entreprise set logo_chemin = 'aaa
   'permission denied', 'logo : chemin écrit par le serveur seulement, jamais par une session');
 select tests.egal(tests.lignes($$update public.parametres_entreprise set textes_legaux = '{}' where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'$$),
   1::bigint, 'paramètres : les autres colonnes restent modifiables par la session');
+select tests.echoue($$delete from public.parametres_entreprise where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'$$,
+  'permission denied', 'paramètres : la ligne ne se supprime pas par une session (contournement du logo par suppression puis insertion)');
+select tests.echoue($$insert into public.parametres_entreprise (organisation_id) values ('aaaaaaaa-0000-0000-0000-00000000000a')$$,
+  'permission denied', 'paramètres : la ligne ne se crée pas par une session (initialiser_organisation seulement)');
 reset role;
 select tests.echoue($$update public.parametres_entreprise set logo_chemin = 'aaaaaaaa-0000-0000-0000-00000000000a/logo/x.svg' where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'$$,
   'logo_chemin_range', 'logo : rangé sous logo/<uuid>.(png|jpg), jamais un SVG (même par le serveur)');

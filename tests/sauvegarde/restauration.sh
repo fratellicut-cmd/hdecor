@@ -20,18 +20,22 @@ ARCHIVE="$(ls "$TRAVAIL"/archives/*.enc)"
 if head -c 64 "$ARCHIVE" | grep -qa "PGDMP\|ustar"; then echo "ÉCHEC : archive non chiffrée." >&2; exit 1; fi
 
 dropdb --if-exists "$CIBLE"; createdb "$CIBLE"
-if SAUVEGARDE_PHRASE="phrase-fausse-de-test-0000" DB_CIBLE="postgres:///$CIBLE" bash "$RACINE/scripts/sauvegarde/restaurer.sh" "$ARCHIVE" "$TRAVAIL/x" >/dev/null 2>&1; then
+if EFFACEMENTS=aucune SAUVEGARDE_PHRASE="phrase-fausse-de-test-0000" DB_CIBLE="postgres:///$CIBLE" bash "$RACINE/scripts/sauvegarde/restaurer.sh" "$ARCHIVE" "$TRAVAIL/x" >/dev/null 2>&1; then
   echo "ÉCHEC : restauration acceptée avec une phrase fausse." >&2; exit 1
 fi
 echo "OK phrase fausse refusée"
-REFUS="$(DB_CIBLE="postgres:///$SOURCE" bash "$RACINE/scripts/sauvegarde/restaurer.sh" "$ARCHIVE" "$TRAVAIL/x" 2>&1 || true)"
+REFUS="$(EFFACEMENTS=aucune DB_CIBLE="postgres:///$SOURCE" bash "$RACINE/scripts/sauvegarde/restaurer.sh" "$ARCHIVE" "$TRAVAIL/x" 2>&1 || true)"
 if grep -q "Base cible non vide" <<< "$REFUS"; then
   echo "OK base cible non vide refusée"
 else
   echo "ÉCHEC : restauration acceptée sur une base en service." >&2; exit 1
 fi
 dropdb --if-exists "$CIBLE"; createdb "$CIBLE"
-DB_CIBLE="postgres:///$CIBLE" bash "$RACINE/scripts/sauvegarde/restaurer.sh" "$ARCHIVE" "$TRAVAIL/fichiers"
+if DB_CIBLE="postgres:///$CIBLE" bash "$RACINE/scripts/sauvegarde/restaurer.sh" "$ARCHIVE" "$TRAVAIL/x" >/dev/null 2>&1; then
+  echo "ÉCHEC : restauration acceptée sans liste des effacements." >&2; exit 1
+fi
+echo "OK liste des effacements exigée"
+EFFACEMENTS=aucune DB_CIBLE="postgres:///$CIBLE" bash "$RACINE/scripts/sauvegarde/restaurer.sh" "$ARCHIVE" "$TRAVAIL/fichiers"
 
 comptes() {
   psql -X -At -d "$1" -c "select string_agg(format('select %L || '':'' || count(*) from public.%I', table_name, table_name), ' union all ' order by table_name)

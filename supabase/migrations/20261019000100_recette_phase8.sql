@@ -140,6 +140,7 @@ begin
   select string_agg(quote_ident(column_name), ', ' order by ordinal_position) into v_colonnes
   from information_schema.columns
   where table_schema = 'public' and table_name = 'parametres_entreprise' and column_name not in ('organisation_id', 'logo_chemin');
-  execute 'revoke update on public.parametres_entreprise from authenticated';
+  -- La ligne est créée par initialiser_organisation et jamais supprimée : ni insertion ni suppression par une session.
+  execute 'revoke insert, update, delete on public.parametres_entreprise from authenticated';
   execute format('grant update (%s) on public.parametres_entreprise to authenticated', v_colonnes);
 end $$;

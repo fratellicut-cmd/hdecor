@@ -15,7 +15,13 @@ const TAILLE_MAX_LOGO = 2 * 1024 * 1024;
 const COTE_MAX_LOGO = 4096;
 
 /** Dimensions lues dans l'en-tête PNG (IHDR). */
-const dimensionsPng = (o: Uint8Array) => (o.length >= 24 ? { largeur: new DataView(o.buffer, o.byteOffset).getUint32(16), hauteur: new DataView(o.buffer, o.byteOffset).getUint32(20) } : null);
+function dimensionsPng(o: Uint8Array) {
+  if (o.length < 33) return null;
+  const v = new DataView(o.buffer, o.byteOffset, o.byteLength);
+  // Le premier bloc DOIT être IHDR (13 octets) : sinon les dimensions lues seraient celles d'un faux bloc.
+  if (v.getUint32(8) !== 13 || String.fromCharCode(o[12]!, o[13]!, o[14]!, o[15]!) !== 'IHDR') return null;
+  return { largeur: v.getUint32(16), hauteur: v.getUint32(20) };
+}
 const ECHEC = 'L’enregistrement a échoué. Vérifiez la connexion et réessayez.';
 
 /**
