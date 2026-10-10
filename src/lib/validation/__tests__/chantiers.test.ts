@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { schemaOuverture, schemaPiece } from '../chantiers';
+import { schemaElement, schemaOuverture, schemaPiece } from '../chantiers';
 
 const messages = (r: { success: boolean; error?: { issues: { message: string }[] } }) => (r.error?.issues ?? []).map((i) => i.message);
 
@@ -32,5 +32,16 @@ describe('messages de saisie du métré (en français, avec l’action à faire)
     const m = messages(schemaOuverture.safeParse({ type: 'autre', largeur_mm: '', hauteur_mm: '', surface_directe_mm2: 'abc', quantite: '1' }));
     expect(m).toContain('Surface : surface invalide (exemple : 1,69).');
     expect(m.join(' ')).not.toMatch(/Invalid/);
+  });
+  it('largeur développée « 0,1 » (mètres tapés par réflexe, soit 1 mm) : refusée avec l’unité ; 10 cm acceptés', () => {
+    const el = (d: string) => schemaElement.safeParse({ type: 'plinthe', unite: 'ml', quantite_e4: '14', faces: '1', developpe_mm: d, surface_unitaire_mm2: '', notes: '' });
+    expect(messages(el('0,1'))).toEqual(['Largeur développée : trop petit (en centimètres, exemple : 83).']);
+    const ok = el('10');
+    expect(ok.success && ok.data.developpe_mm).toBe(100);
+  });
+  it('pièce saisie en centimètres : « trop grand » rappelle l’unité', () => {
+    const m = messages(schemaPiece.safeParse({ nom: 'Séjour', etage: '', mode_saisie: 'rectangle', longueur_mm: '425', largeur_mm: '3', murs: [],
+      surface_sol_mm2: '', hauteur_mm: '2,5', multiplicateur: '1', etat_support: '', notes: '', teinte_id: '' }));
+    expect(m).toEqual(['Longueur : trop grand, vérifiez l’unité (en mètres, exemple : 4,25).']);
   });
 });

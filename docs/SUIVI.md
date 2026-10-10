@@ -201,3 +201,4 @@ Aucun de ces points ne produit un montant faux ni un document non conforme connu
 | testeur-chantier | PV : la signature du client (étape 1) n'est gardée qu'en mémoire ; un rechargement la fait refaire. « Empreinte SHA-256 » imprimée sur le PV : jargon. |
 | testeur-chantier | Confort : pas de bouton « Revenir au texte par défaut » ; repères {mediateur} peu parlants ; fenêtre sans dimensions proposées ; bandeau « pas encore envoyée » sur une facture payée ; pas de message « réseau revenu » ; formulaire de paiement fermé à l'arrivée sur une facture émise ; quelle ligne empêche le « prévu ». |
 | testeur-chantier | PDF : l'adresse de la page de confidentialité vient de `NEXT_PUBLIC_SITE_URL` ; à vérifier en production (MISE_EN_PRODUCTION). |
+| testeur-chantier (boucle 2) | Messages de la marge de perte sans le nom du champ ; « 0,155 % » refusé sans dire « 2 décimales au plus » ; après « Retirer le logo », l'ancien message vert « Logo enregistré » reste affiché. |

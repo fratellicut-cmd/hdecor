@@ -20,7 +20,7 @@ const longueur = (libelle: string, unite: UniteLongueur, minMm: number, maxMm: n
       ? `${libelle} : obligatoire (exemple : ${unite === 'm' ? '4,25' : '83'}).`
       : `${libelle} : nombre invalide ou plus précis que le millimètre (en ${unite === 'm' ? 'mètres, exemple : 4,25' : 'centimètres, exemple : 83'}).`) })
       .refine((n) => n >= minMm, { error: `${libelle} : trop petit (en ${unite === 'm' ? 'mètres, exemple : 4,25' : 'centimètres, exemple : 83'}).` })
-      .refine((n) => n <= maxMm, { error: `${libelle} : trop grand, vérifiez l’unité.` }));
+      .refine((n) => n <= maxMm, { error: `${libelle} : trop grand, vérifiez l’unité (en ${unite === 'm' ? 'mètres, exemple : 4,25' : 'centimètres, exemple : 83'}).` }));
 const longueurFacultative = (libelle: string, unite: UniteLongueur, minMm: number, maxMm: number) =>
   // Vide -> null avant le schéma : une saisie illisible remonte le message français (pas « Invalid input » d'une union).
   z.preprocess((v) => (vide(v) ? null : v), longueur(libelle, unite, minMm, maxMm).nullable());
@@ -109,7 +109,8 @@ export const schemaElement = z.object({
     z.number({ error: 'Quantité invalide (exemple : 14,5).' }).refine((n) => n > 0, { error: 'Quantité invalide (exemple : 14,5).' })
       .refine((n) => n <= 100_000_000, { error: 'Quantité trop grande.' })),
   faces: entier(1, 2, 'Faces'),
-  developpe_mm: longueurFacultative('Largeur développée', 'cm', 1, 5_000),
+  // 1 cm au moins : « 0,1 » tapé en mètres par réflexe (1 mm) est refusé au lieu de fausser la surface.
+  developpe_mm: longueurFacultative('Largeur développée', 'cm', 10, 5_000),
   surface_unitaire_mm2: surfaceFacultative('Surface d’une unité'),
   notes: texteFacultatif(500),
 }).transform((v) => ({
