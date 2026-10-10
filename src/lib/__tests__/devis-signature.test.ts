@@ -53,6 +53,10 @@ describe('tracé de signature (contrôle serveur)', () => {
   it('simple tapotement (petit point) : refusé « vide »', () => {
     expect(lirePngSignature(png(600, 200, (x, y) => Math.hypot(x - 300, y - 100) < 4))).toEqual({ erreur: 'vide' });
   });
+  it('trait droit (glissement du pouce, horizontal ou vertical) : refusé « vide »', () => {
+    expect(lirePngSignature(png(600, 200, (x, y) => x >= 100 && x < 500 && Math.abs(y - 100) < 3))).toEqual({ erreur: 'vide' });
+    expect(lirePngSignature(png(600, 200, (x, y) => y >= 10 && y < 190 && Math.abs(x - 300) < 4))).toEqual({ erreur: 'vide' });
+  });
   it('vraie signature (trait de 400 px, épaisseur 5) : acceptée', () => {
     const r = lirePngSignature(png(600, 200, (x, y) => x >= 100 && x < 500 && Math.abs(y - (100 + Math.round(30 * Math.sin(x / 30)))) < 3));
     expect('octets' in r).toBe(true);

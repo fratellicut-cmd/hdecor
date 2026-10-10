@@ -31,10 +31,9 @@ export type PvCharge = NonNullable<Awaited<ReturnType<typeof chargerPv>>>;
 
 /**
  * Données du PDF : identité de l'entreprise et assurances à la date de
- * réception, client et lieu des travaux. Avec les signatures si elles sont
- * fournies (exemplaire signé).
+ * réception, client et lieu des travaux (PV présenté, avant signature).
  */
-export async function donneesPdfPv(sb: Sb, c: PvCharge, signature: DonneesPv['signature'] = null): Promise<DonneesPv | { erreur: string }> {
+export async function donneesPdfPv(sb: Sb, c: PvCharge): Promise<DonneesPv | { erreur: string }> {
   const [{ data: p, error }, { data: assurances }] = await Promise.all([
     sb.from('parametres_entreprise').select('*').eq('organisation_id', c.pv.organisation_id).single(),
     sb.from('assurances').select('type, assureur, numero_contrat, debut, fin, zone_couverte'),
@@ -52,7 +51,6 @@ export async function donneesPdfPv(sb: Sb, c: PvCharge, signature: DonneesPv['si
     reserves: c.pv.reserves.map((r) => ({ description: r.description })),
     delaiLeveeJours: c.pv.delai_levee_jours,
     observations: c.pv.observations,
-    signature,
   };
 }
 

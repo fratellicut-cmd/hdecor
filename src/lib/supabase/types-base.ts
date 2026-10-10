@@ -5,7 +5,39 @@ export type Database = {
   
   "public": {
           Tables: {
-            "assurances": {
+            "accords_diffusion_photos": {
+                  Row: {
+                    "accorde_le": string,"chantier_id": string,"id": string,"organisation_id": string,"retire_le": string | null,"texte": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "accorde_le"?: string,"chantier_id": string,"id"?: string,"organisation_id": string,"retire_le"?: string | null,"texte": string
+                  }
+                  Update: {
+                    "accorde_le"?: string,"chantier_id"?: string,"id"?: string,"organisation_id"?: string,"retire_le"?: string | null,"texte"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "accords_diffusion_photos_organisation_id_chantier_id_fkey"
+      columns: ["organisation_id","chantier_id"]
+isOneToOne: false
+      referencedRelation: "chantiers"
+      referencedColumns: ["organisation_id","id"]
+    },{
+      foreignKeyName: "accords_diffusion_photos_organisation_id_chantier_id_fkey"
+      columns: ["organisation_id","chantier_id"]
+isOneToOne: false
+      referencedRelation: "v_chantiers"
+      referencedColumns: ["organisation_id","id"]
+    },{
+      foreignKeyName: "accords_diffusion_photos_organisation_id_fkey"
+      columns: ["organisation_id"]
+isOneToOne: false
+      referencedRelation: "organisations"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"assurances": {
                   Row: {
                     "assureur": string,"attestation_chemin": string | null,"created_at": string,"debut": string,"fin": string | null,"id": string,"numero_contrat": string,"organisation_id": string,"type": string,"zone_couverte": string
                   }
@@ -1610,6 +1642,9 @@ isOneToOne: false
 "copier_poste":
 { Args: { "p_pieces": (string)[],"p_poste_id": string }; Returns: number
                            },
+"date_iso_valide":
+{ Args: { "p": string }; Returns: boolean
+                           },
 "deductions_bien_formees":
 { Args: { "p": Json }; Returns: boolean
                            },
@@ -1677,6 +1712,9 @@ isOneToOne: false
 "initialiser_categories_depenses":
 { Args: Record<PropertyKey, never>; Returns: undefined
                            },
+"initialiser_message_avis":
+{ Args: { "p_organisation_id": string }; Returns: undefined
+                           },
 "initialiser_messages":
 { Args: { "p_organisation_id": string }; Returns: undefined
                            },
@@ -1711,6 +1749,9 @@ isOneToOne: false
 "marquer_facture_envoyee":
 { Args: { "p_facture_id": string }; Returns: undefined
                            },
+"mettre_en_file":
+{ Args: { "p_chemin": string,"p_espace": string,"p_org": string }; Returns: undefined
+                           },
 "niveau_auth_suffisant":
 { Args: Record<PropertyKey, never>; Returns: boolean
                            },
@@ -1740,6 +1781,9 @@ isOneToOne: false
                            },
 "purger_journal_audit":
 { Args: { "p_avant": string }; Returns: number
+                           },
+"purger_notifications":
+{ Args: Record<PropertyKey, never>; Returns: number
                            },
 "purger_prospects_inactifs":
 { Args: Record<PropertyKey, never>; Returns: number

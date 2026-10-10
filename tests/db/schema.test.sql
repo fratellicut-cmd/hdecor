@@ -801,7 +801,7 @@ select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prokind = 'f' and p.prorettype <> 'trigger'::regtype
      and has_function_privilege('authenticated', p.oid, 'execute')),
-  'archiver_pv_signe,aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,copier_poste,deductions_bien_formees,definir_preparations,deplacer_ligne_devis,deplacer_ligne_facture,dupliquer_devis,dupliquer_piece,effacer_client,emettre_devis,emettre_facture,emettre_facture_attendue,enregistrer_facturx,est_membre,importer_produits,initialiser_categories_depenses,lever_reserve,marquer_facture_envoyee,nouvelle_version_devis,numero_devis_previsionnel,numero_facture_previsionnel,organisation_du_chemin,presenter_pv,rechercher_clients,refuser_devis,remplacer_achats_devis,reserves_valides,signer_devis_sur_place,signer_pv_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,ventilation_attendue,ventilation_bien_formee',
+  'archiver_pv_signe,aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,copier_poste,date_iso_valide,deductions_bien_formees,definir_preparations,deplacer_ligne_devis,deplacer_ligne_facture,dupliquer_devis,dupliquer_piece,effacer_client,emettre_devis,emettre_facture,emettre_facture_attendue,enregistrer_facturx,est_membre,importer_produits,initialiser_categories_depenses,lever_reserve,marquer_facture_envoyee,nouvelle_version_devis,numero_devis_previsionnel,numero_facture_previsionnel,organisation_du_chemin,presenter_pv,rechercher_clients,refuser_devis,remplacer_achats_devis,reserves_valides,signer_devis_sur_place,signer_pv_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,ventilation_attendue,ventilation_bien_formee',
   'sécurité : liste COMPLÈTE des fonctions appelables par une session');
 select tests.echoue($$select public.purger_journal_audit(now() - interval '20 years')$$, 'permission denied',
   'sécurité : purge du journal réservée au serveur');
@@ -2054,6 +2054,11 @@ select tests.echoue($$select public.presenter_pv('aaaaaaaa-0000-0000-0000-000000
 select public.presenter_pv('aaaaaaaa-0000-0000-0000-0000000b7101',
   'aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7101/aaaaaaaa-0000-0000-0000-0000000b7111.pdf', repeat('1', 64));
 update public.pv_reception set observations = 'Client satisfait' where id = 'aaaaaaaa-0000-0000-0000-0000000b7101';
+reset role;
+select tests.egal((select count(*) from public.fichiers_a_supprimer
+                   where chemin = 'aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7101/aaaaaaaa-0000-0000-0000-0000000b7111.pdf'), 1::bigint,
+  'PV : le PDF présenté puis abandonné (brouillon modifié) est mis en file de suppression');
+set role authenticated;
 select tests.egal((select pdf_sha256 from public.pv_reception where id = 'aaaaaaaa-0000-0000-0000-0000000b7101'), null::text,
   'PV : un brouillon modifié doit être présenté à nouveau (empreinte effacée)');
 select public.presenter_pv('aaaaaaaa-0000-0000-0000-0000000b7101',
@@ -2068,6 +2073,15 @@ select tests.echoue($$select public.signer_pv_sur_place('aaaaaaaa-0000-0000-0000
   repeat('2', 64), null, null)$$, 'Tracés de signature invalides', 'PV : tracés rangés dans le dossier du PV');
 select tests.echoue($$select public.lever_reserve('aaaaaaaa-0000-0000-0000-0000000b7101', 0, public.aujourd_hui_paris(), null)$$,
   'PV signé', 'PV : pas de levée de réserve avant la signature');
+insert into public.pv_reception (id, organisation_id, chantier_id, date_reception)
+values ('aaaaaaaa-0000-0000-0000-0000000b7201', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca001', public.aujourd_hui_paris() + 3);
+select public.presenter_pv('aaaaaaaa-0000-0000-0000-0000000b7201',
+  'aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7201/aaaaaaaa-0000-0000-0000-0000000b7211.pdf', repeat('5', 64));
+select tests.echoue($$select public.signer_pv_sur_place('aaaaaaaa-0000-0000-0000-0000000b7201', 'Paul Durand', 'Lu et approuvé',
+  'aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7201/aaaaaaaa-0000-0000-0000-0000000b7221.png',
+  'aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7201/aaaaaaaa-0000-0000-0000-0000000b7222.png',
+  repeat('5', 64), null, null)$$, 'date de réception est future', 'PV : pas de signature d''une réception datée dans le futur');
+delete from public.pv_reception where id = 'aaaaaaaa-0000-0000-0000-0000000b7201';
 select public.signer_pv_sur_place('aaaaaaaa-0000-0000-0000-0000000b7101', 'Paul Durand', 'Réception prononcée',
   'aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7101/aaaaaaaa-0000-0000-0000-0000000b7121.png',
   'aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7101/aaaaaaaa-0000-0000-0000-0000000b7122.png',
@@ -2089,6 +2103,12 @@ select tests.echoue($$update public.pv_reception set reserves = jsonb_set(reserv
   'Ce PV est signé', 'PV : une levée enregistrée ne s''efface pas');
 select tests.echoue($$delete from public.pv_reception where id = 'aaaaaaaa-0000-0000-0000-0000000b7101'$$,
   'PV signé ne peut pas être supprimé', 'PV signé non supprimable');
+select tests.echoue($$update public.pv_reception set reserves = jsonb_set(reserves, '{1}', (reserves -> 1) || '{"levee_le":"2026-10-01"}')
+  where id = 'aaaaaaaa-0000-0000-0000-0000000b7101'$$, 'Ce PV est signé', 'PV signé : une levée ne s''écrit que par lever_reserve (contrôle de date)');
+reset role;
+select tests.egal(public.reserves_valides('[{"description":"x","levee_le":"2099-02-31"}]'), false, 'PV : une date de levée inexistante (31/02) est refusée');
+select tests.egal(public.reserves_valides('[{"description":"x","levee_le":"2026-02-28"}]'), true, 'PV : date de levée réelle acceptée');
+set role authenticated;
 select tests.echoue($$select public.archiver_pv_signe('aaaaaaaa-0000-0000-0000-0000000b7101', 'aaaaaaaa-0000-0000-0000-00000000000a/factures/x.pdf', repeat('3', 64))$$,
   'Archive invalide', 'PV : archive rangée dans le dossier du PV');
 select public.archiver_pv_signe('aaaaaaaa-0000-0000-0000-0000000b7101',
@@ -2147,12 +2167,52 @@ select tests.egal((select count(*) from public.notifications where organisation_
 select tests.egal((select count(*) from public.pv_reception where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'), 0::bigint,
   'PV : B ne voit pas ceux de A');
 reset role;
+set session_replication_role = replica;
+insert into public.attestations_tva (id, organisation_id, devis_id, taux_bp, signature_id, pdf_chemin)
+values ('aaaaaaaa-0000-0000-0000-0000000b7801', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000d0001', 1000,
+  'aaaaaaaa-0000-0000-0000-0000000b7501', 'aaaaaaaa-0000-0000-0000-00000000000a/attestations/at-test.pdf');
+set session_replication_role = origin;
+select tests.egal(public.fichier_protege('aaaaaaaa-0000-0000-0000-00000000000a/attestations/at-test.pdf'), true,
+  'fichiers protégés : le PDF d''une attestation de TVA signée reste protégé');
+set session_replication_role = replica;
+delete from public.attestations_tva where id = 'aaaaaaaa-0000-0000-0000-0000000b7801';
+set session_replication_role = origin;
+-- RGPD : notifications d'un client effacé supprimées.
+insert into public.notifications (organisation_id, type, titre, lien, cle)
+select organisation_id, 'devis_consulte', 'Devis ouvert par Mme Test', '/devis/' || id, 'test-rgpd:' || id
+from public.devis where client_id = 'aaaaaaaa-0000-0000-0000-0000000c0001' limit 1;
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+insert into public.accords_diffusion_photos (organisation_id, chantier_id, texte)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca001', 'Le client accepte la diffusion des photos (test).');
+select tests.echoue($$delete from public.accords_diffusion_photos$$, 'permission denied', 'accords de diffusion : historique non supprimable');
+select tests.echoue($$update public.accords_diffusion_photos set texte = 'autre'$$, 'permission denied', 'accords de diffusion : texte non modifiable');
+select tests.egal(tests.lignes($$update public.accords_diffusion_photos set retire_le = now() where retire_le is null$$), 1::bigint,
+  'accords de diffusion : retrait daté');
+reset role;
 -- Signature d'un devis À DISTANCE : notification (sur place, Yorick est présent : aucune).
 insert into public.signatures (organisation_id, document_type, document_id, methode, signataire_nom, mention, image_chemin, document_sha256)
 values ('aaaaaaaa-0000-0000-0000-00000000000a', 'attestation_tva', 'aaaaaaaa-0000-0000-0000-0000000a7999', 'lien', 'Xavier Test', 'Lu', 'aaaaaaaa-0000-0000-0000-00000000000a/s.png', repeat('c', 64));
 select tests.egal((select count(*) from public.notifications where type = 'devis_signe'),
   (select count(*) from public.signatures where document_type = 'devis' and methode = 'lien'),
   'notifications : une par devis signé à distance, aucune pour une attestation ou une signature sur place');
+select tests.egal((select count(*) from public.notifications where cle like 'test-rgpd:%'), 1::bigint, 'RGPD : notification du client présente avant effacement');
+update public.clients set anonymise_le = now() where id = 'aaaaaaaa-0000-0000-0000-0000000c0001';
+select tests.egal((select count(*) from public.notifications where cle like 'test-rgpd:%'), 0::bigint,
+  'RGPD : à l''anonymisation, les notifications du client sont supprimées');
+update public.clients set anonymise_le = null where id = 'aaaaaaaa-0000-0000-0000-0000000c0001';
+
+-- Conservation : notifications de plus de 90 jours purgées par la tâche du serveur seulement.
+insert into public.notifications (organisation_id, type, titre, lien, cle, cree_le) values
+  ('aaaaaaaa-0000-0000-0000-00000000000a', 'rappel', 'Ancienne', '/planning', 'test-purge:vieille', now() - interval '91 days'),
+  ('aaaaaaaa-0000-0000-0000-00000000000a', 'rappel', 'Récente', '/planning', 'test-purge:recente', now() - interval '89 days');
+set role authenticated;
+select tests.echoue($$select public.purger_notifications()$$, 'permission denied', 'conservation : purge des notifications réservée au serveur');
+set role service_role;
+select tests.egal(public.purger_notifications() >= 1, true, 'conservation : purge des notifications exécutée');
+reset role;
+select tests.egal((select array_agg(cle order by cle) from public.notifications where cle like 'test-purge:%'), array['test-purge:recente'],
+  'conservation : notifications de plus de 90 jours supprimées, les récentes gardées');
 
 -- Triggers : même le propriétaire de la base ne modifie pas une facture émise
 reset role;

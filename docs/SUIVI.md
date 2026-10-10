@@ -143,10 +143,14 @@ Toujours ouverts depuis la Phase 5 : suspension des relances par facture, recher
 
 À VÉRIFIER (auditeur-legal, comptable) :
 - **PV de réception** : contenu (parties, lieu, travaux, date, décision avec ou sans réserves, délai de levée, observations) et rappel informatif sur la réception et les garanties (article 1792-6 du Code civil cité, marqué « Références À VÉRIFIER » sur le document). Signature sur place seulement (client et entreprise, empreinte du PDF présenté) ; pas de signature à distance du PV.
-- **Levée des réserves** : datée et notée sur le PV signé (le PDF signé n'est pas régénéré ; l'état des levées est dans l'application). Faut-il un « PV de levée des réserves » signé par le client ?
-- **Demande d'avis** : manuelle (jamais automatique), une par facture payée, opposition du client notée et respectée ; le message rappelle comment ne plus être sollicité.
+- **Levée des réserves** : déclarée et datée par l'entreprise seule (« Levée déclarée par l'entreprise le … »), sans annulation ; le PDF signé n'est pas régénéré. Faut-il un « PV de levée des réserves » contresigné par le client et remis à celui-ci ?
+- **Demande d'avis** : manuelle (jamais automatique), sur la facture finale (ou libre) entièrement payée, une par chantier, opposition du client notée et respectée ; modèle de message neutre (« quel qu'il soit »). La demande d'avis relève-t-elle de la prospection au sens de l'article L34-5 du CPCE (consentement préalable, opposition) ? À trancher.
+- **Mention « [Références À VÉRIFIER] »** imprimée sur le PV remis au client : à retirer seulement après validation du texte par le conseil de l'entreprise, avant la mise en production.
+- **Signature du PV** : en deux étapes sur le même téléphone (le client, puis l'entreprise) ; un trait droit est refusé comme signature. Comportement à confirmer sur un vrai Android et un vrai iPhone.
 - **Photos diffusées** : accord du client noté (daté) avant tout export de la galerie ; ni nom ni adresse dans les exports ; métadonnées (GPS, appareil) retirées par le serveur. Vérifier visages, plaques, numéros de rue avant publication (rappelé à l'écran).
 
 Limites connues :
 - **Notifications** : dans l'application (cloche) et par email récapitulatif ; la tâche planifiée tourne une fois par jour sur l'hébergement de base (voir docs/MISE_EN_PRODUCTION.md). Pas de notification « push » du téléphone (clés VAPID et planificateur fréquent nécessaires).
-- **Photos** : JPEG uniquement côté serveur (le téléphone convertit) ; une photo HEIC que le navigateur ne sait pas lire est refusée avec un message. Export limité à 200 photos (archive) et 40 (galerie).
+- **Photos** : JPEG uniquement côté serveur (le téléphone convertit) ; une photo HEIC que le navigateur ne sait pas lire est refusée avec un message. Export limité à 200 photos (archive) et 40 (galerie). L'orientation EXIF est respectée par la réduction dans le navigateur ; un JPEG déposé tel quel (document) garde son orientation d'origine.
+- **Unicité de la demande d'avis par chantier** : contrôlée par l'application (la base garantit une seule demande par facture).
+- **Confort reporté (testeur-chantier)** : bouton « Partager » vers la feuille de partage du téléphone et montage « avant | après » au format 4:5 pour les réseaux sociaux ; étoile « Galerie » en un appui sur la vignette ; message de demande d'avis modifiable avant partage et formule « Madame / Monsieur » ; liste de fin hors ligne (appui gardé en attente).

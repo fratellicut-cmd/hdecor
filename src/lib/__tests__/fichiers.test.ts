@@ -76,6 +76,18 @@ describe('photo JPEG sans métadonnées', () => {
     expect(new TextDecoder('latin1').decode(r.octets)).not.toContain('Mme Martin');
     expect(new TextDecoder('latin1').decode(r.octets)).not.toContain('Fabricant secret');
   });
+  it('photo composite (deux images, comme les « photos animées ») : la seconde image et ses métadonnées sont retirées', () => {
+    const premiere = jpegAvecGps();
+    const seconde = jpegAvecGps();
+    const composite = new Uint8Array([...premiere, ...seconde]);
+    const r = jpegSansMetadonnees(composite)!;
+    expect(r).not.toBeNull();
+    const texte = new TextDecoder('latin1').decode(r.octets);
+    expect(texte).not.toContain('Exif');
+    expect(texte).not.toContain('Fabricant secret');
+    expect(r.octets.length).toBeLessThan(premiere.length);
+    expect(relire(r.octets)[1]).toBe(0);
+  });
   it('refuse ce qui n’est pas un JPEG lisible', () => {
     expect(jpegSansMetadonnees(PNG)).toBeNull();
     expect(jpegSansMetadonnees(octets([0xff, 0xd8, 0xff, 0xe1, 0xff, 0xff]))).toBeNull();

@@ -7,7 +7,7 @@ import { clientServeur } from '@/lib/supabase/serveur';
 import { chargerPv } from '@/lib/pv';
 import { aujourdHuiParis } from '@/domain/dates';
 import { formaterDate, formaterDateHeure } from '@/domain/formats';
-import { etatReserves, texteDecision } from '@/domain/pv';
+import { dateLimiteLevee, etatReserves, texteDecision } from '@/domain/pv';
 import { archiverPv, presenterPv, supprimerPv } from '../../../pv-actions';
 import { FormulaireLevee, FormulairePv } from '@/components/chantiers/Pv';
 import { ActionConfirmee } from '@/components/formulaire/ActionConfirmee';
@@ -63,12 +63,12 @@ export default async function PagePv({ params, searchParams }: PageProps<'/chant
                   <li key={i} className="flex flex-col gap-2 py-3">
                     <p className="font-semibold">{i + 1}. {r.description}</p>
                     {r.levee_le ? (
-                      <p className="text-sm">✓ Levée le {formaterDate(r.levee_le)}{r.levee_note ? ` : ${r.levee_note}` : ''}</p>
+                      <p className="text-sm">✓ Levée déclarée par l’entreprise le {formaterDate(r.levee_le)}{r.levee_note ? ` : ${r.levee_note}` : ''}</p>
                     ) : <FormulaireLevee id={pv.id} rang={i} aujourdhui={aujourdHuiParis()} />}
                   </li>
                 ))}
               </ol>
-              {pv.delai_levee_jours ? <p className="mt-2 text-sm text-encre-douce">Délai prévu : {pv.delai_levee_jours} jours après la réception.</p> : null}
+              {pv.delai_levee_jours ? <p className="mt-2 text-sm text-encre-douce">À lever avant le {formaterDate(dateLimiteLevee(pv.date_reception, pv.delai_levee_jours)!)} ({pv.delai_levee_jours} jours après la réception).</p> : null}
             </Carte>
           ) : null}
         </>

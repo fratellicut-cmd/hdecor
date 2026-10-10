@@ -123,7 +123,7 @@ test('devis : émission bloquée sans adresse client, signature sur place, nouve
   await cadre.scrollIntoViewIfNeeded();
   const b = (await cadre.boundingBox())!;
   await page.mouse.click(b.x + 50, b.y + 50);
-  await expect(page.getByText('Signature trop courte : signez en entier dans le cadre.')).toBeVisible();
+  await expect(page.getByText('Signature trop courte ou trop simple : signez en entier dans le cadre.')).toBeVisible();
   await page.getByLabel('J’ai lu le devis et je l’accepte').check();
   await page.getByRole('button', { name: 'Signer le devis' }).click();
   await expect(page.getByText('Signez dans le cadre.').first()).toBeVisible();

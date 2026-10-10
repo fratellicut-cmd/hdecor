@@ -38,3 +38,6 @@ export const schemaDocument = z.object({
   type: z.enum(TYPES_DOCUMENT, { error: 'Choisissez le type de document.' }),
   nom: texteObligatoire('Nom du document', 200),
 });
+
+/** Texte de l'accord recueilli (tracé avec sa date dans l'historique des accords de diffusion). */
+export const TEXTE_ACCORD_DIFFUSION = 'Le client accepte que les photos de ses travaux soient diffusées (portfolio, réseaux sociaux), sans son nom ni son adresse.';

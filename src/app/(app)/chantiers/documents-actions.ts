@@ -8,7 +8,7 @@ import { clientServeur } from '@/lib/supabase/serveur';
 import { deposer, oublier } from '@/lib/stockage';
 import { fichierConforme, jpegSansMetadonnees, typeReel, type TypeFichier } from '@/lib/fichiers';
 import { erreursParChamp, valeursTexte, type EtatFormulaire } from '@/lib/etat-formulaire';
-import { PHOTOS_PAR_ENVOI, schemaDocument, schemaModifierPhoto, schemaPhotos, TAILLE_MAX_ENVOI } from '@/lib/validation/documents';
+import { PHOTOS_PAR_ENVOI, TEXTE_ACCORD_DIFFUSION, schemaDocument, schemaModifierPhoto, schemaPhotos, TAILLE_MAX_ENVOI } from '@/lib/validation/documents';
 
 const ECHEC = 'L’enregistrement a échoué. Vérifiez la connexion et réessayez.';
 const INCOMPLET = 'Formulaire incomplet : rechargez la page.';
@@ -118,19 +118,30 @@ export async function supprimerPhoto(_: EtatFormulaire, fd: FormData): Promise<E
   return { succes: 'Photo supprimée.' };
 }
 
-/** Accord du client pour diffuser les photos (portfolio, réseaux sociaux), daté ; retirable. */
+/** Accord du client pour diffuser les photos, daté et historisé ; retirable (le retrait est daté aussi). */
 export async function enregistrerAccordDiffusion(_: EtatFormulaire, fd: FormData): Promise<EtatFormulaire> {
-  await verifierSession();
+  const session = await verifierSession();
   const id = idDe(fd, 'chantier_id');
   if (!id.success) return { message: INCOMPLET };
   const accord = fd.get('accord') === 'oui';
   if (accord && fd.get('confirmation') !== 'on') return { message: 'Cochez la case pour confirmer l’accord du client.' };
   const sb = await clientServeur();
-  const { data, error } = await sb.from('chantiers').update({ accord_diffusion_photos_le: accord ? new Date().toISOString() : null })
-    .eq('id', id.data).select('id');
+  const { data: ch } = await sb.from('chantiers').select('id, accord_diffusion_photos_le').eq('id', id.data).maybeSingle();
+  if (!ch) return { message: 'Chantier introuvable.' };
+  const maintenant = new Date().toISOString();
+  if (accord) {
+    if (ch.accord_diffusion_photos_le) return { succes: 'Accord déjà noté.' };
+    const { error: e1 } = await sb.from('accords_diffusion_photos').insert({
+      organisation_id: session.organisationId, chantier_id: ch.id, texte: TEXTE_ACCORD_DIFFUSION, accorde_le: maintenant,
+    });
+    if (e1) return { message: ECHEC };
+  } else {
+    const { error: e1 } = await sb.from('accords_diffusion_photos').update({ retire_le: maintenant }).eq('chantier_id', ch.id).is('retire_le', null);
+    if (e1) return { message: ECHEC };
+  }
+  const { error } = await sb.from('chantiers').update({ accord_diffusion_photos_le: accord ? maintenant : null }).eq('id', ch.id);
   if (error) return { message: ECHEC };
-  if (!data?.length) return { message: 'Chantier introuvable.' };
-  revalider(id.data);
+  revalider(ch.id);
   return { succes: accord ? 'Accord du client noté.' : 'Accord retiré : la galerie n’est plus exportable.' };
 }
 
@@ -151,7 +162,12 @@ export async function ajouterDocument(_: EtatFormulaire, fd: FormData): Promise<
   let octets: Uint8Array = new Uint8Array(await f.arrayBuffer());
   const type = typeReel(octets);
   if (!type || !fichierConforme(octets, type, TYPES_DOCUMENT_FICHIER)) return { erreurs: { fichier: 'Format refusé : PDF ou photo (JPEG, PNG, WebP).' }, valeurs: valeursTexte(fd) };
-  if (type === 'image/jpeg') octets = jpegSansMetadonnees(octets)?.octets ?? octets;
+  if (type === 'image/jpeg') {
+    // Jamais déposé brut : un JPEG illisible garderait sa position GPS.
+    const propre = jpegSansMetadonnees(octets);
+    if (!propre) return { erreurs: { fichier: 'Photo illisible : reprenez-la ou envoyez un PDF.' }, valeurs: valeursTexte(fd) };
+    octets = propre.octets;
+  }
   const sb = await clientServeur();
   const refus = await verifierChantier(sb, lu.data.chantier_id, null);
   if (refus) return { message: refus };
@@ -180,6 +196,11 @@ export async function supprimerDocument(_: EtatFormulaire, fd: FormData): Promis
   if (!id.success) return { message: INCOMPLET };
   if (fd.get('confirmation') !== 'on') return { message: 'Cochez la case pour confirmer.' };
   const sb = await clientServeur();
+  // Après la réception (PV signé), les documents du chantier (fiches techniques…) servent de preuve pendant les garanties : conservés.
+  const { data: doc } = await sb.from('documents_chantier').select('chantier_id').eq('id', id.data).maybeSingle();
+  if (!doc) return { message: 'Document introuvable.' };
+  const { count } = await sb.from('pv_reception').select('id', { count: 'exact', head: true }).eq('chantier_id', doc.chantier_id).eq('statut', 'signe');
+  if (count) return { message: 'Réception signée : les documents du chantier sont conservés (preuve pendant les garanties).' };
   const { data, error } = await sb.from('documents_chantier').delete().eq('id', id.data).select('chemin, chantier_id');
   if (error) return { message: ECHEC };
   const d = data?.[0];

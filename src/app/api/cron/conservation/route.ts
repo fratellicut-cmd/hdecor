@@ -27,9 +27,11 @@ export async function GET(requete: Request) {
     console.error('Conservation : échec de la purge des prospects', error.code);
     return Response.json({ ok: false, etape: 'prospects' }, { status: 500 });
   }
+  const { data: notifications, error: eN } = await clientAdmin().rpc('purger_notifications');
+  if (eN) console.error('Conservation : échec de la purge des notifications', eN.code);
   try {
     const fichiers = await viderFileSuppression({ limite: 500 });
-    return Response.json({ ok: fichiers.enEchec === 0, prospects_anonymises: prospects, fichiers });
+    return Response.json({ ok: fichiers.enEchec === 0 && !eN, prospects_anonymises: prospects, notifications_purgees: notifications, fichiers });
   } catch (e) {
     console.error('Conservation : échec de la reprise des fichiers', e instanceof Error ? e.message : e);
     return Response.json({ ok: false, etape: 'fichiers', prospects_anonymises: prospects }, { status: 500 });

@@ -7,14 +7,15 @@ import { envPublique } from '@/lib/env';
  * Tâche planifiée : rappels échus -> notifications (une par rappel, jamais
  * deux fois), puis, pour les entreprises qui l'ont choisi (Réglages >
  * Notifications), un email récapitulatif des notifications non encore
- * envoyées des dernières 48 h, à l'adresse de l'entreprise.
+ * envoyées (30 derniers jours), à l'adresse de l'entreprise.
  * Fréquence : vercel.json (une fois par jour sur l'offre gratuite ; plus
  * souvent sur une offre payante ou par un service externe, voir
  * docs/MISE_EN_PRODUCTION.md). Protégée par CRON_SECRET.
  */
 export const dynamic = 'force-dynamic';
 
-const FENETRE_MS = 48 * 3600_000;
+/** Notifications non encore envoyées des 30 derniers jours : un échec d'envoi est repris le lendemain. */
+const FENETRE_MS = 30 * 24 * 3600_000;
 
 function autorise(requete: Request): boolean {
   const secret = process.env.CRON_SECRET;

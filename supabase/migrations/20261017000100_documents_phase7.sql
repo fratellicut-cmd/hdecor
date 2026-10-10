@@ -78,6 +78,22 @@ alter table public.pv_reception add constraint pv_signe_complet check (
   statut = 'brouillon' or (signature_id is not null and pdf_sha256 is not null and signature_entreprise_chemin is not null));
 create index pv_reception_chantier_idx on public.pv_reception (organisation_id, chantier_id);
 
+/** Date AAAA-MM-JJ réelle (le 31/02 est refusé). */
+create or replace function public.date_iso_valide(p text)
+returns boolean
+language plpgsql
+immutable
+set search_path = ''
+as $$
+begin
+  return p ~ '^\d{4}-\d{2}-\d{2}$' and to_char(p::date, 'YYYY-MM-DD') = p;
+exception when others then
+  return false;
+end;
+$$;
+revoke execute on function public.date_iso_valide(text) from public, anon;
+grant execute on function public.date_iso_valide(text) to authenticated, service_role;
+
 /**
  * Forme d'une réserve : description obligatoire (1 à 500 caractères), levée
  * datée facultative. Aucune autre clé (rien d'arbitraire figé dans un PV).
@@ -94,7 +110,7 @@ as $$
     and jsonb_typeof(r -> 'description') = 'string'
     and length(btrim(r ->> 'description')) between 1 and 500
     and (r -> 'levee_le' is null or jsonb_typeof(r -> 'levee_le') = 'null'
-         or (jsonb_typeof(r -> 'levee_le') = 'string' and (r ->> 'levee_le') ~ '^\d{4}-\d{2}-\d{2}$'))
+         or (jsonb_typeof(r -> 'levee_le') = 'string' and public.date_iso_valide(r ->> 'levee_le')))
     and (r -> 'levee_note' is null or jsonb_typeof(r -> 'levee_note') = 'null'
          or (jsonb_typeof(r -> 'levee_note') = 'string' and length(r ->> 'levee_note') <= 500))
   ), true)
@@ -110,9 +126,21 @@ alter table public.pv_reception add constraint reserves_valides check (public.re
  * encore être renseignée, par lever_reserve. Le contenu d'un brouillon qui
  * change invalide le PDF présenté (il faut le représenter avant de signer).
  */
+/** File de suppression d'un fichier devenu inutile (appelée par les déclencheurs ; jamais par une session). */
+create or replace function public.mettre_en_file(p_org uuid, p_espace text, p_chemin text)
+returns void
+language sql
+security definer
+set search_path = ''
+as $$
+  insert into public.fichiers_a_supprimer (organisation_id, espace, chemin) values (p_org, p_espace, p_chemin);
+$$;
+revoke execute on function public.mettre_en_file(uuid, text, text) from public, anon, authenticated;
+
 create or replace function public.proteger_pv()
 returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $$
 declare
@@ -122,6 +150,8 @@ begin
     if old.statut = 'signe' or old.signature_id is not null then
       raise exception 'Un PV signé ne peut pas être supprimé.' using errcode = 'P0001';
     end if;
+    -- PDF présenté d'un brouillon supprimé (nom et adresse du client) : mis en file de suppression.
+    if old.pdf_chemin is not null then perform public.mettre_en_file(old.organisation_id, 'documents', old.pdf_chemin); end if;
     return old;
   end if;
   -- La signature rattachée est celle de CE PV (même hors API).
@@ -131,6 +161,11 @@ begin
          and s.document_type = 'pv_reception' and s.document_id = new.id) then
     raise exception 'Cette signature ne correspond pas à ce document.' using errcode = 'P0001';
   end if;
+  -- Devis rattaché : un devis ACCEPTÉ de ce chantier (jamais un brouillon qui bloquerait l'effacement du client).
+  if new.devis_id is not null and (tg_op = 'INSERT' or new.devis_id is distinct from old.devis_id) and not exists (
+       select 1 from public.devis d where d.id = new.devis_id and d.chantier_id = new.chantier_id and d.statut = 'accepte') then
+    raise exception 'Le devis rattaché doit être un devis signé de ce chantier.' using errcode = 'P0001';
+  end if;
   if tg_op = 'INSERT' then
     if new.statut <> 'brouillon' or new.signature_id is not null then
       raise exception 'Un PV se crée en brouillon.' using errcode = 'P0001';
@@ -138,7 +173,9 @@ begin
     return new;
   end if;
   if old.statut = 'signe' or old.signature_id is not null then
+    -- PV signé : seule lever_reserve (qui pose le verrou de transaction « hdecor.levee ») peut écrire une levée.
     if (to_jsonb(new) - array['reserves', 'updated_at']) is distinct from (to_jsonb(old) - array['reserves', 'updated_at'])
+       or (new.reserves is distinct from old.reserves and coalesce(current_setting('hdecor.levee', true), '') <> 'on')
        or jsonb_array_length(new.reserves) <> jsonb_array_length(old.reserves)
        or exists (select 1 from jsonb_array_elements(new.reserves) with ordinality n(r, i)
                   join jsonb_array_elements(old.reserves) with ordinality o(r, i) using (i)
@@ -148,9 +185,10 @@ begin
     end if;
     return new;
   end if;
-  -- Brouillon : un changement de contenu efface le PDF présenté.
+  -- Brouillon : un changement de contenu efface le PDF présenté (fichier mis en file de suppression).
   if new.statut = 'brouillon' and (select bool_or((to_jsonb(new) -> c) is distinct from (to_jsonb(old) -> c)) from unnest(v_contenu) c)
      and new.pdf_sha256 is not distinct from old.pdf_sha256 then
+    if old.pdf_chemin is not null then perform public.mettre_en_file(old.organisation_id, 'documents', old.pdf_chemin); end if;
     new.pdf_chemin := null;
     new.pdf_sha256 := null;
   end if;
@@ -218,6 +256,9 @@ begin
   if v_pv.statut <> 'brouillon' then
     raise exception 'Ce PV est déjà signé.' using errcode = 'P0001';
   end if;
+  if v_pv.date_reception > public.aujourd_hui_paris() then
+    raise exception 'La date de réception est future : la réception se prononce le jour même ou après coup.' using errcode = 'P0001';
+  end if;
   if v_pv.pdf_sha256 is null or v_pv.pdf_sha256 <> p_document_sha256 then
     raise exception 'Le PV a changé depuis sa présentation : présentez-le à nouveau avant de signer.' using errcode = 'P0001';
   end if;
@@ -265,10 +306,12 @@ begin
   if p_date < v_pv.date_reception or p_date > public.aujourd_hui_paris() then
     raise exception 'Date de levée : entre la réception et aujourd''hui.' using errcode = 'P0001';
   end if;
+  perform set_config('hdecor.levee', 'on', true);
   update public.pv_reception
   set reserves = jsonb_set(reserves, array[p_rang::text],
         (reserves -> p_rang) || jsonb_build_object('levee_le', p_date, 'levee_note', nullif(btrim(coalesce(p_note, '')), '')))
   where id = p_pv_id;
+  perform set_config('hdecor.levee', 'off', true);
 end;
 $$;
 revoke execute on function public.lever_reserve(uuid, integer, date, text) from public, anon;
@@ -285,7 +328,9 @@ as $$
   select exists (select 1 from public.factures f where p_chemin in (f.pdf_chemin, f.facturx_chemin))
       or exists (select 1 from public.devis d where d.pdf_chemin = p_chemin and d.statut = 'accepte')
       or exists (select 1 from public.signatures s where p_chemin in (s.image_chemin, s.pdf_signe_chemin))
-      or exists (select 1 from public.pv_reception p where p.statut = 'signe' and p_chemin in (p.pdf_chemin, p.signature_entreprise_chemin));
+      or exists (select 1 from public.pv_reception p where (p.statut = 'signe' or p.signature_id is not null)
+                 and p_chemin in (p.pdf_chemin, p.signature_entreprise_chemin))
+      or exists (select 1 from public.attestations_tva a where a.pdf_chemin = p_chemin and a.signature_id is not null);
 $$;
 
 -- 4. Demande d'avis -------------------------------------------------------------------
@@ -331,8 +376,9 @@ language sql
 security definer
 set search_path = ''
 as $$
+  -- Titre sur une ligne : aucun caractère de contrôle (pas de fausse ligne dans l'email récapitulatif).
   insert into public.notifications (organisation_id, type, titre, lien, cle)
-  values (p_org, p_type, left(p_titre, 300), p_lien, p_cle)
+  values (p_org, p_type, left(regexp_replace(p_titre, '[[:cntrl:]]+', ' ', 'g'), 300), p_lien, p_cle)
   on conflict (organisation_id, cle) do nothing;
 $$;
 revoke execute on function public.notifier(uuid, text, text, text, text) from public, anon, authenticated;
@@ -350,7 +396,7 @@ begin
   if new.document_type = 'devis' and new.methode = 'lien' then
     select numero into v_numero from public.devis where id = new.document_id;
     perform public.notifier(new.organisation_id, 'devis_signe',
-      format('Devis %s signé à distance par %s', coalesce(v_numero, ''), new.signataire_nom),
+      format('Devis %s signé à distance', coalesce(v_numero, '')),
       '/devis/' || new.document_id, 'signature:' || new.id);
   end if;
   return new;
@@ -391,7 +437,9 @@ begin
     select numero into v_numero from public.factures where id = new.facture_id;
     perform public.notifier(new.organisation_id, 'paiement_en_ligne',
       format('Paiement en ligne reçu : %s € sur la facture %s',
-        (new.montant_cents / 100)::text || ',' || lpad((new.montant_cents % 100)::text, 2, '0'), coalesce(v_numero, '')),
+        -- Format français : espace fine insécable entre les milliers, virgule décimale.
+        regexp_replace((new.montant_cents / 100)::text, '(\d)(?=(\d{3})+$)', E'\\1\u202F', 'g')
+          || ',' || lpad((new.montant_cents % 100)::text, 2, '0'), coalesce(v_numero, '')),
       '/factures/' || new.facture_id, 'paiement:' || new.id);
   end if;
   return new;
@@ -419,7 +467,7 @@ begin
     returning id, organisation_id, titre, chantier_id
   )
   insert into public.notifications (organisation_id, type, titre, lien, cle)
-  select organisation_id, 'rappel', left('Rappel : ' || titre, 300),
+  select organisation_id, 'rappel', left(regexp_replace('Rappel : ' || titre, '[[:cntrl:]]+', ' ', 'g'), 300),
          case when chantier_id is null then '/planning' else '/chantiers/' || chantier_id end, 'rappel:' || id
   from echus
   on conflict (organisation_id, cle) do nothing;
@@ -464,7 +512,9 @@ revoke execute on function public.archiver_pv_signe(uuid, text, text) from publi
 grant execute on function public.archiver_pv_signe(uuid, text, text) to authenticated;
 
 -- Modèle « demande d'avis » (modifiable dans Réglages > Messages), créé pour
--- chaque organisation. Le client peut s'opposer à ces messages (refus noté).
+-- chaque organisation. Message NEUTRE : tous les clients sont invités de la
+-- même façon, sans condition de satisfaction (pas de tri des avis). Le client
+-- peut s'opposer à ces messages (refus noté).
 create or replace function public.initialiser_message_avis(p_organisation_id uuid)
 returns void
 language sql
@@ -473,7 +523,7 @@ set search_path = ''
 as $$
   insert into public.modeles_messages (organisation_id, code, sujet, corps, delai_jours)
   values (p_organisation_id, 'demande_avis', 'Votre avis sur nos travaux',
-    E'Bonjour {client},\n\nMerci de nous avoir confié vos travaux. Si vous en êtes satisfait, votre avis nous aiderait beaucoup : {lien}\nSi quelque chose ne vous convient pas, répondez-nous directement.\n\nVous ne souhaitez plus recevoir ce type de message ? Dites-le-nous simplement en réponse.\n\nCordialement,\n{entreprise}', null)
+    E'Bonjour {client},\n\nMerci de nous avoir confié vos travaux. Votre avis, quel qu''il soit, nous intéresse et aide d''autres clients à choisir : {lien}\n\nVous ne souhaitez plus recevoir ce type de message ? Dites-le-nous simplement en réponse.\n\nCordialement,\n{entreprise}', null)
   on conflict (organisation_id, code) do nothing;
 $$;
 revoke execute on function public.initialiser_message_avis(uuid) from public, anon, authenticated;
@@ -492,3 +542,69 @@ revoke execute on function public.organisation_initialiser_message_avis() from p
 create trigger organisations_initialiser_message_avis after insert on public.organisations
   for each row execute function public.organisation_initialiser_message_avis();
 select public.initialiser_message_avis(id) from public.organisations;
+
+-- RGPD : à l'anonymisation d'un client, ses notifications (titres pouvant
+-- contenir un nom, un rappel ou un numéro de document) sont supprimées, quel
+-- que soit le chemin d'effacement (demande du client ou purge automatique).
+create or replace function public.purger_notifications_client()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if old.anonymise_le is null and new.anonymise_le is not null then
+    delete from public.notifications n
+    where n.organisation_id = new.organisation_id
+      and (n.lien in (select '/devis/' || d.id from public.devis d where d.client_id = new.id)
+        or n.lien in (select '/factures/' || f.id from public.factures f where f.client_id = new.id)
+        or n.lien in (select '/chantiers/' || c.id from public.chantiers c where c.client_id = new.id)
+        or n.cle in (select 'rappel:' || r.id from public.rappels r
+                     where r.chantier_id in (select c.id from public.chantiers c where c.client_id = new.id)
+                        or (r.document_type = 'devis' and r.document_id in (select d.id from public.devis d where d.client_id = new.id))
+                        or (r.document_type = 'facture' and r.document_id in (select f.id from public.factures f where f.client_id = new.id))));
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.purger_notifications_client() from public, anon, authenticated;
+create trigger clients_purger_notifications after update of anonymise_le on public.clients
+  for each row execute function public.purger_notifications_client();
+
+-- Historique des accords de diffusion des photos : chaque accord (texte accepté,
+-- date) et son éventuel retrait restent tracés (preuve de l'accord au moment
+-- d'une publication). Ni modifiable (hors date de retrait) ni supprimable par une session.
+create table public.accords_diffusion_photos (
+  id                uuid primary key default gen_random_uuid(),
+  organisation_id   uuid not null references public.organisations (id) on delete restrict,
+  chantier_id       uuid not null,
+  texte             text not null check (length(texte) between 10 and 500),
+  accorde_le        timestamptz not null default now(),
+  retire_le         timestamptz,
+  foreign key (organisation_id, chantier_id) references public.chantiers (organisation_id, id) on delete cascade,
+  check (retire_le is null or retire_le >= accorde_le)
+);
+create index accords_diffusion_chantier_idx on public.accords_diffusion_photos (organisation_id, chantier_id);
+select public.appliquer_rls_standard('public.accords_diffusion_photos');
+revoke update, delete on public.accords_diffusion_photos from authenticated;
+grant update (retire_le) on public.accords_diffusion_photos to authenticated;
+create trigger accords_diffusion_audit after insert or update or delete on public.accords_diffusion_photos
+  for each row execute function public.tracer_audit();
+
+-- Notifications : conservées 90 jours (tâche de conservation), puis supprimées.
+create or replace function public.purger_notifications()
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_n integer;
+begin
+  delete from public.notifications where cree_le < now() - interval '90 days';
+  get diagnostics v_n = row_count;
+  return v_n;
+end;
+$$;
+revoke execute on function public.purger_notifications() from public, anon, authenticated;
+grant execute on function public.purger_notifications() to service_role;

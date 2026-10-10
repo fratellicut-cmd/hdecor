@@ -6,10 +6,10 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { verifierSession } from '@/lib/dal';
 import { clientServeur } from '@/lib/supabase/serveur';
-import { deposer, retirer } from '@/lib/stockage';
+import { deposer, lire, retirer } from '@/lib/stockage';
 import { ipEtNavigateur } from '@/lib/requete';
 import { chargerPv, donneesPdfPv, tracesPv } from '@/lib/pv';
-import { pdfPv } from '@/lib/pdf/pv';
+import { pdfPv, pdfPvSigne } from '@/lib/pdf/pv';
 import { erreursParChamp, valeursTexte, type EtatFormulaire } from '@/lib/etat-formulaire';
 import { lirePngSignature, MESSAGES_TRACE } from '@/lib/validation/devis';
 import { schemaLevee, schemaPv, schemaSignaturePv } from '@/lib/validation/pv';
@@ -109,19 +109,26 @@ export async function presenterPv(_: EtatFormulaire, fd: FormData): Promise<Etat
   redirect(`/chantiers/${c.chantier.id}/pv/${c.pv.id}/signer`);
 }
 
-/** Archive du PV signé (PDF portant les deux signatures) ; renvoie false si l'archivage a échoué. */
+/**
+ * Archive du PV signé : le PDF PRÉSENTÉ (relu dans le stockage, empreinte
+ * revérifiée) suivi de la page de signatures. Renvoie false si l'archivage a échoué.
+ */
 async function archiver(sb: Awaited<ReturnType<typeof clientServeur>>, organisationId: string, pvId: string): Promise<boolean> {
   const c = await chargerPv(sb, pvId);
-  if (!c || c.pv.statut !== 'signe' || !c.signature || !c.pv.signature_entreprise_chemin) return false;
+  if (!c || c.pv.statut !== 'signe' || !c.signature || !c.pv.signature_entreprise_chemin || !c.pv.pdf_chemin) return false;
   if (c.signature.pdf_signe_chemin) return true;
-  const traces = await tracesPv(organisationId, c.signature.image_chemin, c.pv.signature_entreprise_chemin);
-  if (!traces) return false;
-  const donnees = await donneesPdfPv(sb, c, {
+  const [presente, traces, { data: p }] = await Promise.all([
+    lire('documents', organisationId, c.pv.pdf_chemin),
+    tracesPv(organisationId, c.signature.image_chemin, c.pv.signature_entreprise_chemin),
+    sb.from('parametres_entreprise').select('raison_sociale, nom_dirigeant').eq('organisation_id', organisationId).maybeSingle(),
+  ]);
+  // Le PDF signé est celui présenté : son empreinte doit être celle que le client a signée.
+  if (!presente || !traces || sha256(presente) !== c.signature.document_sha256) return false;
+  const pdf = await pdfPvSigne(presente, {
     nom: c.signature.signataire_nom, mention: c.signature.mention, signeLe: c.signature.signe_le,
     client: traces.client, entreprise: traces.entreprise, documentSha256: c.signature.document_sha256,
+    entrepriseNom: p?.nom_dirigeant ?? p?.raison_sociale ?? '',
   });
-  if ('erreur' in donnees) return false;
-  const pdf = await pdfPv(donnees);
   const chemin = `${organisationId}/pv/${pvId}/${randomUUID()}.pdf`;
   try {
     await deposer('documents', organisationId, chemin, pdf, 'application/pdf');

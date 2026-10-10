@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef } from 'react';
 import { ajouterElementFin, cocherElementFin, enregistrerModeleFin } from '@/app/(app)/chantiers/fin-actions';
 import { useFormulaire } from '@/components/formulaire/useFormulaire';
 import { RetourFormulaire } from '@/components/parametres/RetourFormulaire';
@@ -7,12 +8,22 @@ import { Bouton } from '@/components/ui/Bouton';
 import { Champ } from '@/components/ui/Champ';
 import { TexteLong } from '@/components/ui/Autres';
 
+/** Délai sous lequel un second appui sur la même ligne est tenu pour un rebond. */
+const DELAI_REBOND_MS = 800;
+
 /** Une ligne de la liste : toute la ligne est le bouton (cible large, avec des gants). */
 export function ElementFin({ chantierId, rang, libelle, faitLe }: { chantierId: string; rang: number; libelle: string; faitLe: string | null }) {
   const { etat, action, enCours, formRef, surEnvoi } = useFormulaire(null, cocherElementFin);
   const fait = !!faitLe;
+  // Appui doublé (gant qui rebondit) : le second, trop proche, est ignoré au lieu de décocher aussitôt.
+  const dernierAppui = useRef(0);
   return (
-    <form ref={formRef} action={action} onSubmit={surEnvoi}>
+    <form ref={formRef} action={action} onSubmit={(ev) => {
+      const maintenant = ev.timeStamp;
+      if (maintenant - dernierAppui.current < DELAI_REBOND_MS) { ev.preventDefault(); return; }
+      dernierAppui.current = maintenant;
+      surEnvoi(ev);
+    }}>
       <input type="hidden" name="chantier_id" value={chantierId} />
       <input type="hidden" name="rang" value={String(rang)} />
       <input type="hidden" name="libelle" value={libelle} />
