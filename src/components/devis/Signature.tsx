@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { EtatFormulaire } from '@/lib/etat-formulaire';
 import { useFormulaire } from '@/components/formulaire/useFormulaire';
 import { AlerteHorsLigne } from '@/components/formulaire/MessagesGarde';
@@ -11,6 +11,8 @@ import { CaseACocher } from '@/components/ui/Autres';
 
 /** Longueur minimale du tracé (px à l'écran) : un tapotement n'est pas une signature. Le serveur revérifie l'encre. */
 const LONGUEUR_MIN = 80;
+/** Étendue minimale dans les deux sens (px à l'écran, au moins le seuil du serveur en px d'image) : un trait droit (glissement du pouce) n'est pas une signature. */
+const ETENDUE_MIN = 30;
 
 /**
  * Cadre de signature au doigt (événements « pointer » : doigt, stylet, souris).
@@ -18,13 +20,15 @@ const LONGUEUR_MIN = 80;
  * Si le cadre change de taille (téléphone tourné), il est remis à l'échelle et
  * vidé : on demande de signer à nouveau plutôt que de garder un tracé faux.
  */
-function PadSignature({ erreur }: { erreur?: string }) {
+export function PadSignature({ erreur, nom = 'image', libelle = 'Signature' }: { erreur?: string; nom?: string; libelle?: string }) {
+  const idLibelle = useId();
   const canvas = useRef<HTMLCanvasElement>(null);
   const champ = useRef<HTMLInputElement>(null);
   const [etatTrace, setEtatTrace] = useState<'vide' | 'court' | 'ok' | 'tourne'>('vide');
   const dessin = useRef(false);
   const longueur = useRef(0);
   const dernier = useRef<{ x: number; y: number } | null>(null);
+  const boite = useRef<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const taille = useRef({ l: 0, h: 0 });
 
   useEffect(() => {
@@ -48,6 +52,7 @@ function PadSignature({ erreur }: { erreur?: string }) {
       ctx.lineJoin = 'round';
       ctx.strokeStyle = '#1F1F1F';
       longueur.current = 0;
+      boite.current = null;
       champ.current!.value = '';
       setEtatTrace(avait ? 'tourne' : 'vide');
     };
@@ -61,11 +66,16 @@ function PadSignature({ erreur }: { erreur?: string }) {
     const r = e.currentTarget.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   };
+  const etendre = (p: { x: number; y: number }) => {
+    const b = boite.current;
+    boite.current = b ? { x0: Math.min(b.x0, p.x), y0: Math.min(b.y0, p.y), x1: Math.max(b.x1, p.x), y1: Math.max(b.y1, p.y) } : { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
+  };
   const debut = (e: React.PointerEvent<HTMLCanvasElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
     dessin.current = true;
     const ctx = e.currentTarget.getContext('2d')!;
     const p = point(e);
+    etendre(p);
     dernier.current = p;
     ctx.beginPath();
     ctx.moveTo(p.x, p.y);
@@ -78,6 +88,7 @@ function PadSignature({ erreur }: { erreur?: string }) {
     const p = point(e);
     if (dernier.current) longueur.current += Math.hypot(p.x - dernier.current.x, p.y - dernier.current.y);
     dernier.current = p;
+    etendre(p);
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
   };
@@ -85,7 +96,8 @@ function PadSignature({ erreur }: { erreur?: string }) {
     if (!dessin.current) return;
     dessin.current = false;
     dernier.current = null;
-    const assez = longueur.current >= LONGUEUR_MIN;
+    const b = boite.current;
+    const assez = longueur.current >= LONGUEUR_MIN && !!b && Math.min(b.x1 - b.x0, b.y1 - b.y0) >= ETENDUE_MIN;
     setEtatTrace(assez ? 'ok' : 'court');
     champ.current!.value = assez ? canvas.current!.toDataURL('image/png') : '';
   };
@@ -94,27 +106,28 @@ function PadSignature({ erreur }: { erreur?: string }) {
     c.getContext('2d')!.clearRect(0, 0, c.width, c.height);
     champ.current!.value = '';
     longueur.current = 0;
+    boite.current = null;
     setEtatTrace('vide');
   };
   const MESSAGES = {
     vide: 'Signez avec le doigt dans le cadre.',
-    court: 'Signature trop courte : signez en entier dans le cadre.',
+    court: 'Signature trop courte ou trop simple : signez en entier dans le cadre.',
     ok: 'Signature tracée.',
     tourne: 'Le téléphone a tourné : le cadre a été vidé, signez à nouveau.',
   };
 
   return (
     <div className="flex flex-col gap-1">
-      <p id="libelle-signature" className="font-semibold">Signature</p>
+      <p id={idLibelle} className="font-semibold">{libelle}</p>
       {/* Au-dessus du cadre : reste visible en paysage, quand le cadre occupe l'écran. */}
       <div className="flex items-center justify-between gap-2">
         <p role="status" className={`text-sm ${etatTrace === 'court' || etatTrace === 'tourne' ? 'font-semibold text-alerte' : 'text-encre-douce'}`}>{MESSAGES[etatTrace]}</p>
         <Bouton type="button" variante="discret" onClick={effacer}>Effacer</Bouton>
       </div>
-      <canvas ref={canvas} aria-labelledby="libelle-signature" role="img"
+      <canvas ref={canvas} aria-labelledby={idLibelle} role="img"
         className={`h-44 w-full touch-none rounded-xl border-2 bg-white ${erreur && etatTrace !== 'ok' ? 'border-danger' : 'border-anthracite'}`}
         onPointerDown={debut} onPointerMove={trace} onPointerUp={fin} onPointerCancel={fin} onPointerLeave={fin} />
-      <input ref={champ} type="hidden" name="image" aria-invalid={erreur ? true : undefined} />
+      <input ref={champ} type="hidden" name={nom} aria-invalid={erreur ? true : undefined} />
       {/* Erreur du dernier envoi : masquée dès qu'une nouvelle signature est tracée. */}
       {erreur && etatTrace !== 'ok' ? <p className="text-sm font-semibold text-danger">{erreur}</p> : null}
     </div>
@@ -163,11 +176,11 @@ export function FormulaireSignature({ action, champs, documentSha256, options, n
 }
 
 /** Information du signataire au moment de la collecte (RGPD, art. 13) : données, finalité, renvoi aux détails. */
-export function NoticeSignature({ entreprise }: { entreprise: string }) {
+export function NoticeSignature({ entreprise, document = 'le devis signé' }: { entreprise: string; document?: string }) {
   return (
     <p className="text-sm text-encre-douce">
       Pour prouver votre accord, {entreprise || 'l’entreprise'} conserve votre nom, votre signature, la date et l’heure, l’adresse IP et le
-      navigateur utilisés, avec le devis signé.{' '}
+      navigateur utilisés, avec {document}.{' '}
       <a href="/confidentialite" className="inline-flex min-h-11 items-center underline underline-offset-4">Vos données personnelles</a>
     </p>
   );

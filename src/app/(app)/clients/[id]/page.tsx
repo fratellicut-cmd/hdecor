@@ -13,6 +13,7 @@ import { EffacerBrouillon } from '@/components/formulaire/EffacerBrouillon';
 import { Bouton } from '@/components/ui/Bouton';
 import { CaseACocher } from '@/components/ui/Autres';
 import { Carte } from '@/components/ui/Carte';
+import { OppositionSollicitations } from '@/components/factures/Avis';
 import { Message } from '@/components/ui/Message';
 
 export const metadata: Metadata = { title: 'Fiche client' };
@@ -167,6 +168,7 @@ export default async function PageClient({ params, searchParams }: PageProps<'/c
       {!anonymise ? (
         <Carte titre="Données personnelles (RGPD)">
           <div className="flex flex-col gap-4">
+            <OppositionSollicitations clientId={client.id} refusLe={client.refus_sollicitations_le} />
             <a href={`/clients/${client.id}/export`} download
               className="inline-flex min-h-12 items-center justify-center rounded-xl border-2 border-anthracite bg-white px-5 font-semibold">
               Exporter les données de ce client

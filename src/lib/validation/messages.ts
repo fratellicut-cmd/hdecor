@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { caseACocher, entier, texteObligatoire } from './champs';
 
-export const CODES_MESSAGES = ['envoi_devis', 'relance_devis', 'envoi_facture', 'impaye_1', 'impaye_2', 'impaye_3'] as const;
+export const CODES_MESSAGES = ['envoi_devis', 'relance_devis', 'envoi_facture', 'impaye_1', 'impaye_2', 'impaye_3', 'demande_avis'] as const;
 export type CodeMessage = (typeof CODES_MESSAGES)[number];
 
 /** Champs remplacés à l'envoi, par modèle (un champ inconnu resterait tel quel dans l'email : refusé). */
@@ -12,6 +12,8 @@ export const CHAMPS_MESSAGES: Record<CodeMessage, readonly string[]> = {
   impaye_1: ['client', 'entreprise', 'numero', 'lien', 'montant', 'echeance'],
   impaye_2: ['client', 'entreprise', 'numero', 'lien', 'montant', 'echeance'],
   impaye_3: ['client', 'entreprise', 'numero', 'lien', 'montant', 'echeance'],
+  // {lien} : la page d'avis (Réglages > Médiateur et mentions).
+  demande_avis: ['client', 'entreprise', 'lien'],
 };
 
 export const estRelanceImpaye = (code: CodeMessage) => code.startsWith('impaye_');
@@ -25,7 +27,8 @@ export function schemaModeleMessage(code: CodeMessage) {
     .refine((t) => inconnus(t).length === 0, { error: `Champ inconnu entre accolades. Champs possibles : ${permis.map((c) => `{${c}}`).join(', ')}.` });
   return z.object({
     sujet: verifier('Objet', 200),
-    corps: verifier('Message', 5000).refine((t) => t.includes('{lien}'), { error: 'Le message doit contenir {lien} (le lien vers le document).' }),
+    corps: verifier('Message', 5000).refine((t) => t.includes('{lien}'),
+      { error: code === 'demande_avis' ? 'Le message doit contenir {lien} (la page d’avis).' : 'Le message doit contenir {lien} (le lien vers le document).' }),
     delai_jours: estRelanceImpaye(code) ? entier(1, 365, 'Délai') : z.unknown().optional().transform(() => undefined),
     actif: estRelanceImpaye(code) ? caseACocher : z.unknown().optional().transform(() => undefined),
   });

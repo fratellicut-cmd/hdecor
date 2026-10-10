@@ -23,6 +23,8 @@ export default async function PageParametres() {
     { href: '/parametres/mentions', titre: 'Médiateur et mentions', detail: 'Médiateur de la consommation, pied de page', manque: !p.mediateur_nom },
     { href: '/parametres/taux-tva', titre: 'Taux de TVA', detail: 'Taux proposés dans les devis', aVerifier: (taux ?? []).some((t) => t.a_verifier) },
     { href: '/parametres/messages', titre: 'Messages et relances', detail: 'Emails d’envoi, relances de devis et d’impayés' },
+    { href: '/parametres/notifications', titre: 'Notifications', detail: p.notifier_par_email ? 'Dans l’application et par email' : 'Dans l’application' },
+    { href: '/parametres/fin-de-chantier', titre: 'Fin de chantier', detail: 'Liste des vérifications avant de partir' },
     { href: '/catalogue', titre: 'Catalogue', detail: 'Produits et prix d’achat, nuancier, prestations, import / export' },
     { href: '/parametres/calcul', titre: 'Réglages de calcul', detail: 'Rendements, supports, temps de préparation, consommables', aVerifier: (calculAVerifier ?? 0) > 0 },
     { href: '/parametres/journal', titre: 'Journal des actions', detail: 'Qui a créé, modifié ou effacé quoi, et quand' },

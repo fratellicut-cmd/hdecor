@@ -83,12 +83,17 @@ const mention = z.preprocess((v) => (typeof v === 'string' ? v.trim().replace(/\
     .refine((s) => normaliserMention(s) === MENTION_ACCORD.toLowerCase(), { error: 'Écrivez exactement « Bon pour accord ».' }));
 
 export const TAILLE_MAX_SIGNATURE = 400_000;
-const signatureImage = z.string({ error: 'Signez dans le cadre.' })
+export const signatureImage = z.string({ error: 'Signez dans le cadre.' })
   .startsWith('data:image/png;base64,', { error: 'Signez dans le cadre.' })
   .max(Math.ceil((TAILLE_MAX_SIGNATURE * 4) / 3) + 40, { error: 'Signature trop lourde : effacez et recommencez.' });
 
+/** Nom du signataire : une ligne, sans caractère de contrôle (il est repris dans les documents et les notifications). */
+export const nomSignataire = texteObligatoire('Nom et prénom', 200)
+  .refine((s) => s.length >= 2, { error: 'Nom et prénom : 2 caractères au moins.' })
+  .refine((s) => !/[\u0000-\u001f\u007f]/.test(s), { error: 'Nom et prénom : sur une seule ligne.' });
+
 export const schemaSignature = z.object({
-  nom: texteObligatoire('Nom et prénom', 200).refine((s) => s.length >= 2, { error: 'Nom et prénom : 2 caractères au moins.' }),
+  nom: nomSignataire,
   mention,
   image: signatureImage,
   document_sha256: z.string().regex(/^[0-9a-f]{64}$/, { error: 'Document inconnu : rechargez la page.' }),
@@ -96,9 +101,14 @@ export const schemaSignature = z.object({
   options: z.array(z.uuid()).max(200).default([]),
 });
 
-/** Encre minimale d'une signature : assez de pixels tracés, sur une largeur ou une hauteur suffisante. */
+/**
+ * Encre minimale d'une signature : assez de pixels tracés, sur une largeur ou
+ * une hauteur suffisante, et dans les deux sens (un trait droit horizontal ou
+ * vertical, par exemple un glissement du pouce, n'est pas une signature).
+ */
 export const ENCRE_MIN_PIXELS = 300;
 export const ENCRE_MIN_ETENDUE = 40;
+export const ENCRE_MIN_ETENDUE_AUTRE_SENS = 30;
 
 export const MESSAGES_TRACE = {
   illisible: 'Signature illisible : effacez et recommencez.',
@@ -125,7 +135,8 @@ export function lirePngSignature(dataUrl: string): ResultatPng {
   if (largeur < 50 || hauteur < 20 || largeur > 1800 || hauteur > 500) return { erreur: 'illisible' };
   const encre = mesurerEncre(octets, largeur, hauteur);
   if (encre === null) return { erreur: 'illisible' };
-  if (encre.pixels < ENCRE_MIN_PIXELS || Math.max(encre.largeur, encre.hauteur) < ENCRE_MIN_ETENDUE) return { erreur: 'vide' };
+  if (encre.pixels < ENCRE_MIN_PIXELS || Math.max(encre.largeur, encre.hauteur) < ENCRE_MIN_ETENDUE
+    || Math.min(encre.largeur, encre.hauteur) < ENCRE_MIN_ETENDUE_AUTRE_SENS) return { erreur: 'vide' };
   return { octets: new Uint8Array(octets) };
 }
 

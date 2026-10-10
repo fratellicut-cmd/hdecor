@@ -38,6 +38,17 @@
 | Données | Email, empreinte du mot de passe (gérée par Supabase Auth), facteur de double authentification (TOTP), journaux de connexion de Supabase. |
 | Durée | Tant que le compte existe. |
 
+## Traitement 4 : réception des travaux, photos et demande d'avis (Phase 7)
+
+| Rubrique | Contenu |
+|---|---|
+| Finalités | Prouver la réception des travaux (PV signé sur place, réserves, levées). Documenter le chantier (photos avant / pendant / après, documents techniques). Avec l'accord du client : montrer des réalisations (galerie avant / après). Après paiement de la facture finale : proposer une fois au client de laisser un avis. Informer l'entreprise des événements (notifications). |
+| Base légale | Exécution du contrat et intérêt légitime (preuve de la réception, documentation du chantier). Consentement (diffusion des photos, accord daté et historisé, retirable). Intérêt légitime (demande d'avis unique, opposition possible et respectée). **À VÉRIFIER** |
+| Données | PV : nom du signataire, mention, tracé, date et heure, adresse IP, navigateur, empreinte SHA-256 du PV présenté. Photos (métadonnées EXIF / GPS retirées par le serveur), légendes, pièce. Accords de diffusion (texte, date, retrait). Opposition aux sollicitations (date). Notifications internes (titre sans nom du signataire, lien, date). |
+| Destinataires | Le dirigeant. Galerie diffusée seulement avec l'accord du client, sans nom ni adresse. Resend (emails de demande d'avis et récapitulatif des notifications). |
+| Durées | PV signé : durée des garanties **À VÉRIFIER**. Photos et documents : avec le chantier ; effacés à l'effacement du client (la file de suppression ne touche jamais un document signé). Historique des accords de diffusion : conservé comme preuve avec la fiche du chantier, supprimé avec celle-ci **À VÉRIFIER**. Notifications : 90 jours, et supprimées à l'anonymisation du client. |
+| Mesures | Photos et documents déposés par le serveur seulement (contenu vérifié, chemins rangés), lus sous RLS ; PV signé immuable (déclencheur), levée des réserves seulement par fonction contrôlée ; notifications non modifiables par une session (hors « lu »). |
+
 ## Sous-traitants (article 28)
 
 | Sous-traitant | Rôle | Localisation | Statut |

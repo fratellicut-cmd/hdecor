@@ -305,7 +305,10 @@ select tests.echoue(
 select tests.echoue(
   $$insert into storage.objects (bucket_id, name) values ('justificatifs', 'aaaaaaaa-0000-0000-0000-00000000000a/depenses/j.pdf')$$,
   'row-level security', 'un justificatif comptable n''est déposé que par le serveur (contenu vérifié)');
-insert into storage.objects (bucket_id, name) values ('photos', 'aaaaaaaa-0000-0000-0000-00000000000a/chantier/p.jpg');
+select tests.echoue(
+  $$insert into storage.objects (bucket_id, name) values ('photos', 'aaaaaaaa-0000-0000-0000-00000000000a/chantiers/c/photos/p.jpg')$$,
+  'row-level security', 'une photo de chantier n''est déposée que par le serveur (contenu vérifié, rangée)');
+insert into storage.objects (bucket_id, name) values ('marque', 'aaaaaaaa-0000-0000-0000-00000000000a/logo.png');
 reset role;
 insert into storage.objects (bucket_id, name) values ('documents', 'aaaaaaaa-0000-0000-0000-00000000000a/factures/f2.pdf');
 set role authenticated;
@@ -676,7 +679,7 @@ insert into public.envois (organisation_id, document_type, document_id, nature, 
 values ('aaaaaaaa-0000-0000-0000-00000000000a', 'devis', 'aaaaaaaa-0000-0000-0000-0000000d0007', 'envoi', 'email', 'anne@exemple.test');
 insert into public.photos (organisation_id, chantier_id, chemin)
 values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca002',
-  'aaaaaaaa-0000-0000-0000-00000000000a/chantiers/aaaaaaaa-0000-0000-0000-0000000ca002/photos/p1.jpg');
+  'aaaaaaaa-0000-0000-0000-00000000000a/chantiers/aaaaaaaa-0000-0000-0000-0000000ca002/photos/aaaaaaaa-0000-0000-0000-0000000f0e01.jpg');
 insert into public.liens_publics (organisation_id, devis_id, finalite, jeton_sha256, expire_le)
 values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000d0007', 'signature', repeat('7', 64), now() + interval '7 days');
 insert into public.factures (id, organisation_id, type, client_id, delai_paiement_jours, regime_tva,
@@ -710,7 +713,7 @@ select tests.egal(public.effacer_client('aaaaaaaa-0000-0000-0000-0000000c0002'),
   'RGPD : effacement du client, 2 fichiers mis en file');
 reset role;
 select tests.egal((select array_agg(espace || ':' || chemin order by espace || ':' || chemin) from public.fichiers_a_supprimer),
-  array['documents:aaaaaaaa-0000-0000-0000-00000000000a/d7.pdf', 'photos:aaaaaaaa-0000-0000-0000-00000000000a/chantiers/aaaaaaaa-0000-0000-0000-0000000ca002/photos/p1.jpg'],
+  array['documents:aaaaaaaa-0000-0000-0000-00000000000a/d7.pdf', 'photos:aaaaaaaa-0000-0000-0000-00000000000a/chantiers/aaaaaaaa-0000-0000-0000-0000000ca002/photos/aaaaaaaa-0000-0000-0000-0000000f0e01.jpg'],
   'RGPD : PDF du devis non accepté et photos inscrits dans la file, avec leur espace de stockage');
 set role authenticated;
 -- Faille H1 (audit sécurité, boucle 2) : un fichier de chantier ne peut pas
@@ -723,7 +726,7 @@ select tests.echoue($$insert into public.documents_chantier (organisation_id, ch
   'chemin_du_chantier', 'H1 : un document de chantier ne peut pas désigner le PDF d''une facture');
 select tests.echoue($$insert into public.documents_chantier (organisation_id, chantier_id, type, nom, chemin, espace)
   values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca0f1', 'autre', 'x',
-          'aaaaaaaa-0000-0000-0000-00000000000a/chantiers/aaaaaaaa-0000-0000-0000-0000000ca0f1/d.pdf', 'documents')$$,
+          'aaaaaaaa-0000-0000-0000-00000000000a/chantiers/aaaaaaaa-0000-0000-0000-0000000ca0f1/documents/aaaaaaaa-0000-0000-0000-0000000f0e03.pdf', 'documents')$$,
   'espace_check', 'H1 : un document de chantier ne vit que dans l''espace justificatifs');
 select tests.echoue($$insert into public.photos (organisation_id, chantier_id, chemin)
   values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca0f1',
@@ -731,7 +734,7 @@ select tests.echoue($$insert into public.photos (organisation_id, chantier_id, c
   'chemin_du_chantier', 'H1 : pas de remontée « .. » dans un chemin de photo');
 insert into public.photos (id, organisation_id, chantier_id, chemin)
 values ('aaaaaaaa-0000-0000-0000-0000000f0f01', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca0f1',
-        'aaaaaaaa-0000-0000-0000-00000000000a/chantiers/aaaaaaaa-0000-0000-0000-0000000ca0f1/p.jpg');
+        'aaaaaaaa-0000-0000-0000-00000000000a/chantiers/aaaaaaaa-0000-0000-0000-0000000ca0f1/photos/aaaaaaaa-0000-0000-0000-0000000f0e02.jpg');
 select tests.echoue($$update public.photos set chemin = 'aaaaaaaa-0000-0000-0000-00000000000a/f7.pdf' where id = 'aaaaaaaa-0000-0000-0000-0000000f0f01'$$,
   'permission denied', 'H1 : le chemin d''une photo n''est plus modifiable par une session');
 -- Phase 2 : un chantier ne se supprime plus directement (fichiers orphelins) ;
@@ -792,13 +795,13 @@ select tests.egal((select copie_client ->> 'nom_affiche' from public.factures wh
 select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prosecdef and has_function_privilege('authenticated', p.oid, 'execute')),
-  'effacer_client,emettre_devis,emettre_facture,enregistrer_facturx,est_membre,marquer_facture_envoyee,nouvelle_version_devis,refuser_devis,signer_devis_sur_place,supprimer_chantier',
+  'archiver_pv_signe,effacer_client,emettre_devis,emettre_facture,enregistrer_facturx,est_membre,lever_reserve,marquer_facture_envoyee,nouvelle_version_devis,presenter_pv,refuser_devis,signer_devis_sur_place,signer_pv_sur_place,supprimer_chantier',
   'sécurité : liste exacte des fonctions SECURITY DEFINER appelables par une session');
 select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prokind = 'f' and p.prorettype <> 'trigger'::regtype
      and has_function_privilege('authenticated', p.oid, 'execute')),
-  'aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,copier_poste,deductions_bien_formees,definir_preparations,deplacer_ligne_devis,deplacer_ligne_facture,dupliquer_devis,dupliquer_piece,effacer_client,emettre_devis,emettre_facture,emettre_facture_attendue,enregistrer_facturx,est_membre,importer_produits,initialiser_categories_depenses,marquer_facture_envoyee,nouvelle_version_devis,numero_devis_previsionnel,numero_facture_previsionnel,organisation_du_chemin,rechercher_clients,refuser_devis,remplacer_achats_devis,signer_devis_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,ventilation_attendue,ventilation_bien_formee',
+  'archiver_pv_signe,aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,copier_poste,date_iso_valide,deductions_bien_formees,definir_preparations,deplacer_ligne_devis,deplacer_ligne_facture,dupliquer_devis,dupliquer_piece,effacer_client,emettre_devis,emettre_facture,emettre_facture_attendue,enregistrer_facturx,est_membre,importer_produits,initialiser_categories_depenses,lever_reserve,marquer_facture_envoyee,nouvelle_version_devis,numero_devis_previsionnel,numero_facture_previsionnel,organisation_du_chemin,presenter_pv,rechercher_clients,refuser_devis,remplacer_achats_devis,reserves_valides,signer_devis_sur_place,signer_pv_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,ventilation_attendue,ventilation_bien_formee',
   'sécurité : liste COMPLÈTE des fonctions appelables par une session');
 select tests.echoue($$select public.purger_journal_audit(now() - interval '20 years')$$, 'permission denied',
   'sécurité : purge du journal réservée au serveur');
@@ -1159,9 +1162,9 @@ set role authenticated;
 set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
 select tests.echoue(
   $$update public.pv_reception set avec_reserves = false, reserves = '[]' where id = 'aaaaaaaa-0000-0000-0000-0000000b0001'$$,
-  'document signé', 'sécurité : réserves d''un PV signé non effaçables');
+  'Ce PV est signé', 'sécurité : réserves d''un PV signé non effaçables');
 select tests.echoue($$delete from public.pv_reception where id = 'aaaaaaaa-0000-0000-0000-0000000b0001'$$,
-  'document signé', 'sécurité : PV signé non supprimable');
+  'PV signé ne peut pas être supprimé', 'sécurité : PV signé non supprimable');
 select tests.echoue(
   $$insert into public.attestations_tva (organisation_id, devis_id, taux_bp, signature_id)
     select 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000d0001', 1000, id
@@ -1716,7 +1719,7 @@ select tests.echoue($$insert into public.paiements (id, organisation_id, facture
 insert into public.paiements (organisation_id, facture_id, date_paiement, montant_cents, mode, annule_paiement_id)
 values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f5001', public.aujourd_hui_paris(), -5000, 'cheque', 'aaaaaaaa-0000-0000-0000-0000000f5091');
 select tests.egal((select string_agg(code, ',' order by code) from public.modeles_messages where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'),
-  'envoi_devis,envoi_facture,impaye_1,impaye_2,impaye_3,relance_devis', 'messages : envoi de facture et 3 niveaux d''impayés');
+  'demande_avis,envoi_devis,envoi_facture,impaye_1,impaye_2,impaye_3,relance_devis', 'messages : envoi de facture, 3 niveaux d''impayés et demande d''avis');
 select tests.egal((select string_agg(delai_jours::text, ',' order by code) from public.modeles_messages
   where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and code like 'impaye_%'), '7,15,30', 'impayés : délais de départ après l''échéance');
 select tests.echoue($$select * from public.factures_a_relancer()$$, 'permission denied', 'relances d''impayés : réservées au rôle service');
@@ -2030,6 +2033,206 @@ set session_replication_role = replica;
 delete from public.paiements where facture_id = 'aaaaaaaa-0000-0000-0000-0000000f6001';
 delete from public.factures where id = 'aaaaaaaa-0000-0000-0000-0000000f6001';
 set session_replication_role = origin;
+
+-- -----------------------------------------------------------------------------
+-- Phase 7 : documents et finitions
+-- -----------------------------------------------------------------------------
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+-- PV de réception : brouillon, présentation, signature sur place, levée des réserves.
+insert into public.pv_reception (id, organisation_id, chantier_id, date_reception, avec_reserves, reserves, travaux)
+values ('aaaaaaaa-0000-0000-0000-0000000b7101', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca001',
+  public.aujourd_hui_paris() - 2, true, '[{"description":"Reprendre l''angle du plafond"},{"description":"Plinthe tachée"}]', 'Peinture du séjour');
+select tests.echoue($$insert into public.pv_reception (organisation_id, chantier_id, date_reception, avec_reserves, reserves)
+  values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca001', public.aujourd_hui_paris(), true, '[{"description":"x","prix":1}]')$$,
+  'reserves_valides', 'PV : une réserve ne porte aucune clé libre');
+select tests.echoue($$insert into public.pv_reception (organisation_id, chantier_id, date_reception, avec_reserves, reserves)
+  values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca001', public.aujourd_hui_paris(), false, '[{"description":"x"}]')$$,
+  'reserves_coherentes', 'PV : « avec réserves » cohérent avec la liste');
+select tests.echoue($$select public.presenter_pv('aaaaaaaa-0000-0000-0000-0000000b7101', 'aaaaaaaa-0000-0000-0000-00000000000a/factures/f.pdf', repeat('1', 64))$$,
+  'Chemin du PDF invalide', 'PV : le PDF présenté est rangé dans le dossier du PV');
+select public.presenter_pv('aaaaaaaa-0000-0000-0000-0000000b7101',
+  'aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7101/aaaaaaaa-0000-0000-0000-0000000b7111.pdf', repeat('1', 64));
+update public.pv_reception set observations = 'Client satisfait' where id = 'aaaaaaaa-0000-0000-0000-0000000b7101';
+reset role;
+select tests.egal((select count(*) from public.fichiers_a_supprimer
+                   where chemin = 'aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7101/aaaaaaaa-0000-0000-0000-0000000b7111.pdf'), 1::bigint,
+  'PV : le PDF présenté puis abandonné (brouillon modifié) est mis en file de suppression');
+set role authenticated;
+select tests.egal((select pdf_sha256 from public.pv_reception where id = 'aaaaaaaa-0000-0000-0000-0000000b7101'), null::text,
+  'PV : un brouillon modifié doit être présenté à nouveau (empreinte effacée)');
+select public.presenter_pv('aaaaaaaa-0000-0000-0000-0000000b7101',
+  'aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7101/aaaaaaaa-0000-0000-0000-0000000b7112.pdf', repeat('2', 64));
+select tests.echoue($$select public.signer_pv_sur_place('aaaaaaaa-0000-0000-0000-0000000b7101', 'Paul Durand', 'Réception prononcée',
+  'aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7101/aaaaaaaa-0000-0000-0000-0000000b7121.png',
+  'aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7101/aaaaaaaa-0000-0000-0000-0000000b7122.png',
+  repeat('1', 64), null, null)$$, 'a changé depuis sa présentation', 'PV : signature refusée sur une version périmée');
+select tests.echoue($$select public.signer_pv_sur_place('aaaaaaaa-0000-0000-0000-0000000b7101', 'Paul Durand', 'Réception prononcée',
+  'aaaaaaaa-0000-0000-0000-00000000000a/devis/x/aaaaaaaa-0000-0000-0000-0000000b7121.png',
+  'aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7101/aaaaaaaa-0000-0000-0000-0000000b7122.png',
+  repeat('2', 64), null, null)$$, 'Tracés de signature invalides', 'PV : tracés rangés dans le dossier du PV');
+select tests.echoue($$select public.lever_reserve('aaaaaaaa-0000-0000-0000-0000000b7101', 0, public.aujourd_hui_paris(), null)$$,
+  'PV signé', 'PV : pas de levée de réserve avant la signature');
+select tests.echoue($$update public.pv_reception set reserves = '[{"description":"Reprendre l''angle du plafond","levee_le":"2000-01-01","levee_note":"déjà levée"},{"description":"Plinthe tachée"}]'
+  where id = 'aaaaaaaa-0000-0000-0000-0000000b7101'$$, 'qu''après la signature', 'PV brouillon : aucune levée écrite avant la signature (levée antidatée)');
+select tests.echoue($$insert into public.pv_reception (organisation_id, chantier_id, date_reception, avec_reserves, reserves)
+  values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca001', public.aujourd_hui_paris(), true, '[{"description":"x","levee_note":"faite"}]')$$,
+  'qu''après la signature', 'PV : création sans aucune levée');
+insert into public.pv_reception (id, organisation_id, chantier_id, date_reception)
+values ('aaaaaaaa-0000-0000-0000-0000000b7201', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca001', public.aujourd_hui_paris() + 3);
+select public.presenter_pv('aaaaaaaa-0000-0000-0000-0000000b7201',
+  'aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7201/aaaaaaaa-0000-0000-0000-0000000b7211.pdf', repeat('5', 64));
+select tests.echoue($$select public.signer_pv_sur_place('aaaaaaaa-0000-0000-0000-0000000b7201', 'Paul Durand', 'Lu et approuvé',
+  'aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7201/aaaaaaaa-0000-0000-0000-0000000b7221.png',
+  'aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7201/aaaaaaaa-0000-0000-0000-0000000b7222.png',
+  repeat('5', 64), null, null)$$, 'date de réception est future', 'PV : pas de signature d''une réception datée dans le futur');
+delete from public.pv_reception where id = 'aaaaaaaa-0000-0000-0000-0000000b7201';
+select public.signer_pv_sur_place('aaaaaaaa-0000-0000-0000-0000000b7101', 'Paul Durand', 'Réception prononcée',
+  'aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7101/aaaaaaaa-0000-0000-0000-0000000b7121.png',
+  'aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7101/aaaaaaaa-0000-0000-0000-0000000b7122.png',
+  repeat('2', 64), null, null);
+select tests.egal((select statut || ':' || (signature_id is not null)::text from public.pv_reception where id = 'aaaaaaaa-0000-0000-0000-0000000b7101'),
+  'signe:true', 'PV : signé sur place, signature rattachée');
+select tests.echoue($$update public.pv_reception set observations = 'Modifié' where id = 'aaaaaaaa-0000-0000-0000-0000000b7101'$$,
+  'Ce PV est signé', 'PV signé : contenu figé');
+select tests.echoue($$update public.pv_reception set reserves = jsonb_set(reserves, '{0,description}', '"Autre"') where id = 'aaaaaaaa-0000-0000-0000-0000000b7101'$$,
+  'Ce PV est signé', 'PV signé : description d''une réserve figée');
+select tests.echoue($$select public.lever_reserve('aaaaaaaa-0000-0000-0000-0000000b7101', 0, public.aujourd_hui_paris() + 1, null)$$,
+  'entre la réception et aujourd', 'PV : levée datée au plus tard aujourd''hui');
+select public.lever_reserve('aaaaaaaa-0000-0000-0000-0000000b7101', 0, public.aujourd_hui_paris(), 'Angle repris');
+select tests.egal((select (reserves -> 0 ->> 'levee_le') = public.aujourd_hui_paris()::text and (reserves -> 1 ->> 'levee_le') is null
+                   from public.pv_reception where id = 'aaaaaaaa-0000-0000-0000-0000000b7101'), true, 'PV : réserve 1 levée, réserve 2 encore ouverte');
+select tests.echoue($$select public.lever_reserve('aaaaaaaa-0000-0000-0000-0000000b7101', 0, public.aujourd_hui_paris(), null)$$,
+  'déjà levée', 'PV : une réserve ne se lève qu''une fois');
+select tests.echoue($$update public.pv_reception set reserves = jsonb_set(reserves, '{0,levee_le}', 'null') where id = 'aaaaaaaa-0000-0000-0000-0000000b7101'$$,
+  'Ce PV est signé', 'PV : une levée enregistrée ne s''efface pas');
+select tests.echoue($$delete from public.pv_reception where id = 'aaaaaaaa-0000-0000-0000-0000000b7101'$$,
+  'PV signé ne peut pas être supprimé', 'PV signé non supprimable');
+select tests.echoue($$update public.pv_reception set reserves = jsonb_set(reserves, '{1}', (reserves -> 1) || '{"levee_le":"2026-10-01"}')
+  where id = 'aaaaaaaa-0000-0000-0000-0000000b7101'$$, 'Ce PV est signé', 'PV signé : une levée ne s''écrit que par lever_reserve (contrôle de date)');
+-- Même avec le verrou de levée posé à la main (hors API), la date reste contrôlée par le déclencheur.
+select set_config('hdecor.levee', 'on', false);
+select tests.echoue($$update public.pv_reception set reserves = jsonb_set(reserves, '{1}', (reserves -> 1) || '{"levee_le":"2099-01-01"}')
+  where id = 'aaaaaaaa-0000-0000-0000-0000000b7101'$$, 'Date de levée invalide', 'PV signé : levée future refusée par le déclencheur');
+select tests.echoue($$update public.pv_reception set reserves = jsonb_set(reserves, '{1}', (reserves -> 1) || '{"levee_le":"2000-01-01"}')
+  where id = 'aaaaaaaa-0000-0000-0000-0000000b7101'$$, 'Date de levée invalide', 'PV signé : levée antérieure à la réception refusée par le déclencheur');
+select set_config('hdecor.levee', '', false);
+reset role;
+select tests.egal(public.reserves_valides('[{"description":"x","levee_le":"2099-02-31"}]'), false, 'PV : une date de levée inexistante (31/02) est refusée');
+select tests.egal(public.reserves_valides('[{"description":"x","levee_le":"2026-02-28"}]'), true, 'PV : date de levée réelle acceptée');
+set role authenticated;
+select tests.echoue($$select public.archiver_pv_signe('aaaaaaaa-0000-0000-0000-0000000b7101', 'aaaaaaaa-0000-0000-0000-00000000000a/factures/x.pdf', repeat('3', 64))$$,
+  'Archive invalide', 'PV : archive rangée dans le dossier du PV');
+select public.archiver_pv_signe('aaaaaaaa-0000-0000-0000-0000000b7101',
+  'aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7101/aaaaaaaa-0000-0000-0000-0000000b7131.pdf', repeat('3', 64));
+select tests.echoue($$select public.archiver_pv_signe('aaaaaaaa-0000-0000-0000-0000000b7101',
+  'aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7101/aaaaaaaa-0000-0000-0000-0000000b7132.pdf', repeat('4', 64))$$,
+  'déjà archivé', 'PV : l''archive signée ne se remplace pas');
+reset role;
+select tests.egal(public.fichier_protege('aaaaaaaa-0000-0000-0000-00000000000a/pv/aaaaaaaa-0000-0000-0000-0000000b7101/aaaaaaaa-0000-0000-0000-0000000b7112.pdf'),
+  true, 'PV signé : son PDF est protégé de la file de suppression');
+set role authenticated;
+-- Photos : rangées, galerie modifiable, chemin figé.
+select tests.echoue($$insert into public.photos (organisation_id, chantier_id, chemin) values ('aaaaaaaa-0000-0000-0000-00000000000a',
+  'aaaaaaaa-0000-0000-0000-0000000ca001', 'aaaaaaaa-0000-0000-0000-00000000000a/chantiers/aaaaaaaa-0000-0000-0000-0000000ca001/photos/x.svg')$$,
+  'photo_chemin_rangee', 'photos : nom de fichier et format imposés (pas de SVG)');
+insert into public.photos (id, organisation_id, chantier_id, moment, chemin) values ('aaaaaaaa-0000-0000-0000-0000000f7a01',
+  'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca001', 'avant',
+  'aaaaaaaa-0000-0000-0000-00000000000a/chantiers/aaaaaaaa-0000-0000-0000-0000000ca001/photos/aaaaaaaa-0000-0000-0000-0000000f7a01.jpg');
+select tests.egal(tests.lignes($$update public.photos set en_galerie = true, moment = 'apres' where id = 'aaaaaaaa-0000-0000-0000-0000000f7a01'$$),
+  1::bigint, 'photos : galerie et moment modifiables');
+-- Liste de fin de chantier : modèle paramétrable, forme contrôlée.
+select tests.egal((select cardinality(liste_fin_chantier) > 0 from public.parametres_entreprise
+                   where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'), true, 'fin de chantier : modèle de liste par défaut');
+select tests.echoue($$insert into public.checklists_fin_chantier (organisation_id, chantier_id, items)
+  values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca001', '{"a":1}')$$,
+  'items_forme', 'fin de chantier : liste au format tableau');
+-- Demande d'avis : lien https, une seule par facture.
+select tests.echoue($$update public.parametres_entreprise set avis_google_url = 'javascript:alert(1)'
+  where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'$$, 'avis_google_url_https', 'avis : lien https uniquement');
+insert into public.envois (organisation_id, document_type, document_id, nature, canal, destinataire)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'facture', 'aaaaaaaa-0000-0000-0000-0000000f0002', 'demande_avis', 'manuel', null);
+select tests.echoue($$insert into public.envois (organisation_id, document_type, document_id, nature, canal, destinataire)
+  values ('aaaaaaaa-0000-0000-0000-00000000000a', 'facture', 'aaaaaaaa-0000-0000-0000-0000000f0002', 'demande_avis', 'manuel', null)$$,
+  'envois_demande_avis_unique', 'avis : une seule demande par facture');
+-- Notifications : créées par la base seulement ; Yorick les marque lues.
+select tests.echoue($$insert into public.notifications (organisation_id, type, titre, lien, cle)
+  values ('aaaaaaaa-0000-0000-0000-00000000000a', 'rappel', 'x', '/', 'x')$$, 'permission denied', 'notifications : pas d''insertion par une session');
+reset role;
+insert into public.rappels (id, organisation_id, type, echeance, titre)
+values ('aaaaaaaa-0000-0000-0000-0000000a7001', 'aaaaaaaa-0000-0000-0000-00000000000a', 'sechage', now() - interval '1 minute', 'Couche suivante');
+set role service_role;
+select tests.egal(public.notifier_rappels_echus() >= 1, true, 'notifications : rappel échu signalé');
+select tests.egal(public.notifier_rappels_echus(), 0, 'notifications : un rappel n''est signalé qu''une fois');
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select tests.egal((select count(*) from public.notifications where cle = 'rappel:aaaaaaaa-0000-0000-0000-0000000a7001'), 1::bigint,
+  'notifications : visible par l''organisation');
+select tests.egal(tests.lignes($$update public.notifications set lu_le = now() where cle = 'rappel:aaaaaaaa-0000-0000-0000-0000000a7001'$$),
+  1::bigint, 'notifications : marquée lue');
+select tests.echoue($$update public.notifications set titre = 'x'$$, 'permission denied', 'notifications : titre non modifiable');
+select tests.echoue($$select public.notifier_rappels_echus()$$, 'permission denied', 'notifications : tâche réservée au serveur');
+set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000001';
+select tests.egal((select count(*) from public.notifications where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'), 0::bigint,
+  'notifications : B ne voit pas celles de A');
+select tests.egal((select count(*) from public.pv_reception where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'), 0::bigint,
+  'PV : B ne voit pas ceux de A');
+reset role;
+set session_replication_role = replica;
+insert into public.attestations_tva (id, organisation_id, devis_id, taux_bp, signature_id, pdf_chemin)
+values ('aaaaaaaa-0000-0000-0000-0000000b7801', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000d0001', 1000,
+  'aaaaaaaa-0000-0000-0000-0000000b7501', 'aaaaaaaa-0000-0000-0000-00000000000a/attestations/at-test.pdf');
+set session_replication_role = origin;
+select tests.egal(public.fichier_protege('aaaaaaaa-0000-0000-0000-00000000000a/attestations/at-test.pdf'), true,
+  'fichiers protégés : le PDF d''une attestation de TVA signée reste protégé');
+set session_replication_role = replica;
+delete from public.attestations_tva where id = 'aaaaaaaa-0000-0000-0000-0000000b7801';
+set session_replication_role = origin;
+-- RGPD : notifications d'un client effacé supprimées.
+insert into public.notifications (organisation_id, type, titre, lien, cle)
+select organisation_id, 'devis_consulte', 'Devis ouvert par Mme Test', '/devis/' || id, 'test-rgpd:' || id
+from public.devis where client_id = 'aaaaaaaa-0000-0000-0000-0000000c0001' limit 1;
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+insert into public.accords_diffusion_photos (organisation_id, chantier_id, texte)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca001', 'Le client accepte la diffusion des photos (test).');
+select tests.echoue($$delete from public.accords_diffusion_photos$$, 'permission denied', 'accords de diffusion : historique non supprimable');
+select tests.echoue($$update public.accords_diffusion_photos set texte = 'autre'$$, 'permission denied', 'accords de diffusion : texte non modifiable');
+select tests.egal(tests.lignes($$update public.accords_diffusion_photos set retire_le = now() where retire_le is null$$), 1::bigint,
+  'accords de diffusion : retrait daté');
+reset role;
+-- Signature d'un devis À DISTANCE : notification (sur place, Yorick est présent : aucune).
+insert into public.signatures (organisation_id, document_type, document_id, methode, signataire_nom, mention, image_chemin, document_sha256)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'attestation_tva', 'aaaaaaaa-0000-0000-0000-0000000a7999', 'lien', 'Xavier Test', 'Lu', 'aaaaaaaa-0000-0000-0000-00000000000a/s.png', repeat('c', 64));
+select tests.egal((select count(*) from public.notifications where type = 'devis_signe'),
+  (select count(*) from public.signatures where document_type = 'devis' and methode = 'lien'),
+  'notifications : une par devis signé à distance, aucune pour une attestation ou une signature sur place');
+insert into public.evenements (id, organisation_id, chantier_id, type, titre, debut, fin)
+values ('aaaaaaaa-0000-0000-0000-0000000e7901', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca001', 'rendez_vous', 'RDV Durand', now(), now());
+insert into public.rappels (id, organisation_id, type, echeance, titre, evenement_id)
+values ('aaaaaaaa-0000-0000-0000-0000000e7902', 'aaaaaaaa-0000-0000-0000-00000000000a', 'libre', now(), 'Appeler M. Durand', 'aaaaaaaa-0000-0000-0000-0000000e7901');
+insert into public.notifications (organisation_id, type, titre, lien, cle)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'rappel', 'Rappel : Appeler M. Durand', '/planning', 'rappel:aaaaaaaa-0000-0000-0000-0000000e7902');
+select tests.egal((select count(*) from public.notifications where cle like 'test-rgpd:%'), 1::bigint, 'RGPD : notification du client présente avant effacement');
+update public.clients set anonymise_le = now() where id = 'aaaaaaaa-0000-0000-0000-0000000c0001';
+select tests.egal((select count(*) from public.notifications where cle like 'test-rgpd:%'), 0::bigint,
+  'RGPD : à l''anonymisation, les notifications du client sont supprimées');
+select tests.egal((select count(*) from public.notifications where cle = 'rappel:aaaaaaaa-0000-0000-0000-0000000e7902'), 0::bigint,
+  'RGPD : notification d''un rappel lié à un rendez-vous du chantier supprimée aussi');
+update public.clients set anonymise_le = null where id = 'aaaaaaaa-0000-0000-0000-0000000c0001';
+
+-- Conservation : notifications de plus de 90 jours purgées par la tâche du serveur seulement.
+insert into public.notifications (organisation_id, type, titre, lien, cle, cree_le) values
+  ('aaaaaaaa-0000-0000-0000-00000000000a', 'rappel', 'Ancienne', '/planning', 'test-purge:vieille', now() - interval '91 days'),
+  ('aaaaaaaa-0000-0000-0000-00000000000a', 'rappel', 'Récente', '/planning', 'test-purge:recente', now() - interval '89 days');
+set role authenticated;
+select tests.echoue($$select public.purger_notifications()$$, 'permission denied', 'conservation : purge des notifications réservée au serveur');
+set role service_role;
+select tests.egal(public.purger_notifications() >= 1, true, 'conservation : purge des notifications exécutée');
+reset role;
+select tests.egal((select array_agg(cle order by cle) from public.notifications where cle like 'test-purge:%'), array['test-purge:recente'],
+  'conservation : notifications de plus de 90 jours supprimées, les récentes gardées');
 
 -- Triggers : même le propriétaire de la base ne modifie pas une facture émise
 reset role;

@@ -23,6 +23,7 @@ import { enregistrerLigneFacture } from '../actions';
 import { ActionConfirmee } from '@/components/formulaire/ActionConfirmee';
 import { EffacerBrouillon } from '@/components/formulaire/EffacerBrouillon';
 import { Carte } from '@/components/ui/Carte';
+import { DemandeAvis } from '@/components/factures/Avis';
 import { Message } from '@/components/ui/Message';
 
 export const metadata: Metadata = { title: 'Facture' };
@@ -207,6 +208,13 @@ export default async function PageFacture({ params, searchParams }: PageProps<'/
     totalTtcCents: BigInt(f.total_ttc_cents!), remiseGlobaleCents: remiseAffichee(),
   };
   const reste = BigInt(avoir ? f.reste_a_rembourser_cents ?? 0 : f.reste_a_payer_cents ?? 0);
+  // Un avis par chantier : demandé sur cette facture ou sur une autre facture du même chantier.
+  const facturesDuChantier = f.chantier_id ? (await sb.from('factures').select('id').eq('chantier_id', f.chantier_id).limit(1_000)).data ?? [] : [];
+  const { data: avisChantier } = await sb.from('envois').select('envoye_le').eq('document_type', 'facture').eq('nature', 'demande_avis').neq('statut', 'echec')
+    .in('document_id', [f.id!, ...facturesDuChantier.map((x) => x.id)]).order('envoye_le').limit(1);
+  const avisDemande = avisChantier?.[0];
+  const { data: avisParam } = await sb.from('parametres_entreprise').select('avis_google_url').eq('organisation_id', f.organisation_id!).maybeSingle();
+  const avisUrl = avisParam?.avis_google_url ?? null;
   const encaissable = f.statut === 'emise' && reste > 0n;
   const finRetr = avoir ? null : finRetractationFacture(c, (f.copie_client as { type?: string } | null)?.type ?? '');
   const retractation = finRetr && aujourdHuiParis() <= finRetr ? finRetr : null;
@@ -272,6 +280,15 @@ export default async function PageFacture({ params, searchParams }: PageProps<'/
           </details>
         ) : null}
       </Carte>
+
+      {(f.type === 'finale' || f.type === 'libre') && f.statut === 'emise' && reste === 0n && client && !client.anonymise_le ? (
+        <Carte titre="Demander un avis">
+          {client.refus_sollicitations_le ? <p className="text-encre-douce">Le client a demandé à ne pas être sollicité.</p>
+            : avisDemande ? <p className="text-encre-douce">Avis demandé le {formaterDateHeure(avisDemande.envoye_le)} (un seul par chantier).</p>
+              : !avisUrl ? <p className="text-encre-douce">Renseignez votre lien d’avis Google dans <Link href="/parametres/mentions" className="inline-flex min-h-11 items-center underline underline-offset-4">Réglages, Médiateur et mentions</Link>.</p>
+                : <DemandeAvis factureId={f.id} email={client.email ?? null} emailActif={emailConfigure()} />}
+        </Carte>
+      ) : null}
 
       {f.statut_affiche === 'en_retard' ? (
         <Carte titre="Relancer le client">
