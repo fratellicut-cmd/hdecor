@@ -97,14 +97,14 @@ isOneToOne: false
                   ]
                 },"chantiers": {
                   Row: {
-                    "adresse_ligne1": string | null,"adresse_ligne2": string | null,"client_id": string,"code_postal": string | null,"created_at": string,"date_debut_prevue": string | null,"duree_estimee_jours": number | null,"id": string,"nom": string,"notes": string | null,"organisation_id": string,"statut": Database["public"]['Enums']["statut_chantier"],"teinte_id": string | null,"updated_at": string,"ville": string | null
+                    "accord_diffusion_photos_le": string | null,"adresse_ligne1": string | null,"adresse_ligne2": string | null,"client_id": string,"code_postal": string | null,"created_at": string,"date_debut_prevue": string | null,"duree_estimee_jours": number | null,"id": string,"nom": string,"notes": string | null,"organisation_id": string,"statut": Database["public"]['Enums']["statut_chantier"],"teinte_id": string | null,"updated_at": string,"ville": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "adresse_ligne1"?: string | null,"adresse_ligne2"?: string | null,"client_id": string,"code_postal"?: string | null,"created_at"?: string,"date_debut_prevue"?: string | null,"duree_estimee_jours"?: number | null,"id"?: string,"nom": string,"notes"?: string | null,"organisation_id": string,"statut"?: Database["public"]['Enums']["statut_chantier"],"teinte_id"?: string | null,"updated_at"?: string,"ville"?: string | null
+                    "accord_diffusion_photos_le"?: string | null,"adresse_ligne1"?: string | null,"adresse_ligne2"?: string | null,"client_id": string,"code_postal"?: string | null,"created_at"?: string,"date_debut_prevue"?: string | null,"duree_estimee_jours"?: number | null,"id"?: string,"nom": string,"notes"?: string | null,"organisation_id": string,"statut"?: Database["public"]['Enums']["statut_chantier"],"teinte_id"?: string | null,"updated_at"?: string,"ville"?: string | null
                   }
                   Update: {
-                    "adresse_ligne1"?: string | null,"adresse_ligne2"?: string | null,"client_id"?: string,"code_postal"?: string | null,"created_at"?: string,"date_debut_prevue"?: string | null,"duree_estimee_jours"?: number | null,"id"?: string,"nom"?: string,"notes"?: string | null,"organisation_id"?: string,"statut"?: Database["public"]['Enums']["statut_chantier"],"teinte_id"?: string | null,"updated_at"?: string,"ville"?: string | null
+                    "accord_diffusion_photos_le"?: string | null,"adresse_ligne1"?: string | null,"adresse_ligne2"?: string | null,"client_id"?: string,"code_postal"?: string | null,"created_at"?: string,"date_debut_prevue"?: string | null,"duree_estimee_jours"?: number | null,"id"?: string,"nom"?: string,"notes"?: string | null,"organisation_id"?: string,"statut"?: Database["public"]['Enums']["statut_chantier"],"teinte_id"?: string | null,"updated_at"?: string,"ville"?: string | null
                   }
                   Relationships: [
                     {
@@ -129,14 +129,14 @@ isOneToOne: false
                   ]
                 },"checklists_fin_chantier": {
                   Row: {
-                    "chantier_id": string,"items": NonNullable<Json>,"organisation_id": string
+                    "chantier_id": string,"items": NonNullable<Json>,"organisation_id": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "chantier_id": string,"items"?: NonNullable<Json>,"organisation_id": string
+                    "chantier_id": string,"items"?: NonNullable<Json>,"organisation_id": string,"updated_at"?: string
                   }
                   Update: {
-                    "chantier_id"?: string,"items"?: NonNullable<Json>,"organisation_id"?: string
+                    "chantier_id"?: string,"items"?: NonNullable<Json>,"organisation_id"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -161,14 +161,14 @@ isOneToOne: false
                   ]
                 },"clients": {
                   Row: {
-                    "anonymise_le": string | null,"civilite": string | null,"consentement_le": string | null,"created_at": string,"email": string | null,"fact_code_postal": string | null,"fact_ligne1": string | null,"fact_ligne2": string | null,"fact_pays": string,"fact_ville": string | null,"id": string,"nom": string,"notes": string | null,"organisation_id": string,"prenom": string | null,"raison_sociale": string | null,"siret": string | null,"source": string | null,"telephone": string | null,"tva_intra": string | null,"type": Database["public"]['Enums']["type_client"],"updated_at": string
+                    "anonymise_le": string | null,"civilite": string | null,"consentement_le": string | null,"created_at": string,"email": string | null,"fact_code_postal": string | null,"fact_ligne1": string | null,"fact_ligne2": string | null,"fact_pays": string,"fact_ville": string | null,"id": string,"nom": string,"notes": string | null,"organisation_id": string,"prenom": string | null,"raison_sociale": string | null,"refus_sollicitations_le": string | null,"siret": string | null,"source": string | null,"telephone": string | null,"tva_intra": string | null,"type": Database["public"]['Enums']["type_client"],"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "anonymise_le"?: string | null,"civilite"?: string | null,"consentement_le"?: string | null,"created_at"?: string,"email"?: string | null,"fact_code_postal"?: string | null,"fact_ligne1"?: string | null,"fact_ligne2"?: string | null,"fact_pays"?: string,"fact_ville"?: string | null,"id"?: string,"nom": string,"notes"?: string | null,"organisation_id": string,"prenom"?: string | null,"raison_sociale"?: string | null,"siret"?: string | null,"source"?: string | null,"telephone"?: string | null,"tva_intra"?: string | null,"type"?: Database["public"]['Enums']["type_client"],"updated_at"?: string
+                    "anonymise_le"?: string | null,"civilite"?: string | null,"consentement_le"?: string | null,"created_at"?: string,"email"?: string | null,"fact_code_postal"?: string | null,"fact_ligne1"?: string | null,"fact_ligne2"?: string | null,"fact_pays"?: string,"fact_ville"?: string | null,"id"?: string,"nom": string,"notes"?: string | null,"organisation_id": string,"prenom"?: string | null,"raison_sociale"?: string | null,"refus_sollicitations_le"?: string | null,"siret"?: string | null,"source"?: string | null,"telephone"?: string | null,"tva_intra"?: string | null,"type"?: Database["public"]['Enums']["type_client"],"updated_at"?: string
                   }
                   Update: {
-                    "anonymise_le"?: string | null,"civilite"?: string | null,"consentement_le"?: string | null,"created_at"?: string,"email"?: string | null,"fact_code_postal"?: string | null,"fact_ligne1"?: string | null,"fact_ligne2"?: string | null,"fact_pays"?: string,"fact_ville"?: string | null,"id"?: string,"nom"?: string,"notes"?: string | null,"organisation_id"?: string,"prenom"?: string | null,"raison_sociale"?: string | null,"siret"?: string | null,"source"?: string | null,"telephone"?: string | null,"tva_intra"?: string | null,"type"?: Database["public"]['Enums']["type_client"],"updated_at"?: string
+                    "anonymise_le"?: string | null,"civilite"?: string | null,"consentement_le"?: string | null,"created_at"?: string,"email"?: string | null,"fact_code_postal"?: string | null,"fact_ligne1"?: string | null,"fact_ligne2"?: string | null,"fact_pays"?: string,"fact_ville"?: string | null,"id"?: string,"nom"?: string,"notes"?: string | null,"organisation_id"?: string,"prenom"?: string | null,"raison_sociale"?: string | null,"refus_sollicitations_le"?: string | null,"siret"?: string | null,"source"?: string | null,"telephone"?: string | null,"tva_intra"?: string | null,"type"?: Database["public"]['Enums']["type_client"],"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -879,6 +879,26 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"notifications": {
+                  Row: {
+                    "cle": string,"cree_le": string,"emailee_le": string | null,"id": string,"lien": string,"lu_le": string | null,"organisation_id": string,"titre": string,"type": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "cle": string,"cree_le"?: string,"emailee_le"?: string | null,"id"?: string,"lien": string,"lu_le"?: string | null,"organisation_id": string,"titre": string,"type": string
+                  }
+                  Update: {
+                    "cle"?: string,"cree_le"?: string,"emailee_le"?: string | null,"id"?: string,"lien"?: string,"lu_le"?: string | null,"organisation_id"?: string,"titre"?: string,"type"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "notifications_organisation_id_fkey"
+      columns: ["organisation_id"]
+isOneToOne: false
+      referencedRelation: "organisations"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"organisations": {
                   Row: {
                     "created_at": string,"id": string,"nom": string,"updated_at": string
@@ -959,14 +979,14 @@ isOneToOne: false
                   ]
                 },"parametres_entreprise": {
                   Row: {
-                    "acompte_pct_defaut_bp": number,"adresse_ligne1": string | null,"adresse_ligne2": string | null,"avis_google_url": string | null,"bic": string | null,"code_postal": string | null,"coef_marge_bp": number,"delai_paiement_jours": number,"delai_paiement_max_jours": number,"duree_conservation_prospects_mois": number,"email": string | null,"escompte_texte": string,"formats_pots_ml": (number)[],"formats_sacs_g": (number)[],"forme_juridique": string,"hauteur_alerte_mm": number,"iban": string | null,"immatriculation": string | null,"indemnite_recouvrement_cents": number,"logo_chemin": string | null,"marge_perte_bp": number,"mediateur_coordonnees": string | null,"mediateur_nom": string | null,"mediateur_site": string | null,"mention_franchise": string,"mention_franchise_a_verifier": boolean,"mentions_pied": string | null,"minutes_par_jour": number,"nom_dirigeant": string | null,"numero_tva_intra": string | null,"organisation_id": string,"porte_hauteur_mm": number,"porte_largeur_mm": number,"raison_sociale": string | null,"regime_tva": Database["public"]['Enums']["regime_tva"],"relance_devis_active": boolean,"relance_devis_jours": number,"seuil_alerte_1_bp": number,"seuil_alerte_2_bp": number,"seuil_ca_micro_cents": number | null,"seuil_franchise_tva_cents": number | null,"seuils_confirmes_le": string | null,"siret": string | null,"taux_horaire_cents": number | null,"taux_penalites_bp": number | null,"telephone": string | null,"tolerance_reste_bp": number,"updated_at": string,"valeurs_a_verifier": (string)[],"validite_devis_jours": number,"ville": string | null
+                    "acompte_pct_defaut_bp": number,"adresse_ligne1": string | null,"adresse_ligne2": string | null,"avis_google_url": string | null,"bic": string | null,"code_postal": string | null,"coef_marge_bp": number,"delai_paiement_jours": number,"delai_paiement_max_jours": number,"duree_conservation_prospects_mois": number,"email": string | null,"escompte_texte": string,"formats_pots_ml": (number)[],"formats_sacs_g": (number)[],"forme_juridique": string,"hauteur_alerte_mm": number,"iban": string | null,"immatriculation": string | null,"indemnite_recouvrement_cents": number,"liste_fin_chantier": (string)[],"logo_chemin": string | null,"marge_perte_bp": number,"mediateur_coordonnees": string | null,"mediateur_nom": string | null,"mediateur_site": string | null,"mention_franchise": string,"mention_franchise_a_verifier": boolean,"mentions_pied": string | null,"minutes_par_jour": number,"nom_dirigeant": string | null,"notifier_par_email": boolean,"numero_tva_intra": string | null,"organisation_id": string,"porte_hauteur_mm": number,"porte_largeur_mm": number,"raison_sociale": string | null,"regime_tva": Database["public"]['Enums']["regime_tva"],"relance_devis_active": boolean,"relance_devis_jours": number,"seuil_alerte_1_bp": number,"seuil_alerte_2_bp": number,"seuil_ca_micro_cents": number | null,"seuil_franchise_tva_cents": number | null,"seuils_confirmes_le": string | null,"siret": string | null,"taux_horaire_cents": number | null,"taux_penalites_bp": number | null,"telephone": string | null,"tolerance_reste_bp": number,"updated_at": string,"valeurs_a_verifier": (string)[],"validite_devis_jours": number,"ville": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "acompte_pct_defaut_bp"?: number,"adresse_ligne1"?: string | null,"adresse_ligne2"?: string | null,"avis_google_url"?: string | null,"bic"?: string | null,"code_postal"?: string | null,"coef_marge_bp"?: number,"delai_paiement_jours"?: number,"delai_paiement_max_jours"?: number,"duree_conservation_prospects_mois"?: number,"email"?: string | null,"escompte_texte"?: string,"formats_pots_ml"?: (number)[],"formats_sacs_g"?: (number)[],"forme_juridique"?: string,"hauteur_alerte_mm"?: number,"iban"?: string | null,"immatriculation"?: string | null,"indemnite_recouvrement_cents"?: number,"logo_chemin"?: string | null,"marge_perte_bp"?: number,"mediateur_coordonnees"?: string | null,"mediateur_nom"?: string | null,"mediateur_site"?: string | null,"mention_franchise"?: string,"mention_franchise_a_verifier"?: boolean,"mentions_pied"?: string | null,"minutes_par_jour"?: number,"nom_dirigeant"?: string | null,"numero_tva_intra"?: string | null,"organisation_id": string,"porte_hauteur_mm"?: number,"porte_largeur_mm"?: number,"raison_sociale"?: string | null,"regime_tva"?: Database["public"]['Enums']["regime_tva"],"relance_devis_active"?: boolean,"relance_devis_jours"?: number,"seuil_alerte_1_bp"?: number,"seuil_alerte_2_bp"?: number,"seuil_ca_micro_cents"?: number | null,"seuil_franchise_tva_cents"?: number | null,"seuils_confirmes_le"?: string | null,"siret"?: string | null,"taux_horaire_cents"?: number | null,"taux_penalites_bp"?: number | null,"telephone"?: string | null,"tolerance_reste_bp"?: number,"updated_at"?: string,"valeurs_a_verifier"?: (string)[],"validite_devis_jours"?: number,"ville"?: string | null
+                    "acompte_pct_defaut_bp"?: number,"adresse_ligne1"?: string | null,"adresse_ligne2"?: string | null,"avis_google_url"?: string | null,"bic"?: string | null,"code_postal"?: string | null,"coef_marge_bp"?: number,"delai_paiement_jours"?: number,"delai_paiement_max_jours"?: number,"duree_conservation_prospects_mois"?: number,"email"?: string | null,"escompte_texte"?: string,"formats_pots_ml"?: (number)[],"formats_sacs_g"?: (number)[],"forme_juridique"?: string,"hauteur_alerte_mm"?: number,"iban"?: string | null,"immatriculation"?: string | null,"indemnite_recouvrement_cents"?: number,"liste_fin_chantier"?: (string)[],"logo_chemin"?: string | null,"marge_perte_bp"?: number,"mediateur_coordonnees"?: string | null,"mediateur_nom"?: string | null,"mediateur_site"?: string | null,"mention_franchise"?: string,"mention_franchise_a_verifier"?: boolean,"mentions_pied"?: string | null,"minutes_par_jour"?: number,"nom_dirigeant"?: string | null,"notifier_par_email"?: boolean,"numero_tva_intra"?: string | null,"organisation_id": string,"porte_hauteur_mm"?: number,"porte_largeur_mm"?: number,"raison_sociale"?: string | null,"regime_tva"?: Database["public"]['Enums']["regime_tva"],"relance_devis_active"?: boolean,"relance_devis_jours"?: number,"seuil_alerte_1_bp"?: number,"seuil_alerte_2_bp"?: number,"seuil_ca_micro_cents"?: number | null,"seuil_franchise_tva_cents"?: number | null,"seuils_confirmes_le"?: string | null,"siret"?: string | null,"taux_horaire_cents"?: number | null,"taux_penalites_bp"?: number | null,"telephone"?: string | null,"tolerance_reste_bp"?: number,"updated_at"?: string,"valeurs_a_verifier"?: (string)[],"validite_devis_jours"?: number,"ville"?: string | null
                   }
                   Update: {
-                    "acompte_pct_defaut_bp"?: number,"adresse_ligne1"?: string | null,"adresse_ligne2"?: string | null,"avis_google_url"?: string | null,"bic"?: string | null,"code_postal"?: string | null,"coef_marge_bp"?: number,"delai_paiement_jours"?: number,"delai_paiement_max_jours"?: number,"duree_conservation_prospects_mois"?: number,"email"?: string | null,"escompte_texte"?: string,"formats_pots_ml"?: (number)[],"formats_sacs_g"?: (number)[],"forme_juridique"?: string,"hauteur_alerte_mm"?: number,"iban"?: string | null,"immatriculation"?: string | null,"indemnite_recouvrement_cents"?: number,"logo_chemin"?: string | null,"marge_perte_bp"?: number,"mediateur_coordonnees"?: string | null,"mediateur_nom"?: string | null,"mediateur_site"?: string | null,"mention_franchise"?: string,"mention_franchise_a_verifier"?: boolean,"mentions_pied"?: string | null,"minutes_par_jour"?: number,"nom_dirigeant"?: string | null,"numero_tva_intra"?: string | null,"organisation_id"?: string,"porte_hauteur_mm"?: number,"porte_largeur_mm"?: number,"raison_sociale"?: string | null,"regime_tva"?: Database["public"]['Enums']["regime_tva"],"relance_devis_active"?: boolean,"relance_devis_jours"?: number,"seuil_alerte_1_bp"?: number,"seuil_alerte_2_bp"?: number,"seuil_ca_micro_cents"?: number | null,"seuil_franchise_tva_cents"?: number | null,"seuils_confirmes_le"?: string | null,"siret"?: string | null,"taux_horaire_cents"?: number | null,"taux_penalites_bp"?: number | null,"telephone"?: string | null,"tolerance_reste_bp"?: number,"updated_at"?: string,"valeurs_a_verifier"?: (string)[],"validite_devis_jours"?: number,"ville"?: string | null
+                    "acompte_pct_defaut_bp"?: number,"adresse_ligne1"?: string | null,"adresse_ligne2"?: string | null,"avis_google_url"?: string | null,"bic"?: string | null,"code_postal"?: string | null,"coef_marge_bp"?: number,"delai_paiement_jours"?: number,"delai_paiement_max_jours"?: number,"duree_conservation_prospects_mois"?: number,"email"?: string | null,"escompte_texte"?: string,"formats_pots_ml"?: (number)[],"formats_sacs_g"?: (number)[],"forme_juridique"?: string,"hauteur_alerte_mm"?: number,"iban"?: string | null,"immatriculation"?: string | null,"indemnite_recouvrement_cents"?: number,"liste_fin_chantier"?: (string)[],"logo_chemin"?: string | null,"marge_perte_bp"?: number,"mediateur_coordonnees"?: string | null,"mediateur_nom"?: string | null,"mediateur_site"?: string | null,"mention_franchise"?: string,"mention_franchise_a_verifier"?: boolean,"mentions_pied"?: string | null,"minutes_par_jour"?: number,"nom_dirigeant"?: string | null,"notifier_par_email"?: boolean,"numero_tva_intra"?: string | null,"organisation_id"?: string,"porte_hauteur_mm"?: number,"porte_largeur_mm"?: number,"raison_sociale"?: string | null,"regime_tva"?: Database["public"]['Enums']["regime_tva"],"relance_devis_active"?: boolean,"relance_devis_jours"?: number,"seuil_alerte_1_bp"?: number,"seuil_alerte_2_bp"?: number,"seuil_ca_micro_cents"?: number | null,"seuil_franchise_tva_cents"?: number | null,"seuils_confirmes_le"?: string | null,"siret"?: string | null,"taux_horaire_cents"?: number | null,"taux_penalites_bp"?: number | null,"telephone"?: string | null,"tolerance_reste_bp"?: number,"updated_at"?: string,"valeurs_a_verifier"?: (string)[],"validite_devis_jours"?: number,"ville"?: string | null
                   }
                   Relationships: [
                     {
@@ -979,14 +999,14 @@ isOneToOne: true
                   ]
                 },"photos": {
                   Row: {
-                    "annotations": Json | null,"chantier_id": string,"chemin": string,"id": string,"legende": string | null,"moment": string,"organisation_id": string,"piece_id": string | null,"prise_le": string
+                    "annotations": Json | null,"chantier_id": string,"chemin": string,"en_galerie": boolean,"hauteur": number | null,"id": string,"largeur": number | null,"legende": string | null,"moment": string,"organisation_id": string,"piece_id": string | null,"prise_le": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "annotations"?: Json | null,"chantier_id": string,"chemin": string,"id"?: string,"legende"?: string | null,"moment"?: string,"organisation_id": string,"piece_id"?: string | null,"prise_le"?: string
+                    "annotations"?: Json | null,"chantier_id": string,"chemin": string,"en_galerie"?: boolean,"hauteur"?: number | null,"id"?: string,"largeur"?: number | null,"legende"?: string | null,"moment"?: string,"organisation_id": string,"piece_id"?: string | null,"prise_le"?: string
                   }
                   Update: {
-                    "annotations"?: Json | null,"chantier_id"?: string,"chemin"?: string,"id"?: string,"legende"?: string | null,"moment"?: string,"organisation_id"?: string,"piece_id"?: string | null,"prise_le"?: string
+                    "annotations"?: Json | null,"chantier_id"?: string,"chemin"?: string,"en_galerie"?: boolean,"hauteur"?: number | null,"id"?: string,"largeur"?: number | null,"legende"?: string | null,"moment"?: string,"organisation_id"?: string,"piece_id"?: string | null,"prise_le"?: string
                   }
                   Relationships: [
                     {
@@ -1153,17 +1173,35 @@ isOneToOne: false
                   ]
                 },"pv_reception": {
                   Row: {
-                    "avec_reserves": boolean,"chantier_id": string,"created_at": string,"date_reception": string,"id": string,"organisation_id": string,"pdf_chemin": string | null,"pdf_sha256": string | null,"reserves": NonNullable<Json>,"signature_id": string | null
+                    "avec_reserves": boolean,"chantier_id": string,"created_at": string,"date_reception": string,"delai_levee_jours": number | null,"devis_id": string | null,"id": string,"observations": string | null,"organisation_id": string,"pdf_chemin": string | null,"pdf_sha256": string | null,"reserves": NonNullable<Json>,"signature_entreprise_chemin": string | null,"signature_id": string | null,"statut": string,"travaux": string | null,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "avec_reserves"?: boolean,"chantier_id": string,"created_at"?: string,"date_reception": string,"id"?: string,"organisation_id": string,"pdf_chemin"?: string | null,"pdf_sha256"?: string | null,"reserves"?: NonNullable<Json>,"signature_id"?: string | null
+                    "avec_reserves"?: boolean,"chantier_id": string,"created_at"?: string,"date_reception": string,"delai_levee_jours"?: number | null,"devis_id"?: string | null,"id"?: string,"observations"?: string | null,"organisation_id": string,"pdf_chemin"?: string | null,"pdf_sha256"?: string | null,"reserves"?: NonNullable<Json>,"signature_entreprise_chemin"?: string | null,"signature_id"?: string | null,"statut"?: string,"travaux"?: string | null,"updated_at"?: string
                   }
                   Update: {
-                    "avec_reserves"?: boolean,"chantier_id"?: string,"created_at"?: string,"date_reception"?: string,"id"?: string,"organisation_id"?: string,"pdf_chemin"?: string | null,"pdf_sha256"?: string | null,"reserves"?: NonNullable<Json>,"signature_id"?: string | null
+                    "avec_reserves"?: boolean,"chantier_id"?: string,"created_at"?: string,"date_reception"?: string,"delai_levee_jours"?: number | null,"devis_id"?: string | null,"id"?: string,"observations"?: string | null,"organisation_id"?: string,"pdf_chemin"?: string | null,"pdf_sha256"?: string | null,"reserves"?: NonNullable<Json>,"signature_entreprise_chemin"?: string | null,"signature_id"?: string | null,"statut"?: string,"travaux"?: string | null,"updated_at"?: string
                   }
                   Relationships: [
                     {
+      foreignKeyName: "pv_devis_fk"
+      columns: ["organisation_id","devis_id"]
+isOneToOne: false
+      referencedRelation: "devis"
+      referencedColumns: ["organisation_id","id"]
+    },{
+      foreignKeyName: "pv_devis_fk"
+      columns: ["organisation_id","devis_id"]
+isOneToOne: false
+      referencedRelation: "v_alertes_prix"
+      referencedColumns: ["organisation_id","devis_id"]
+    },{
+      foreignKeyName: "pv_devis_fk"
+      columns: ["organisation_id","devis_id"]
+isOneToOne: false
+      referencedRelation: "v_devis"
+      referencedColumns: ["organisation_id","id"]
+    },{
       foreignKeyName: "pv_reception_organisation_id_chantier_id_fkey"
       columns: ["organisation_id","chantier_id"]
 isOneToOne: false
@@ -1191,14 +1229,14 @@ isOneToOne: false
                   ]
                 },"rappels": {
                   Row: {
-                    "canal": string,"chantier_id": string | null,"document_id": string | null,"document_type": string | null,"echeance": string,"envoye_le": string | null,"evenement_id": string | null,"id": string,"lu_le": string | null,"organisation_id": string,"statut": string,"titre": string,"type": string
+                    "canal": string,"chantier_id": string | null,"document_id": string | null,"document_type": string | null,"echeance": string,"envoye_le": string | null,"evenement_id": string | null,"id": string,"lu_le": string | null,"notifie_le": string | null,"organisation_id": string,"statut": string,"titre": string,"type": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "canal"?: string,"chantier_id"?: string | null,"document_id"?: string | null,"document_type"?: string | null,"echeance": string,"envoye_le"?: string | null,"evenement_id"?: string | null,"id"?: string,"lu_le"?: string | null,"organisation_id": string,"statut"?: string,"titre": string,"type": string
+                    "canal"?: string,"chantier_id"?: string | null,"document_id"?: string | null,"document_type"?: string | null,"echeance": string,"envoye_le"?: string | null,"evenement_id"?: string | null,"id"?: string,"lu_le"?: string | null,"notifie_le"?: string | null,"organisation_id": string,"statut"?: string,"titre": string,"type": string
                   }
                   Update: {
-                    "canal"?: string,"chantier_id"?: string | null,"document_id"?: string | null,"document_type"?: string | null,"echeance"?: string,"envoye_le"?: string | null,"evenement_id"?: string | null,"id"?: string,"lu_le"?: string | null,"organisation_id"?: string,"statut"?: string,"titre"?: string,"type"?: string
+                    "canal"?: string,"chantier_id"?: string | null,"document_id"?: string | null,"document_type"?: string | null,"echeance"?: string,"envoye_le"?: string | null,"evenement_id"?: string | null,"id"?: string,"lu_le"?: string | null,"notifie_le"?: string | null,"organisation_id"?: string,"statut"?: string,"titre"?: string,"type"?: string
                   }
                   Relationships: [
                     {
@@ -1642,6 +1680,9 @@ isOneToOne: false
 "initialiser_organisation":
 { Args: { "p_email": string,"p_nom_dirigeant": string,"p_raison_sociale": string,"p_user_id": string }; Returns: string
                            },
+"lever_reserve":
+{ Args: { "p_date": string,"p_note": string,"p_pv_id": string,"p_rang": number }; Returns: undefined
+                           },
 "lien_valide":
 { Args: { "p_finalite": string,"p_jeton": string }; Returns: {
               "cree_le": string,
@@ -1670,6 +1711,12 @@ isOneToOne: false
 "niveau_auth_suffisant":
 { Args: Record<PropertyKey, never>; Returns: boolean
                            },
+"notifier":
+{ Args: { "p_cle": string,"p_lien": string,"p_org": string,"p_titre": string,"p_type": string }; Returns: undefined
+                           },
+"notifier_rappels_echus":
+{ Args: Record<PropertyKey, never>; Returns: number
+                           },
 "nouvelle_version_devis":
 { Args: { "p_devis_id": string }; Returns: string
                            },
@@ -1681,6 +1728,9 @@ isOneToOne: false
                            },
 "organisation_du_chemin":
 { Args: { "p_nom": string }; Returns: string
+                           },
+"presenter_pv":
+{ Args: { "p_pdf_chemin": string,"p_pdf_sha256": string,"p_pv_id": string }; Returns: undefined
                            },
 "prochain_numero":
 { Args: { "p_annee": number,"p_organisation_id": string,"p_type": string }; Returns: string
@@ -1709,6 +1759,7 @@ isOneToOne: false
 "organisation_id": string,
 "prenom": string | null,
 "raison_sociale": string | null,
+"refus_sollicitations_le": string | null,
 "siret": string | null,
 "source": string | null,
 "telephone": string | null,
@@ -1728,6 +1779,9 @@ isOneToOne: false
 "remplacer_achats_devis":
 { Args: { "p_achats": Json,"p_devis_id": string }; Returns: undefined
                            },
+"reserves_valides":
+{ Args: { "p": Json }; Returns: boolean
+                           },
 "signer_devis_interne":
 { Args: { "p_devis_id": string,"p_document_sha256": string,"p_image_chemin": string,"p_ip": unknown,"p_mention": string,"p_methode": string,"p_nom": string,"p_options": (string)[],"p_user_agent": string }; Returns: string
                            },
@@ -1736,6 +1790,9 @@ isOneToOne: false
                            },
 "signer_devis_sur_place":
 { Args: { "p_devis_id": string,"p_document_sha256": string,"p_image_chemin": string,"p_ip": unknown,"p_mention": string,"p_nom": string,"p_options": (string)[],"p_user_agent": string }; Returns: string
+                           },
+"signer_pv_sur_place":
+{ Args: { "p_document_sha256": string,"p_image_chemin": string,"p_image_entreprise_chemin": string,"p_ip": unknown,"p_mention": string,"p_nom": string,"p_pv_id": string,"p_user_agent": string }; Returns: string
                            },
 "solde_avoir":
 { Args: { "p_avoir_id": string }; Returns: {
