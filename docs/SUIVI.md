@@ -205,7 +205,7 @@ Aucun de ces points ne produit un montant faux ni un document non conforme connu
 
 ## Clôture de la Phase 8
 
-Branche `phase-8`, dernier commit audité par chef-de-projet : 8dbeed7.
+Fusionnée dans main le 10/10/2026 (commit de fusion 98e223f, dernier commit de la branche fa4b443). Branche `phase-8`, dernier commit audité par chef-de-projet : b1e636a.
 
 | Agent | Verdict | Boucle | Commit audité |
 |---|---|---|---|
