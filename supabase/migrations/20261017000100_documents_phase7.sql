@@ -462,3 +462,33 @@ end;
 $$;
 revoke execute on function public.archiver_pv_signe(uuid, text, text) from public, anon;
 grant execute on function public.archiver_pv_signe(uuid, text, text) to authenticated;
+
+-- Modèle « demande d'avis » (modifiable dans Réglages > Messages), créé pour
+-- chaque organisation. Le client peut s'opposer à ces messages (refus noté).
+create or replace function public.initialiser_message_avis(p_organisation_id uuid)
+returns void
+language sql
+security definer
+set search_path = ''
+as $$
+  insert into public.modeles_messages (organisation_id, code, sujet, corps, delai_jours)
+  values (p_organisation_id, 'demande_avis', 'Votre avis sur nos travaux',
+    E'Bonjour {client},\n\nMerci de nous avoir confié vos travaux. Si vous en êtes satisfait, votre avis nous aiderait beaucoup : {lien}\nSi quelque chose ne vous convient pas, répondez-nous directement.\n\nVous ne souhaitez plus recevoir ce type de message ? Dites-le-nous simplement en réponse.\n\nCordialement,\n{entreprise}', null)
+  on conflict (organisation_id, code) do nothing;
+$$;
+revoke execute on function public.initialiser_message_avis(uuid) from public, anon, authenticated;
+create or replace function public.organisation_initialiser_message_avis()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.initialiser_message_avis(new.id);
+  return new;
+end;
+$$;
+revoke execute on function public.organisation_initialiser_message_avis() from public, anon, authenticated;
+create trigger organisations_initialiser_message_avis after insert on public.organisations
+  for each row execute function public.organisation_initialiser_message_avis();
+select public.initialiser_message_avis(id) from public.organisations;

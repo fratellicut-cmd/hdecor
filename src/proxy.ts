@@ -28,7 +28,7 @@ function estPublique(chemin: string) {
     || chemin.startsWith('/icones/')
     // Tâche planifiée : protégée par son propre secret (CRON_SECRET). Chemin
     // exact : une future route sous /api/cron/ ne sera pas publique par défaut.
-    || chemin === '/api/cron/conservation' || chemin === '/api/cron/relances'
+    || chemin === '/api/cron/conservation' || chemin === '/api/cron/relances' || chemin === '/api/cron/notifications'
     // Webhook Stripe : protégé par la signature de Stripe (STRIPE_WEBHOOK_SECRET).
     || chemin === '/api/stripe/webhook';
 }

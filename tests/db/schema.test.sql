@@ -1719,7 +1719,7 @@ select tests.echoue($$insert into public.paiements (id, organisation_id, facture
 insert into public.paiements (organisation_id, facture_id, date_paiement, montant_cents, mode, annule_paiement_id)
 values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000f5001', public.aujourd_hui_paris(), -5000, 'cheque', 'aaaaaaaa-0000-0000-0000-0000000f5091');
 select tests.egal((select string_agg(code, ',' order by code) from public.modeles_messages where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'),
-  'envoi_devis,envoi_facture,impaye_1,impaye_2,impaye_3,relance_devis', 'messages : envoi de facture et 3 niveaux d''impayés');
+  'demande_avis,envoi_devis,envoi_facture,impaye_1,impaye_2,impaye_3,relance_devis', 'messages : envoi de facture, 3 niveaux d''impayés et demande d''avis');
 select tests.egal((select string_agg(delai_jours::text, ',' order by code) from public.modeles_messages
   where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a' and code like 'impaye_%'), '7,15,30', 'impayés : délais de départ après l''échéance');
 select tests.echoue($$select * from public.factures_a_relancer()$$, 'permission denied', 'relances d''impayés : réservées au rôle service');

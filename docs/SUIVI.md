@@ -138,3 +138,15 @@ Avertissements des contrôles (boucle 1), laissés ouverts :
 - **Base existante** : la contrainte `justificatif_chemin_depense` est posée sans `NOT VALID` (aucune base de production à ce jour).
 
 Toujours ouverts depuis la Phase 5 : suspension des relances par facture, recherche dans la liste des factures, message « réseau revenu », taux de TVA par défaut, liste des chantiers limitée à 200.
+
+## Phase 7 (documents et finitions) : points reportés et questions ouvertes
+
+À VÉRIFIER (auditeur-legal, comptable) :
+- **PV de réception** : contenu (parties, lieu, travaux, date, décision avec ou sans réserves, délai de levée, observations) et rappel informatif sur la réception et les garanties (article 1792-6 du Code civil cité, marqué « Références À VÉRIFIER » sur le document). Signature sur place seulement (client et entreprise, empreinte du PDF présenté) ; pas de signature à distance du PV.
+- **Levée des réserves** : datée et notée sur le PV signé (le PDF signé n'est pas régénéré ; l'état des levées est dans l'application). Faut-il un « PV de levée des réserves » signé par le client ?
+- **Demande d'avis** : manuelle (jamais automatique), une par facture payée, opposition du client notée et respectée ; le message rappelle comment ne plus être sollicité.
+- **Photos diffusées** : accord du client noté (daté) avant tout export de la galerie ; ni nom ni adresse dans les exports ; métadonnées (GPS, appareil) retirées par le serveur. Vérifier visages, plaques, numéros de rue avant publication (rappelé à l'écran).
+
+Limites connues :
+- **Notifications** : dans l'application (cloche) et par email récapitulatif ; la tâche planifiée tourne une fois par jour sur l'hébergement de base (voir docs/MISE_EN_PRODUCTION.md). Pas de notification « push » du téléphone (clés VAPID et planificateur fréquent nécessaires).
+- **Photos** : JPEG uniquement côté serveur (le téléphone convertit) ; une photo HEIC que le navigateur ne sait pas lire est refusée avec un message. Export limité à 200 photos (archive) et 40 (galerie).

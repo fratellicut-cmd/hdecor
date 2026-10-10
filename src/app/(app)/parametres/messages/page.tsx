@@ -14,6 +14,7 @@ export const metadata: Metadata = { title: 'Messages et relances' };
 const TITRES: Record<CodeMessage, string> = {
   envoi_devis: 'Envoi d’un devis', relance_devis: 'Relance d’un devis non signé', envoi_facture: 'Envoi d’une facture',
   impaye_1: 'Impayé : 1er rappel', impaye_2: 'Impayé : 2e rappel', impaye_3: 'Impayé : dernier rappel',
+  demande_avis: 'Demande d’avis après paiement',
 };
 
 export default async function PageMessages() {
