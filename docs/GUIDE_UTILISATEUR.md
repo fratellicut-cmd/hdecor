@@ -37,8 +37,8 @@ Onglet **Réglages**. Commencez par **Avant la première vraie facture** : la pa
 4. **Conditions et tarifs** : taux des pénalités de retard (exigé par l'application avant toute facture), délais, acompte, taux horaire. Confirmez chaque valeur après avis du comptable.
 5. **Médiateur et mentions** : médiateur de la consommation, lien de demande d'avis Google.
 6. **Textes des documents** : rétractation, médiateur, réception… Le texte proposé reste « À VÉRIFIER » tant que vous n'avez pas saisi la date de validation par le comptable.
-7. **Logo** (en bas de Réglages) : PNG ou JPEG, 2 Mo au plus.
-8. **Catalogue** : remplacez les produits d'exemple (marqués « fictif ») par vos vrais produits. Vérifiez rendement, couches et formats sur la fiche technique, puis marquez-les « vérifié ».
+7. **Logo** (en bas de Réglages) : PNG ou JPEG, 2 Mo au plus (le fichier du logo, pas une photo).
+8. **Catalogue** : remplacez les produits d'exemple (marqués « fictif ») par vos vrais produits. Vérifiez rendement, couches et formats sur la fiche technique, puis, dans **Modifier**, cochez « J’ai vérifié ces valeurs sur la fiche technique ».
 9. **Mon compte** : activez la **double authentification** (application d'authentification sur le téléphone).
 
 ![Réglages](guide/captures/12-reglages.png)
@@ -71,7 +71,7 @@ Pièce de référence : 4 × 3 m, hauteur 2,50 m, une porte et une fenêtre, soi
 
 1. Sur le chantier : **+ Devis**, puis **Créer le brouillon**. Les postes de peinture du chantier sont repris automatiquement.
 2. Ligne marquée **PRIX À COMPLÉTER** : **Modifier**, saisissez le prix unitaire, **Enregistrer la ligne**.
-3. **+ Ajouter une ligne** pour le reste (protection, forfait…). Cochez **Option** pour une ligne proposée hors total.
+3. **+ Ajouter une ligne** pour le reste (protection, forfait…). Cochez **Option (proposée au client, hors total)** pour une ligne proposée hors total.
 4. En-tête : durée, début des travaux, **Signé chez le client (hors établissement)** si vous signez chez lui (le formulaire de rétractation est alors joint).
 5. **Émettre…** : l'application montre ce qui manque (bloquant) et ce qui est signalé. Relisez l'aperçu PDF, cochez la case, **Émettre le devis**. Le numéro DEV-AAAA-NNNN est attribué.
 
@@ -88,7 +88,7 @@ Pour **changer un devis émis**, utilisez **Modifier : créer une nouvelle versi
 
 ## 5. Les factures
 
-Depuis le devis signé, **Facturer**, puis choisissez le type :
+Depuis le devis signé, **Facturer (acompte, situation, solde)**, puis choisissez le type :
 
 - **Acompte** : un pourcentage du devis (30 % par défaut).
 - **Situation** : l'avancement des travaux en %, ajustable ligne par ligne.

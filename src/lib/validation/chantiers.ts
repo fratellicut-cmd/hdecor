@@ -15,16 +15,19 @@ const vide = (v: unknown) => typeof v !== 'string' || v.trim() === '';
 /** Longueur saisie en m ou cm -> mm entiers, bornes incluses. */
 const longueur = (libelle: string, unite: UniteLongueur, minMm: number, maxMm: number) =>
   z.preprocess((v) => (vide(v) ? undefined : lireLongueurMm(String(v), unite) ?? Number.NaN),
-    z.number({ error: `${libelle} : obligatoire (exemple : ${unite === 'm' ? '4,25' : '83'}).` })
-      .refine((n) => !Number.isNaN(n), { error: `${libelle} : nombre invalide ou plus précis que le millimètre.` })
-      .refine((n) => n >= minMm, { error: `${libelle} : trop petit.` })
+    // Saisie illisible -> NaN, que zod refuse comme type : message distinct de « obligatoire ».
+    z.number({ error: (iss) => (iss.input === undefined
+      ? `${libelle} : obligatoire (exemple : ${unite === 'm' ? '4,25' : '83'}).`
+      : `${libelle} : nombre invalide ou plus précis que le millimètre (en ${unite === 'm' ? 'mètres, exemple : 4,25' : 'centimètres, exemple : 83'}).`) })
+      .refine((n) => n >= minMm, { error: `${libelle} : trop petit (en ${unite === 'm' ? 'mètres, exemple : 4,25' : 'centimètres, exemple : 83'}).` })
       .refine((n) => n <= maxMm, { error: `${libelle} : trop grand, vérifiez l’unité.` }));
 const longueurFacultative = (libelle: string, unite: UniteLongueur, minMm: number, maxMm: number) =>
-  z.preprocess((v) => (vide(v) ? null : v), z.union([z.null(), longueur(libelle, unite, minMm, maxMm)]));
+  // Vide -> null avant le schéma : une saisie illisible remonte le message français (pas « Invalid input » d'une union).
+  z.preprocess((v) => (vide(v) ? null : v), longueur(libelle, unite, minMm, maxMm).nullable());
 
 const surfaceFacultative = (libelle: string) =>
   z.preprocess((v) => (vide(v) ? null : lireSurfaceMm2(String(v)) ?? Number.NaN),
-    z.number().refine((n) => !Number.isNaN(n) && n > 0, { error: `${libelle} : surface invalide (exemple : 1,69).` })
+    z.number({ error: `${libelle} : surface invalide (exemple : 1,69).` }).refine((n) => n > 0, { error: `${libelle} : surface invalide (exemple : 1,69).` })
       .refine((n) => n <= 100_000_000_000, { error: `${libelle} : surface trop grande.` }).nullable());
 
 const dateFacultative = z.preprocess((v) => (vide(v) ? null : v), z.iso.date({ error: 'Date invalide.' }).nullable());
@@ -103,7 +106,7 @@ export const schemaElement = z.object({
   type: z.enum(TYPES_ELEMENT, { error: 'Type d’élément invalide.' }),
   unite: z.enum(['ml', 'm2', 'u'], { error: 'Unité invalide.' }),
   quantite_e4: z.preprocess((v) => (vide(v) ? Number.NaN : lireQuantiteE4(String(v)) ?? Number.NaN),
-    z.number().refine((n) => !Number.isNaN(n) && n > 0, { error: 'Quantité invalide (exemple : 14,5).' })
+    z.number({ error: 'Quantité invalide (exemple : 14,5).' }).refine((n) => n > 0, { error: 'Quantité invalide (exemple : 14,5).' })
       .refine((n) => n <= 100_000_000, { error: 'Quantité trop grande.' })),
   faces: entier(1, 2, 'Faces'),
   developpe_mm: longueurFacultative('Largeur développée', 'cm', 1, 5_000),
@@ -140,7 +143,7 @@ export const schemaPoste = z.object({
   finition: z.preprocess((v) => (vide(v) ? null : v), z.enum(['mat', 'velours', 'satin', 'brillant']).nullable()),
   couches: entier(1, 5, 'Nombre de couches'),
   rendement_force: rendementFacultatif,
-  marge_perte_bp: z.preprocess((v) => (vide(v) ? null : v), z.union([z.null(), pourcentage(0, 5000)])),
+  marge_perte_bp: z.preprocess((v) => (vide(v) ? null : v), pourcentage(0, 5000).nullable()),
   majoration_temps_bp: z.preprocess((v) => (vide(v) ? '0' : v), pourcentage(0, 50_000)),
   etapes: z.array(z.uuid()).max(30),
   /** Même poste (murs ou plafond) créé aussi sur ces pièces du chantier. */

@@ -51,7 +51,7 @@ export default async function PageParametres() {
           </li>
         ))}
       </ul>
-      <section aria-labelledby="titre-logo" className="flex flex-col gap-3 rounded-2xl border border-trait bg-white p-4">
+      <section id="logo" aria-labelledby="titre-logo" className="scroll-mt-4 flex flex-col gap-3 rounded-2xl border border-trait bg-white p-4">
         <h2 id="titre-logo" className="flex flex-wrap items-center gap-2 text-lg font-bold">
           Logo
           {p.logo_chemin ? null : <span className="rounded-md border border-danger bg-danger-fond px-2 py-0.5 text-xs font-bold text-danger">À FOURNIR</span>}

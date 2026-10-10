@@ -195,3 +195,9 @@ Aucun de ces points ne produit un montant faux ni un document non conforme connu
 | auditeur-peinture | Le prévu d'un chantier est masqué dès qu'une ligne manuelle n'a pas de prévision ; fausse alerte « plâtre neuf » ; R3 (pots sans prix) ; marge de la démonstration peu réaliste. |
 | auditeur-legal | Pas de rappel des textes légaux avant la signature du PV. |
 | securite-rgpd | Caractères de contrôle bidirectionnels (U+202E) acceptés dans les textes ; IBAN d'exemple dans la démonstration (fictif). |
+| testeur-chantier | Recherche « Durand Paul » (nom puis prénom) sans résultat ; liste Factures « Toutes » : une facture payée affiche « 0,00 € » (montant de la facture à montrer quand le reste dû est nul). |
+| testeur-chantier | Menu TVA d'une ligne (assujetti) : 10 %, 5,5 % et 0 % proposés sans dire qu'ils seront bloqués à l'émission. |
+| testeur-chantier | Liens de correction : « numéro de TVA intracommunautaire » mène à /parametres ; « début / durée » mène en haut du brouillon de devis (en-tête sous les lignes). |
+| testeur-chantier | PV : la signature du client (étape 1) n'est gardée qu'en mémoire ; un rechargement la fait refaire. « Empreinte SHA-256 » imprimée sur le PV : jargon. |
+| testeur-chantier | Confort : pas de bouton « Revenir au texte par défaut » ; repères {mediateur} peu parlants ; fenêtre sans dimensions proposées ; bandeau « pas encore envoyée » sur une facture payée ; pas de message « réseau revenu » ; formulaire de paiement fermé à l'arrivée sur une facture émise ; quelle ligne empêche le « prévu ». |
+| testeur-chantier | PDF : l'adresse de la page de confidentialité vient de `NEXT_PUBLIC_SITE_URL` ; à vérifier en production (MISE_EN_PRODUCTION). |

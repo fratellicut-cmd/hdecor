@@ -4,13 +4,13 @@ import { revalidatePath } from 'next/cache';
 import { PDFDocument } from 'pdf-lib';
 import { verifierSession } from '@/lib/dal';
 import { clientServeur } from '@/lib/supabase/serveur';
+import { MESSAGE_LOGO_TROP_LOURD, TAILLE_MAX_LOGO } from '@/domain/logo';
 import { deposer, oublier } from '@/lib/stockage';
 import { jpegSansMetadonnees, typeReel } from '@/lib/fichiers';
 import type { EtatFormulaire } from '@/lib/etat-formulaire';
 import { enregistrerCheminLogo } from '@/lib/logo';
 
 /** Limite de l'espace « marque » (2 Mo). */
-const TAILLE_MAX_LOGO = 2 * 1024 * 1024;
 /** Côté maximal : une image très grande mais légère (fichier compressé) saturerait la mémoire à chaque PDF. */
 const COTE_MAX_LOGO = 4096;
 
@@ -33,7 +33,7 @@ export async function deposerLogo(_: EtatFormulaire, fd: FormData): Promise<Etat
   const session = await verifierSession();
   const f = fd.get('logo');
   if (!(f instanceof File) || f.size === 0) return { erreurs: { logo: 'Choisissez un fichier PNG ou JPEG.' } };
-  if (f.size > TAILLE_MAX_LOGO) return { erreurs: { logo: 'Fichier trop lourd (2 Mo au maximum).' } };
+  if (f.size > TAILLE_MAX_LOGO) return { erreurs: { logo: MESSAGE_LOGO_TROP_LOURD } };
   let octets = new Uint8Array(await f.arrayBuffer());
   const type = typeReel(octets);
   if (type !== 'image/png' && type !== 'image/jpeg') return { erreurs: { logo: 'Format refusé : PNG ou JPEG seulement.' } };

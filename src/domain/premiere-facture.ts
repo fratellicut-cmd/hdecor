@@ -38,7 +38,7 @@ export function pointsAvantFacture(e: EtatAvantFacture): PointAvantFacture[] {
       aide: `${e.produitsExempleActifs} produit(s) d’exemple actif(s), ${e.produitsAVerifierActifs} à vérifier sur la fiche technique.` },
     { code: 'calcul', titre: 'Réglages de calcul vérifiés', fait: e.reglagesCalculAVerifier === 0, lien: '/parametres/calcul',
       aide: `${e.reglagesCalculAVerifier} rendement(s) ou temps encore indicatif(s).` },
-    { code: 'logo', titre: 'Logo déposé', fait: e.logo, lien: '/parametres', aide: 'Imprimé en haut des documents.' },
+    { code: 'logo', titre: 'Logo déposé', fait: e.logo, lien: '/parametres#logo', aide: 'Imprimé en haut des documents.' },
     { code: 'double_auth', titre: 'Double authentification activée', fait: e.doubleAuthentification, lien: '/compte',
       aide: 'Protège vos factures et les données de vos clients si votre mot de passe fuit.' },
   ];

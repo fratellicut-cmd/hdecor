@@ -45,6 +45,27 @@ async function pieceReference(page: Page, chantier: string) {
   await expect(page.getByText('Fenêtre : 120 × 115 cm')).toBeVisible();
 }
 
+test('ouverture saisie en mètres par réflexe : message français avec l’unité, jamais « Invalid input »', async ({ page }) => {
+  const chantier = await nouveauChantier(page, `Unite-${unique()}`);
+  await page.goto(`${chantier}/pieces/nouvelle`);
+  await page.getByLabel('Nom de la pièce').fill('Séjour');
+  await page.getByLabel('Longueur (m)').fill('abc');
+  await page.getByLabel('Largeur (m)').fill('3');
+  await page.getByLabel('Hauteur sous plafond (m)').fill('2,50');
+  await page.getByRole('button', { name: 'Enregistrer la pièce' }).click();
+  await expect(page.getByText('Longueur : nombre invalide ou plus précis que le millimètre (en mètres, exemple : 4,25).')).toBeVisible();
+  await page.getByLabel('Longueur (m)').fill('4');
+  await page.getByRole('button', { name: 'Enregistrer la pièce' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Séjour' })).toBeVisible();
+  await page.getByText('+ Ajouter une ouverture').click();
+  await page.getByLabel('Type').selectOption('fenetre');
+  await page.getByLabel('Largeur (cm)').fill('1,2');
+  await page.getByLabel('Hauteur (cm)').fill('1,35');
+  await page.getByRole('button', { name: 'Ajouter l’ouverture' }).click();
+  await expect(page.getByText('Largeur : trop petit (en centimètres, exemple : 83).')).toBeVisible();
+  await expect(page.getByText(/Invalid input/)).toHaveCount(0);
+});
+
 test('métré de référence : 31,93 m² de murs, 12,00 m² de plafond, détail visible', async ({ page }) => {
   const erreurs = surveillerConsole(page);
   const chantier = await nouveauChantier(page, `Metre-${unique()}`);
