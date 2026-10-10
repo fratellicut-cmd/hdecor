@@ -6,6 +6,9 @@ import { clientServeur } from '@/lib/supabase/serveur';
 import { formaterDate, formaterEuros } from '@/domain/formats';
 import { LIBELLES_STATUT_FACTURE, LIBELLES_TYPE_FACTURE, type TypeFacture } from '@/domain/factures';
 import { Message } from '@/components/ui/Message';
+import { adresseListe, nombreAffiche, texteCherche } from '@/domain/listes';
+import { filtreRecherche } from '@/lib/recherche';
+import { RechercheListe, SuiteListe } from '@/components/ui/Liste';
 
 export const metadata: Metadata = { title: 'Factures' };
 
@@ -15,27 +18,32 @@ export default async function PageFactures({ searchParams }: PageProps<'/facture
   await verifierSession();
   const sp = await searchParams;
   const filtre = z.enum(['a_encaisser', 'en_retard', 'brouillon', 'tous']).catch('a_encaisser').parse(sp.filtre);
+  const q = texteCherche(sp.q);
+  const nombre = nombreAffiche(sp.nombre);
   const supabase = await clientServeur();
   let requete = supabase.from('v_factures')
     .select('id, numero, type, statut, statut_affiche, date_emission, date_echeance, net_a_payer_cents, reste_a_payer_cents, reste_a_rembourser_cents, copie_client, client_id, created_at')
-    .order('created_at', { ascending: false }).limit(200);
+    .order('created_at', { ascending: false }).limit(nombre + 1);
+  if (q) requete = requete.or(await filtreRecherche(supabase, q, ['numero']));
   if (filtre === 'a_encaisser') requete = requete.eq('statut', 'emise').neq('type', 'avoir').gt('reste_a_payer_cents', 0);
   if (filtre === 'en_retard') requete = requete.eq('statut_affiche', 'en_retard');
   if (filtre === 'brouillon') requete = requete.eq('statut', 'brouillon');
-  const [{ data, error }, { data: incidents }] = await Promise.all([
+  const [{ data: lus, error }, { data: incidents }] = await Promise.all([
     requete,
     supabase.from('incidents_paiement').select('id, facture_id, montant_cents').is('traite_le', null),
   ]);
-  type F = NonNullable<typeof data>[number];
+  const encore = (lus ?? []).length > nombre;
+  const data = (lus ?? []).slice(0, nombre);
+  type F = (typeof data)[number];
   // Nom du client : copie figée pour un document émis, fiche client pour un brouillon.
-  const idsClients = [...new Set((data ?? []).filter((f) => !f.copie_client).map((f) => f.client_id!))];
+  const idsClients = [...new Set(data.filter((f) => !f.copie_client).map((f) => f.client_id!))];
   const { data: clients } = idsClients.length
     ? await supabase.from('clients').select('id, type, nom, prenom, raison_sociale').in('id', idsClients)
     : { data: [] };
   const nomClient = (f: F) => (f.copie_client as { nom_affiche?: string } | null)?.nom_affiche
     ?? (() => { const c = clients?.find((x) => x.id === f.client_id); return c ? (c.type === 'professionnel' && c.raison_sociale) || [c.prenom, c.nom].filter(Boolean).join(' ') : ''; })();
   const totalAEncaisser = filtre === 'a_encaisser' || filtre === 'en_retard'
-    ? (data ?? []).reduce((a, f) => a + BigInt(f.reste_a_payer_cents ?? 0), 0n) : null;
+    ? data.reduce((a, f) => a + BigInt(f.reste_a_payer_cents ?? 0), 0n) : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -52,17 +60,18 @@ export default async function PageFactures({ searchParams }: PageProps<'/facture
       ) : null}
       <nav aria-label="Filtres" className="flex flex-wrap gap-2">
         {Object.entries(FILTRES).map(([k, l]) => (
-          <Link key={k} href={k === 'a_encaisser' ? '/factures' : `/factures?filtre=${k}`} aria-current={filtre === k ? 'page' : undefined}
+          <Link key={k} href={adresseListe('/factures', { filtre: k === 'a_encaisser' ? null : k, q })} aria-current={filtre === k ? 'page' : undefined}
             className={`inline-flex min-h-11 items-center rounded-full border-2 px-4 font-semibold ${filtre === k ? 'border-anthracite bg-anthracite text-creme' : 'border-trait bg-white'}`}>
             {l}
           </Link>
         ))}
       </nav>
+      <RechercheListe base="/factures" filtre={filtre === 'a_encaisser' ? null : filtre} q={q} libelle="Chercher une facture" exemple="N° ou client" />
       {error ? <Message type="erreur">La liste n’a pas pu être chargée. Rechargez la page.</Message> : null}
-      {totalAEncaisser !== null && data?.length ? <p className="font-semibold">Reste à encaisser : {formaterEuros(totalAEncaisser)}</p> : null}
-      {!error && !data?.length ? <p className="rounded-xl border border-trait bg-white p-4 text-encre-douce">Aucune facture ici. Touchez « + Nouvelle » ou partez d’un devis signé.</p> : null}
+      {totalAEncaisser !== null && data.length ? <p className="font-semibold">Reste à encaisser{q ? ' (factures trouvées)' : ''}{encore ? ` sur les ${data.length} premières` : ''} : {formaterEuros(totalAEncaisser)}</p> : null}
+      {!error && !data.length ? <p className="rounded-xl border border-trait bg-white p-4 text-encre-douce">{q ? `Aucune facture pour « ${q} » dans ce filtre. Essayez « Toutes ».` : 'Aucune facture ici. Touchez « + Nouvelle » ou partez d’un devis signé.'}</p> : null}
       <ul className="flex flex-col gap-2">
-        {(data ?? []).map((f) => {
+        {data.map((f) => {
           const avoir = f.type === 'avoir';
           const retard = f.statut_affiche === 'en_retard';
           return (
@@ -85,6 +94,7 @@ export default async function PageFactures({ searchParams }: PageProps<'/facture
           );
         })}
       </ul>
+      <SuiteListe base="/factures" params={{ filtre: filtre === 'a_encaisser' ? null : filtre, q }} affiches={data.length} nombre={nombre} encore={encore} />
     </div>
   );
 }

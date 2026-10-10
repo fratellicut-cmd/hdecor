@@ -8,6 +8,7 @@
  * apparaissent. L'interface les signale tant qu'ils ne sont pas confirmés.
  */
 
+import { CODES_TEXTES, texteLegal, textesEffectifs, type TextesLegaux } from './textes-legaux';
 import { nomAffiche } from './clients';
 import { formaterDate } from './formats';
 import type { Regime } from './devis';
@@ -42,6 +43,8 @@ export type CopieEmetteur = {
   mediateur: { nom: string | null; coordonnees: string | null; site: string | null };
   assurances: AssuranceCopiee[];
   mentions_pied: string | null;
+  /** Textes légaux personnalisés à la date du document (absents : textes par défaut). */
+  textes?: TextesLegaux;
 };
 
 export type CopieClient = {
@@ -64,6 +67,7 @@ export type ParametresEmetteur = {
   telephone: string | null; email: string | null; numero_tva_intra: string | null; regime_tva: Regime;
   mention_franchise: string; mediateur_nom: string | null; mediateur_coordonnees: string | null; mediateur_site: string | null;
   mentions_pied: string | null;
+  textes_legaux?: unknown;
 };
 
 export type AssuranceSaisie = AssuranceCopiee & { id?: string };
@@ -88,7 +92,19 @@ export function copieEmetteur(p: ParametresEmetteur, assurances: AssuranceSaisie
     assurances: assurances.filter((a) => assuranceEnCours(a, dateIso))
       .map(({ type, assureur, numero_contrat, debut, fin, zone_couverte }) => ({ type, assureur, numero_contrat, debut, fin, zone_couverte })),
     mentions_pied: net(p.mentions_pied),
+    textes: textesEffectifs(lireTextesStockes(p.textes_legaux)),
   };
+}
+
+/** Textes légaux lus en base (jsonb) : seules les clés connues, en texte non vide. */
+export function lireTextesStockes(v: unknown): TextesLegaux {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
+  const sortie: TextesLegaux = {};
+  for (const code of CODES_TEXTES) {
+    const t = (v as Record<string, unknown>)[code];
+    if (typeof t === 'string' && t.trim()) sortie[code] = t;
+  }
+  return sortie;
 }
 
 export type ClientSaisi = {
@@ -194,8 +210,9 @@ export type LigneAControler = { designation: string; tauxTvaBp: number | null };
  * Taux des lignes chiffrées : en franchise tout à 0 % ; assujetti, chaque taux
  * doit être actif dans les Paramètres, et une ligne à 0 % sans mention qui la
  * justifie (exonération, autoliquidation : À VÉRIFIER) bloque l'émission.
- * Un taux réduit avec « attestation requise » est signalé : l'attestation du
- * client n'est pas encore produite par l'application.
+ * Un taux réduit avec « attestation requise » BLOQUE l'émission : l'attestation
+ * du client n'est pas encore produite par l'application (décision de Yorick,
+ * Phase 8 : reportée, taux réduits bloqués tant qu'elle n'existe pas).
  */
 export function controlerTaux(lignes: LigneAControler[], regime: Regime, actifs: TauxActif[]): Manque[] {
   const m: Manque[] = [];
@@ -207,15 +224,23 @@ export function controlerTaux(lignes: LigneAControler[], regime: Regime, actifs:
   }
   const aZero = noms((l) => l.tauxTvaBp === 0);
   if (aZero) {
-    m.push({ cle: 'taux_zero', message: `Lignes à 0 % sur un devis soumis à la TVA, sans mention qui le justifie (exonération, autoliquidation : À VÉRIFIER avec le comptable) : ${aZero}. Choisissez leur taux.`, ou: 'devis', bloquant: true });
+    m.push({ cle: 'taux_zero', message: `Lignes à 0 % alors que l’entreprise est soumise à la TVA, sans mention qui le justifie (exonération, autoliquidation : À VÉRIFIER avec le comptable) : ${aZero}. Choisissez leur taux.`, ou: 'devis', bloquant: true });
   }
   const inactifs = noms((l) => l.tauxTvaBp !== 0 && !actifs.some((t) => t.taux_bp === l.tauxTvaBp));
   if (inactifs) m.push({ cle: 'taux_inactif', message: `Taux de TVA absent des Paramètres (Taux de TVA) : ${inactifs}.`, ou: 'devis', bloquant: true });
-  const attestations = [...new Set(lignes.filter((l) => actifs.some((t) => t.taux_bp === l.tauxTvaBp && t.attestation_requise)).map((l) => l.tauxTvaBp!))];
-  if (attestations.length) {
-    m.push({ cle: 'attestation_tva', message: `Taux réduit ${attestations.map((t) => `${t / 100} %`.replace('.', ',')).join(' et ')} : une attestation du client est requise. L’application ne la produit pas encore (phase Documents) : faites-la remplir à part (conditions À VÉRIFIER).`, ou: 'devis', bloquant: false });
-  }
+  m.push(...controlerAttestations(lignes, actifs, 'devis'));
   return m;
+}
+
+/**
+ * Taux réduit avec « attestation requise » : BLOQUANT sur un devis comme sur
+ * une facture, tant que l'application ne produit pas l'attestation (décision
+ * de Yorick, Phase 8).
+ */
+export function controlerAttestations(lignes: LigneAControler[], actifs: TauxActif[], ou: Manque['ou']): Manque[] {
+  const attestations = [...new Set(lignes.filter((l) => actifs.some((t) => t.taux_bp === l.tauxTvaBp && t.attestation_requise)).map((l) => l.tauxTvaBp!))];
+  if (!attestations.length) return [];
+  return [{ cle: 'attestation_tva', message: `Taux réduit ${attestations.map((t) => `${t / 100} %`.replace('.', ',')).join(' et ')} : une attestation du client est requise et l’application ne la produit pas encore. Appliquez le taux normal, ou voyez avec votre comptable avant d’utiliser un taux réduit.`, ou, bloquant: true }];
 }
 
 /**
@@ -257,15 +282,15 @@ export const TEXTES_A_VERIFIER = {
 /** Paragraphe d'information sur le devis lorsqu'il est signé hors établissement. */
 export function informationRetractation(e: CopieEmetteur): string {
   const contact = [e.raison_sociale, ...lignesAdresse(e.adresse), e.email].filter(Boolean).join(', ');
-  return 'Contrat conclu hors établissement : vous disposez d’un délai de quatorze (14) jours à compter de la signature du présent devis '
-    + 'pour exercer votre droit de rétractation, sans avoir à justifier de motif ni à payer de pénalité. '
-    + `Pour l’exercer, adressez avant l’expiration de ce délai le formulaire ci-joint, ou toute autre déclaration dénuée d’ambiguïté, à : ${contact}.`;
+  return texteLegal('retractation', e.textes, { contact });
 }
 
-export const EXECUTION_ANTICIPEE = 'Si vous souhaitez que les travaux commencent avant la fin du délai de rétractation, vous devez en faire la demande expresse '
-  + 'par écrit. Si vous vous rétractez ensuite, vous devrez payer la part des travaux réalisée jusqu’à la communication de votre décision.';
-
-export const MENTION_DEVIS_RECU = 'Devis reçu avant l’exécution des travaux.';
+/** Phrase sur le médiateur ; null sans médiateur renseigné. */
+export function phraseMediateur(e: CopieEmetteur): string | null {
+  const m = e.mediateur;
+  if (!m.nom) return null;
+  return texteLegal('mediateur', e.textes, { mediateur: [m.nom, m.coordonnees, m.site].filter(Boolean).join(', ') });
+}
 
 /** Formulaire type de rétractation (page détachable). */
 export function formulaireRetractation(e: CopieEmetteur, numero: string | null): { titre: string; lignes: string[] } {

@@ -102,6 +102,10 @@ describe('marge par chantier', () => {
     const m = margeChantier({ factureHtCents: 0n, achatsCents: 1_000n, minutesReelles: 30, matierePrevueCents: 0n, minutesPrevues: 0, tauxHoraireCents: null });
     expect([m.margeBruteCents, m.tauxMargeBp, m.valeurTempsCents, m.resultatApresTempsCents]).toEqual([-1_000n, null, null, null]);
   });
+  it('prévu inconnu ou partiel : aucun écart présenté (jamais un prévu à 0)', () => {
+    const m = margeChantier({ factureHtCents: 100_000n, achatsCents: 18_640n, minutesReelles: 450, matierePrevueCents: null, minutesPrevues: null, tauxHoraireCents: null });
+    expect([m.ecartMatiereCents, m.ecartMinutes, m.margeBruteCents]).toEqual([null, null, 81_360n]);
+  });
   it('valorisation du temps arrondie au centime (7 min à 45 €/h = 5,25 €)', () => {
     expect(margeChantier({ factureHtCents: 0n, achatsCents: 0n, minutesReelles: 7, matierePrevueCents: 0n, minutesPrevues: 0, tauxHoraireCents: 4_500n })
       .valeurTempsCents).toBe(525n);

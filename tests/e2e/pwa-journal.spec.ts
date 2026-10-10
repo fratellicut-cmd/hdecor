@@ -43,9 +43,11 @@ test('journal : la création d’un client y figure, sans son nom', async ({ pag
   await expect(page.getByRole('heading', { level: 1, name: nom })).toBeVisible();
 });
 
-test('paramètres : emplacement du logo réservé et visible', async ({ page }) => {
+test('paramètres : logo à fournir signalé, dépôt proposé', async ({ page }) => {
   await seConnecter(page);
   await page.goto('/parametres');
-  await expect(page.getByRole('heading', { name: /Logo officiel/ })).toBeVisible();
-  await expect(page.getByText('À FOURNIR')).toBeVisible();
+  const section = page.getByRole('region', { name: /Logo/ });
+  await expect(section.getByRole('heading', { name: /Logo/ })).toBeVisible();
+  await expect(section.getByText('À FOURNIR')).toBeVisible();
+  await expect(section.getByRole('button', { name: 'Enregistrer le logo' })).toBeVisible();
 });

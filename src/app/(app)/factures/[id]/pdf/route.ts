@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { chargerFacture, donneesPdfFacture, preparerEmissionFacture } from '@/lib/factures';
+import { chargerFacture, donneesPdfFacture, ErreurPreparationFacture, preparerEmissionFacture } from '@/lib/factures';
 import { clientServeur } from '@/lib/supabase/serveur';
 import { verifierSession } from '@/lib/dal';
 import { lire } from '@/lib/stockage';
@@ -35,6 +35,7 @@ export async function GET(_: Request, { params }: RouteContext<'/factures/[id]/p
       return pdf(await pdfFacture(donneesPdfFacture(c, prep, { numero: null, dateEmission: date, dateEcheance: echeance, brouillon: true })), 'apercu-facture');
     } catch (e) {
       console.error('Aperçu de la facture', e instanceof Error ? e.message : e);
+      if (e instanceof ErreurPreparationFacture) return texte(e.message, 503);
       return texte('L’aperçu n’a pas pu être créé : vérifiez le client et les lignes de la facture.', 500);
     }
   }

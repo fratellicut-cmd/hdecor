@@ -2,12 +2,13 @@ import 'server-only';
 import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import { acompte, montantsEcheances, sousTotaux, totalLigne, totauxDevis, type Echeance, type LigneDevis, type Regime } from '@/domain/devis';
 import {
-  avecRetractation, EXECUTION_ANTICIPEE, formaterJours, formaterQuantiteE4, formulaireRetractation, identiteEmetteur, informationRetractation,
-  lignesAdresse, MENTION_DEVIS_RECU, nomAvecForme, texteAssurance, UNITES, ajouterJours,
+  avecRetractation, formaterJours, formaterQuantiteE4, formulaireRetractation, identiteEmetteur, informationRetractation,
+  lignesAdresse, nomAvecForme, phraseMediateur, texteAssurance, UNITES, ajouterJours,
   type CopieChantier, type CopieClient, type CopieEmetteur,
 } from '@/domain/devis-document';
+import { texteLegal } from '@/domain/textes-legaux';
 import { formaterDate, formaterDateHeure, formaterEuros, formaterTaux } from '@/domain/formats';
-import { A4, aDroite, ALERTE, ANTHRACITE, couper, DORE, ecrire, GRIS, GRIS_CLAIR, MARGE, nouvellePage, place, texteSur, trait, type Contexte } from './commun';
+import { A4, aDroite, ALERTE, ANTHRACITE, couper, DORE, dessinerLogo, ecrire, GRIS, GRIS_CLAIR, MARGE, nouvellePage, place, texteSur, trait, type Contexte, type Logo } from './commun';
 
 export type DonneesPdfDevis = {
   /** Null : aperçu d'un brouillon (numéro attribué à l'émission). */
@@ -32,7 +33,7 @@ export type DonneesPdfDevis = {
   lignes: LigneDevis[];
   echeances: Echeance[];
   acomptePctBp: number;
-  logo?: { octets: Uint8Array; type: 'png' | 'jpg' } | null;
+  logo?: Logo | null;
   /** Adresse de la page « données personnelles » (information des clients). */
   urlConfidentialite?: string | null;
 };
@@ -68,13 +69,7 @@ export async function pdfDevis(d: DonneesPdfDevis): Promise<Uint8Array> {
 
   // ---- En-tête : émetteur à gauche, client à droite
   const hautEntete = c.y;
-  let xTexte = MARGE;
-  if (d.logo) {
-    const image = d.logo.type === 'png' ? await doc.embedPng(d.logo.octets) : await doc.embedJpg(d.logo.octets);
-    const echelle = Math.min(70 / image.width, 70 / image.height);
-    c.page.drawImage(image, { x: MARGE, y: c.y - image.height * echelle, width: image.width * echelle, height: image.height * echelle });
-    xTexte = MARGE + image.width * echelle + 10;
-  }
+  const xTexte = await dessinerLogo(c, d.logo);
   identiteEmetteur(d.emetteur).forEach((l, i) => ecrire(c, l, { x: xTexte, largeur: 250 - (xTexte - MARGE), taille: i === 0 ? 12 : 9, gras: i === 0 }));
   const basEmetteur = c.y;
   c.y = hautEntete - 70;
@@ -229,17 +224,14 @@ export async function pdfDevis(d: DonneesPdfDevis): Promise<Uint8Array> {
   // ---- Assurances, médiateur, rétractation
   place(c, 50);
   for (const a of d.emetteur.assurances) ecrire(c, texteAssurance(a), { taille: 8.5 });
-  const m = d.emetteur.mediateur;
-  if (m.nom) {
-    ecrire(c, `Médiateur de la consommation : ${[m.nom, m.coordonnees, m.site].filter(Boolean).join(', ')}. `
-      + 'En cas de litige, le client consommateur peut le saisir gratuitement après une réclamation écrite restée sans réponse satisfaisante.', { taille: 8.5 });
-  }
+  const mediateur = phraseMediateur(d.emetteur);
+  if (mediateur) ecrire(c, mediateur, { taille: 8.5 });
   const retractation = avecRetractation(d.horsEtablissement, d.client);
   if (retractation) {
     c.y -= 4;
     ecrire(c, 'Droit de rétractation', { gras: true, taille: 9.5 });
     ecrire(c, informationRetractation(d.emetteur), { taille: 8.5 });
-    ecrire(c, EXECUTION_ANTICIPEE, { taille: 8.5 });
+    ecrire(c, texteLegal('execution_anticipee', d.emetteur.textes), { taille: 8.5 });
   }
   if (d.emetteur.mentions_pied) { c.y -= 4; ecrire(c, d.emetteur.mentions_pied, { taille: 8.5, couleur: GRIS }); }
   if (d.urlConfidentialite) ecrire(c, `Données personnelles (utilisation, durée de conservation, droits) : ${d.urlConfidentialite}`, { taille: 8, couleur: GRIS });
@@ -250,7 +242,7 @@ export async function pdfDevis(d: DonneesPdfDevis): Promise<Uint8Array> {
   const hautCadre = c.y;
   c.y -= 6;
   ecrire(c, 'Bon pour accord', { gras: true, taille: 11, x: MARGE + 8 });
-  ecrire(c, MENTION_DEVIS_RECU, { taille: 9.5, x: MARGE + 8 });
+  ecrire(c, texteLegal('devis_recu', d.emetteur.textes), { taille: 9.5, x: MARGE + 8 });
   ecrire(c, 'Date, nom et signature du client, précédés de la mention manuscrite « Bon pour accord » :', { taille: 9, x: MARGE + 8 });
   if (options.length) ecrire(c, 'Options retenues : ' + options.map((o) => `[  ] ${o.designation}`).join('    '), { taille: 9, x: MARGE + 8, largeur: largeur - 16 });
   c.y -= 70;

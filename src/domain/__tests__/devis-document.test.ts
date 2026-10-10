@@ -124,10 +124,10 @@ describe('taux de TVA des lignes', () => {
   it('assujetti, taux absent des Paramètres : bloquant', () => {
     expect(controlerTaux([L('Murs', 1_500)], 'assujetti', actifs).map((x) => x.cle)).toEqual(['taux_inactif']);
   });
-  it('taux réduit avec attestation requise : signalé, non bloquant', () => {
+  it('taux réduit avec attestation requise : bloquant tant que l’attestation n’est pas produite', () => {
     const m = controlerTaux([L('Murs', 1_000), L('Plafond', 1_000), L('Isolation', 550)], 'assujetti', actifs);
     expect(m).toHaveLength(1);
-    expect(m[0]).toMatchObject({ cle: 'attestation_tva', bloquant: false });
+    expect(m[0]).toMatchObject({ cle: 'attestation_tva', bloquant: true });
     expect(m[0]!.message).toContain('10 % et 5,5 %');
   });
   it('franchise : toute ligne taxée bloque', () => {

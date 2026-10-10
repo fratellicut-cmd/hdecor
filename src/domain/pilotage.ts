@@ -201,9 +201,13 @@ export type DonneesMarge = {
   /** Achats rattachés au chantier : coût réel (TTC en franchise, la TVA n'étant pas récupérée ; HT sinon). */
   achatsCents: bigint;
   minutesReelles: number;
-  /** Prévu au(x) devis signé(s) : coût matière et temps (lignes retenues). */
-  matierePrevueCents: bigint;
-  minutesPrevues: number;
+  /**
+   * Prévu au(x) devis signé(s) : coût matière et temps des lignes retenues.
+   * Null si une ligne retenue n'a pas de prévision (ligne saisie à la main,
+   * calcul incomplet) : un prévu partiel n'est jamais comparé comme complet.
+   */
+  matierePrevueCents: bigint | null;
+  minutesPrevues: number | null;
   /** Taux horaire de vente (Paramètres) : valorisation indicative du temps passé. */
   tauxHoraireCents: bigint | null;
 };
@@ -211,8 +215,9 @@ export type DonneesMarge = {
 export type Marge = {
   margeBruteCents: bigint;
   tauxMargeBp: number | null;
-  ecartMatiereCents: bigint;
-  ecartMinutes: number;
+  /** Null : prévu inconnu ou partiel (rien à comparer). */
+  ecartMatiereCents: bigint | null;
+  ecartMinutes: number | null;
   valeurTempsCents: bigint | null;
   resultatApresTempsCents: bigint | null;
 };
@@ -228,8 +233,8 @@ export function margeChantier(d: DonneesMarge): Marge {
   return {
     margeBruteCents,
     tauxMargeBp: d.factureHtCents > 0n ? Number(arrondiSigne(margeBruteCents * 10_000n, d.factureHtCents)) : null,
-    ecartMatiereCents: d.achatsCents - d.matierePrevueCents,
-    ecartMinutes: d.minutesReelles - d.minutesPrevues,
+    ecartMatiereCents: d.matierePrevueCents === null ? null : d.achatsCents - d.matierePrevueCents,
+    ecartMinutes: d.minutesPrevues === null ? null : d.minutesReelles - d.minutesPrevues,
     valeurTempsCents,
     resultatApresTempsCents: valeurTempsCents === null ? null : margeBruteCents - valeurTempsCents,
   };

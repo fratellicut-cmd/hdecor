@@ -8,7 +8,7 @@
 import { arrondi } from './chiffrage';
 import { ventiler, ventilationEcheance, type LigneDevis, type Regime, type Ventilation } from './devis';
 import { formaterEuros, formaterTaux } from './formats';
-import { ajouterJours, type CopieChantier, type CopieClient, type CopieEmetteur, type Manque } from './devis-document';
+import { ajouterJours, controlerTaux, type CopieChantier, type CopieClient, type CopieEmetteur, type LigneAControler, type Manque, type TauxActif } from './devis-document';
 
 export type TypeFacture = 'acompte' | 'situation' | 'finale' | 'libre' | 'avoir';
 
@@ -114,6 +114,24 @@ export function deductionsDisponibles(factures: FactureDuDevis[], sauf?: string)
 // Lignes depuis le devis accepté
 // --------------------------------------------------------------------------
 
+/** Cumul des acomptes ÉMIS d'un devis (hors la facture en cours d'émission), en points de base. */
+export const cumulAcomptesEmis = (factures: { id: string; type: TypeFacture; statut: string; acomptePctBp: number | null }[], sauf: string) =>
+  factures.filter((f) => f.type === 'acompte' && f.statut === 'emise' && f.id !== sauf).reduce((a, f) => a + (f.acomptePctBp ?? 0), 0);
+
+/**
+ * Acompte à émettre : son montant a été calculé sur un cumul d'acomptes
+ * précédents (base en cumulé). Ce cumul doit être celui des acomptes émis ;
+ * sinon le montant s'écarterait de l'échéancier : message, sinon null.
+ */
+export function controlerCumulAcompte(cumulCalculBp: number | null, cumulEmisBp: number): string | null {
+  if (cumulCalculBp === null || cumulCalculBp === cumulEmisBp) return null;
+  return cumulEmisBp < cumulCalculBp
+    ? `Ce brouillon d’acompte a été calculé après d’autres acomptes (${formaterTaux(cumulCalculBp)}) dont seuls ${formaterTaux(cumulEmisBp)} sont émis. `
+      + 'Émettez d’abord l’acompte précédent, ou, s’il a été supprimé, supprimez ce brouillon et recréez-le : son montant sera exact.'
+    : `Des acomptes ont été émis depuis la création de ce brouillon (${formaterTaux(cumulEmisBp)} au lieu de ${formaterTaux(cumulCalculBp)}) : `
+      + 'supprimez ce brouillon et recréez-le pour un montant exact.';
+}
+
 /**
  * Facture d'acompte d'une échéance (ou de l'acompte du devis) : une ligne par
  * taux, base de l'échéance (en cumulé, voir ventilationEcheance), quantité 1,
@@ -184,7 +202,8 @@ export function lignesAvoirMontant(netParTaux: Ventilation, montantTtcCents: big
         if (!(x instanceof ErreurFacture) || x.message.includes('le plus proche')) throw x;
       }
     }
-    throw e;
+    // Aucun montant voisin atteignable (net d'un taux hérité d'une déduction d'acompte) : orienter.
+    throw new ErreurFacture(`Avoir : ${formaterEuros(montantTtcCents)} n’est pas atteignable au centime près (arrondi de la TVA). Établissez un avoir sur la totalité, puis une nouvelle facture du montant juste.`);
   }
 }
 
@@ -200,30 +219,61 @@ function lignesAvoirMontantExact(netParTaux: Ventilation, montantTtcCents: bigin
   if (montantTtcCents <= 0n || montantTtcCents > netTtc) throw new ErreurFacture('Montant de l’avoir : entre 0,01 € et le net à payer.');
   const sansTva = regime === 'franchise' || autoliquidation;
   const ttcDe = (base: bigint, taux: number) => base + (sansTva ? 0n : arrondi(base * BigInt(taux), 10_000n));
-  // Répartition proportionnelle du TTC demandé, le dernier taux prenant le reste.
   const parts = netParTaux.filter((v) => v.base_ht_cents + v.tva_cents > 0n);
-  let reste = montantTtcCents;
-  const lignes: LigneFacture[] = [];
-  parts.forEach((v, i) => {
-    const netT = v.base_ht_cents + v.tva_cents;
-    const cible = i === parts.length - 1 ? reste : (montantTtcCents * netT) / netTtc;
-    reste -= cible;
-    // Base telle que base + TVA(base) = cible (recherche autour de cible / (1 + taux)).
+
+  /**
+   * Base d'un taux pour un TTC cible, ou null : TTC exact, au plus le net du
+   * taux, et RESTE du taux cohérent (sa TVA = TVA R6 de sa base) ; l'avoir qui
+   * soldera la facture reprendra ainsi exactement la TVA restante, jamais un
+   * centime de plus ou de moins que la TVA facturée.
+   */
+  const baseDe = (v: Ventilation[number], cible: bigint): bigint | null => {
+    if (cible < 0n) return null;
     const t = sansTva ? 0 : v.taux_bp;
     let base = (cible * 10_000n) / BigInt(10_000 + t);
     while (ttcDe(base, t) < cible) base += 1n;
     while (base > 0n && ttcDe(base, t) > cible) base -= 1n;
-    if (ttcDe(base, t) !== cible) {
-      throw new ErreurFacture(`Avoir : ${formaterEuros(cible)} TTC n’est pas atteignable au centime près au taux de ${formaterTaux(t)} (arrondi de la TVA).`);
+    if (ttcDe(base, t) !== cible || base > v.base_ht_cents) return null;
+    const resteBase = v.base_ht_cents - base;
+    const resteTva = v.tva_cents - (ttcDe(base, t) - base);
+    return resteTva >= 0n && resteTva === ttcDe(resteBase, t) - resteBase ? base : null;
+  };
+
+  // Répartition au prorata du net de chaque taux, le dernier prenant le reste ; si un taux ne
+  // tombe pas juste, quelques centimes passent d'un taux à l'autre (même total, toujours exact).
+  const prorata = parts.map((v) => (montantTtcCents * (v.base_ht_cents + v.tva_cents)) / netTtc);
+  const decalages = [0n];
+  for (let k = 1n; k <= 60n; k++) decalages.push(k, -k);
+  const essayer = (d1: bigint, d2: bigint): bigint[] | null => {
+    const cibles = prorata.map((c, i) => c + (i === 0 ? d1 : i === 1 && parts.length > 2 ? d2 : 0n));
+    cibles[cibles.length - 1] = montantTtcCents - cibles.slice(0, -1).reduce((a, c) => a + c, 0n);
+    const bases: bigint[] = [];
+    for (const [i, v] of parts.entries()) {
+      const b = baseDe(v, cibles[i]!);
+      if (b === null) return null;
+      bases.push(b);
     }
-    if (base > v.base_ht_cents) throw new ErreurFacture('Avoir : supérieur au net de la facture pour ce taux.');
-    lignes.push({
-      type: 'ligne', designation: parts.length > 1 ? `${libelle} (TVA ${v.taux_bp / 100} %)`.replace('.', ',') : libelle, description: null,
-      quantiteE4: 10_000n, unite: 'forfait', prixUnitaireCents: base, remiseBp: 0, tauxTvaBp: v.taux_bp, optionnelle: false,
-      avancementBp: null, devisLigneId: null,
-    });
-  });
-  return lignes;
+    return bases;
+  };
+  let bases: bigint[] | null = null;
+  for (const d1 of parts.length > 1 ? decalages : [0n]) {
+    for (const d2 of parts.length > 2 ? decalages.slice(0, 41) : [0n]) {
+      bases = essayer(d1, d2);
+      if (bases) break;
+    }
+    if (bases) break;
+  }
+  if (!bases) {
+    if (parts.length === 1 && ttcDe(parts[0]!.base_ht_cents, sansTva ? 0 : parts[0]!.taux_bp) - parts[0]!.base_ht_cents === 0n && montantTtcCents > parts[0]!.base_ht_cents) {
+      throw new ErreurFacture('Avoir : supérieur au net de la facture pour ce taux.');
+    }
+    throw new ErreurFacture(`Avoir : ${formaterEuros(montantTtcCents)} TTC n’est pas atteignable au centime près (arrondi de la TVA).`);
+  }
+  return parts.map((v, i) => ({
+    type: 'ligne' as const, designation: parts.length > 1 ? `${libelle} (TVA ${v.taux_bp / 100} %)`.replace('.', ',') : libelle, description: null,
+    quantiteE4: 10_000n, unite: 'forfait', prixUnitaireCents: bases![i]!, remiseBp: 0, tauxTvaBp: v.taux_bp, optionnelle: false,
+    avancementBp: null, devisLigneId: null,
+  }));
 }
 
 /**
@@ -374,8 +424,6 @@ export function textesAVerifierFacture(e: CopieEmetteurFacture, c: CopieClient, 
   return t;
 }
 
-export const MENTION_AUTOLIQUIDATION = 'Autoliquidation : TVA due par le preneur (sous-traitance dans le secteur du bâtiment).';
-
 export function mentionPenalites(p: ConditionsPaiement): string | null {
   if (p.taux_penalites_bp === null) return null;
   return `En cas de retard de paiement, des pénalités au taux annuel de ${(p.taux_penalites_bp / 100).toString().replace('.', ',')} % sont exigibles à compter du lendemain de la date d’échéance.`;
@@ -392,3 +440,16 @@ const formaterDateIso = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.s
 /** Date d'échéance = émission + délai (même calcul que la base). */
 export const dateEcheance = (dateEmission: string, delaiJours: number) => ajouterJours(dateEmission, delaiJours);
 
+
+/**
+ * Taux de TVA d'une facture à l'émission : les mêmes règles que le devis
+ * (franchise : tout à 0 % ; soumis à la TVA : pas de 0 % sans mention qui le
+ * justifie, taux présent dans les Paramètres, pas de taux réduit sans
+ * attestation). Avoir : il reprend les taux de la facture corrigée.
+ * Autoliquidation : aucune TVA facturée, la mention justifie l'absence de taux.
+ */
+export function controlesTauxFacture(type: string, regime: Regime, autoliquidation: boolean,
+  lignes: LigneAControler[], actifs: TauxActif[]): Manque[] {
+  if (type === 'avoir' || autoliquidation) return [];
+  return controlerTaux(lignes, regime, actifs);
+}

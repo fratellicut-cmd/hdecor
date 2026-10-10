@@ -93,8 +93,10 @@ export async function CartesPilotage({ chantier }: { chantier: { id: string; dat
           <Ligne libelle="Marge brute" valeur={`${formaterEuros(r.margeBruteCents)}${r.tauxMargeBp === null ? '' : ` (${formaterTaux(r.tauxMargeBp)})`}`} fort />
           {r.devisSignes ? (
             <>
-              <Ligne libelle="Achats du chantier / matière prévue" valeur={`${formaterEuros(r.achatsCents)} / ${formaterEuros(r.matierePrevueCents)} (${ecartEuros(r.ecartMatiereCents)})`} />
-              <Ligne libelle="Temps : réel / prévu" valeur={`${duree(r.minutesReelles)} / ${duree(r.minutesPrevues)} (${ecartDuree(r.ecartMinutes)})`} />
+              <Ligne libelle="Achats du chantier / matière prévue" valeur={r.matierePrevueCents === null || r.ecartMatiereCents === null
+                ? `${formaterEuros(r.achatsCents)} / prévu non calculé` : `${formaterEuros(r.achatsCents)} / ${formaterEuros(r.matierePrevueCents)} (${ecartEuros(r.ecartMatiereCents)})`} />
+              <Ligne libelle="Temps : réel / prévu" valeur={r.minutesPrevues === null || r.ecartMinutes === null
+                ? `${duree(r.minutesReelles)} / prévu non calculé` : `${duree(r.minutesReelles)} / ${duree(r.minutesPrevues)} (${ecartDuree(r.ecartMinutes)})`} />
             </>
           ) : <Ligne libelle="Temps passé" valeur={duree(r.minutesReelles)} />}
           {r.valeurTempsCents !== null ? (
@@ -106,6 +108,8 @@ export async function CartesPilotage({ chantier }: { chantier: { id: string; dat
         </dl>
         <p className="mt-3 text-sm text-encre-douce">
           {r.devisSignes ? 'Prévu : lignes du ou des devis signés (options retenues comprises). ' : 'Aucun devis signé : pas de prévu à comparer. '}
+          {r.devisSignes && (r.matierePrevueCents === null || r.minutesPrevues === null)
+            ? 'Prévu non calculé : au moins une ligne du devis n’a pas de prévision (ligne saisie à la main ou calcul de peinture incomplet). ' : null}
           Achats : tous ceux rattachés à ce chantier dans la comptabilité (déplacements compris), comparés à la seule matière prévue.
           {r.valeurTempsCents === null ? ' Renseignez le taux horaire dans Paramètres pour valoriser le temps.' : ' La valeur du temps est indicative (ce n’est pas une dépense).'}
         </p>

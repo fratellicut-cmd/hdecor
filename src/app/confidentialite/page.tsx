@@ -65,6 +65,9 @@ export default function PageConfidentialite() {
           <li>Photos du chantier : effacées avec votre fiche en cas de demande d’effacement ; l’historique de votre accord de diffusion
             est conservé comme preuve avec la fiche du chantier, et supprimé avec elle. <BadgeAVerifier /></li>
           <li>Notifications internes de l’entreprise (devis ouvert, paiement reçu…) : effacées après 90 jours, et dès l’effacement de votre fiche.</li>
+          <li>Sauvegardes chiffrées de l’application : conservées 12 mois glissants. Si votre fiche est effacée, vos données disparaissent
+            des sauvegardes à leur renouvellement ; en cas de restauration d’une sauvegarde plus ancienne, l’effacement est de nouveau
+            appliqué (procédure de restauration). <BadgeAVerifier /></li>
         </ul>
       </Section>
 

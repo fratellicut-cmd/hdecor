@@ -189,8 +189,11 @@ export async function rentabiliteChantier(chantierId: string, organisationId: st
     factureHtCents: factureHt,
     achatsCents: depenses.reduce((a, d) => a + coutAchat({ htCents: BigInt(d.montant_ht_cents), ttcCents: BigInt(d.montant_ttc_cents) }, param.regime_tva), 0n),
     minutesReelles: temps.reduce((a, t) => a + t.minutes, 0),
-    matierePrevueCents: retenues.reduce((a, l) => a + BigInt(l.cout_matiere_prevu_cents ?? 0), 0n),
-    minutesPrevues: retenues.reduce((a, l) => a + (l.minutes_prevues ?? 0), 0),
+    // Une seule ligne retenue sans prévision rend le prévu inconnu : jamais un total partiel présenté comme complet.
+    matierePrevueCents: retenues.length && retenues.every((l) => l.cout_matiere_prevu_cents !== null)
+      ? retenues.reduce((a, l) => a + BigInt(l.cout_matiere_prevu_cents!), 0n) : null,
+    minutesPrevues: retenues.length && retenues.every((l) => l.minutes_prevues !== null)
+      ? retenues.reduce((a, l) => a + l.minutes_prevues!, 0) : null,
     tauxHoraireCents: param.taux_horaire_cents === null ? null : BigInt(param.taux_horaire_cents),
   };
   return { ...donnees, ...margeChantier(donnees), regime: param.regime_tva, devisSignes: signes.length };

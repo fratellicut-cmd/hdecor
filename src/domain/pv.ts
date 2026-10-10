@@ -50,11 +50,3 @@ export function etatReserves(reserves: Reserve[]): { total: number; levees: numb
       : `${reserves.length - levees} réserve${reserves.length - levees > 1 ? 's' : ''} à lever sur ${reserves.length}`;
   return { total: reserves.length, levees, libelle };
 }
-
-/**
- * Rappel informatif imprimé sur le PV. Références légales À VÉRIFIER : elles
- * sont signalées comme telles sur le document lui-même.
- */
-export const RAPPEL_RECEPTION = 'La réception est l’acte par lequel le maître de l’ouvrage déclare accepter l’ouvrage avec ou sans réserves '
-  + '(article 1792-6 du Code civil). Elle marque le point de départ des garanties légales dues par l’entreprise, '
-  + 'le cas échéant selon la nature des travaux (notamment la garantie de parfait achèvement). [Références À VÉRIFIER]';

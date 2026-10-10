@@ -21,7 +21,7 @@ import { conclureEnvoi, reserverEnvoi } from '@/lib/envois';
 import { expirationLienFacture, nouveauJeton, urlPublique } from '@/lib/liens';
 import { remplirModele, TOTAL_MAX_CENTS, type Regime } from '@/domain/devis';
 import {
-  deductionsDisponibles, ErreurFacture, lignesAcompte, lignesAvoirMontant, lignesAvoirTotal, lignesDepuisDevis, netAPayer, netParTaux,
+  controlerCumulAcompte, cumulAcomptesEmis, deductionsDisponibles, ErreurFacture, lignesAcompte, lignesAvoirMontant, lignesAvoirTotal, lignesDepuisDevis, netAPayer, netParTaux,
   totalLigneFacture, totauxFacture, type Deduction, type LigneFacture, type TypeFacture,
 } from '@/domain/factures';
 import { xmlFacturX } from '@/domain/facturx';
@@ -130,7 +130,7 @@ export async function creerFacture(_: EtatFormulaire, fd: FormData): Promise<Eta
         const cumul = factures.filter((f) => f.type === 'acompte' && f.statut !== 'annulee').reduce((a, f) => a + (f.acomptePctBp ?? 0), 0);
         lignes = lignesAcompte(ventilationDomaine(d.ventilation_acceptee), cumul, n.pourcentage_bp!, d.regime_tva,
           `Acompte de ${formaterTaux(n.pourcentage_bp!)} sur le devis ${libelleDevis}`);
-        entete = { ...base, type: 'acompte', acompte_pct_bp: n.pourcentage_bp! };
+        entete = { ...base, type: 'acompte', acompte_pct_bp: n.pourcentage_bp!, acompte_cumul_avant_bp: cumul };
       } else {
         const options = new Set(sig?.options_acceptees ?? []);
         lignes = lignesDepuisDevis((lignesDevis ?? []).map(ligneDomaine), options, n.type === 'situation' ? n.pourcentage_bp! : null);
@@ -186,7 +186,8 @@ export async function creerAvoir(_: EtatFormulaire, fd: FormData): Promise<EtatF
   let remise = 0;
   let deductions: Deduction[] = [];
   try {
-    if (lu.data.mode === 'total' && avoirsEmis === 0n) {
+    // Tout le dû sans avoir antérieur (choisi « en totalité » ou saisi en montant) : annulation exacte.
+    if ((lu.data.mode === 'total' || BigInt(lu.data.montant_ttc_cents ?? -1) === du) && avoirsEmis === 0n) {
       // Annulation : mêmes lignes, même remise et mêmes déductions -> même net, même TVA nette par taux, au centime.
       lignes = lignesAvoirTotal(c.lignes.map(ligneFactureDomaine));
       remise = o.remise_globale_bp!;
@@ -388,6 +389,14 @@ export async function emettreFacture(_: EtatFormulaire, fd: FormData): Promise<E
     const c = await chargerFacture(id.data, sb);
     if (!c) return { message: 'Facture introuvable.' };
     if (c.facture.statut !== 'brouillon') redirect(`/factures/${id.data}`);
+    if (c.facture.type === 'acompte' && c.facture.devis_id) {
+      const [{ data: calcul, error: eCalcul }, factures] = await Promise.all([
+        sb.from('factures').select('acompte_cumul_avant_bp').eq('id', id.data).single(), facturesDuDevis(sb, c.facture.devis_id),
+      ]);
+      if (eCalcul) return { message: ECHEC };
+      const ecart = controlerCumulAcompte(calcul?.acompte_cumul_avant_bp ?? null, cumulAcomptesEmis(factures, id.data));
+      if (ecart) return { message: `Émission impossible : ${ecart}` };
+    }
     const { data: prev, error: ePrev } = await sb.rpc('numero_facture_previsionnel', { p_facture_id: id.data });
     if (ePrev || !prev) return { message: ECHEC };
     const { numero, date_emission: date, date_echeance: echeance } = prev as { numero: string; date_emission: string; date_echeance: string };

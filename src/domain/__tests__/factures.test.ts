@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { lireMontantEnCentimes } from '../formats';
-import { totauxDevis, type LigneDevis } from '../devis';
+import { totauxDevis, type LigneDevis, type Ventilation } from '../devis';
+import { arrondi } from '../chiffrage';
 import { copieClient, copieEmetteur, type ParametresEmetteur } from '../devis-document';
 import {
+  controlesTauxFacture,
   controlerMentionsFacture, deductionsDisponibles, ErreurFacture, formaterIban, ibanValide, lignesAcompte, lignesAvoirMontant,
   finRetractation, libelleDatesPrestation, lignesAvoirTotal, lignesDepuisDevis, mentionIndemnite, mentionPenalites, netAPayer, netParTaux, totalLigneFacture, totauxFacture,
   textesAVerifierFacture, type CopieEmetteurFacture, type FactureDuDevis, type LigneFacture,
@@ -175,7 +177,60 @@ describe('avoirs', () => {
         expect(totauxFacture(lignesAvoirMontant(net, c, 'assujetti', false, 'A'), 0, 'assujetti').totalTtcCents).toBe(c);
       }
     }
-    expect(refuses).toBeGreaterThan(0);
+    // Les centimes passent d'un taux à l'autre si besoin : sur deux taux, chaque montant de cette plage tombe juste
+    // (le message de repli reste couvert par le cas « reste dû inatteignable »).
+    expect(refuses).toBe(0);
+  });
+  it('avoirs successifs : la TVA créditée par taux égale exactement la TVA facturée (1 000,02 € HT à 20 %, avoir de 10,00 puis tout le reste)', () => {
+    const facture = [{ taux_bp: 2_000, base_ht_cents: 100_002n, tva_cents: 20_000n }];
+    // 10,00 € (8,33 + 1,67) laisserait 991,69 HT + 198,33 de TVA, incohérent d'un centime : refusé, 9,98 € proposé.
+    expect(() => lignesAvoirMontant(facture, 1_000n, 'assujetti', false, 'A')).toThrow(/le plus proche : 9,98\s€/);
+    const a1 = totauxFacture(lignesAvoirMontant(facture, 998n, 'assujetti', false, 'A'), 0, 'assujetti');
+    const reste = netParTaux(facture, [], [a1.ventilation]);
+    const du = reste.reduce((a, v) => a + v.base_ht_cents + v.tva_cents, 0n);
+    const a2 = totauxFacture(lignesAvoirMontant(reste, du, 'assujetti', false, 'A'), 0, 'assujetti');
+    expect(a1.ventilation[0]!.tva_cents + a2.ventilation[0]!.tva_cents).toBe(20_000n);
+    expect(a1.ventilation[0]!.base_ht_cents + a2.ventilation[0]!.base_ht_cents).toBe(100_002n);
+  });
+  it('trois taux, deux avoirs de 174,95 € puis le reste : base et TVA de chaque taux soldées exactement', () => {
+    const facture = [{ taux_bp: 550, base_ht_cents: 3_582n, tva_cents: 197n }, { taux_bp: 1_000, base_ht_cents: 6_874n, tva_cents: 687n },
+      { taux_bp: 2_000, base_ht_cents: 15_755n, tva_cents: 3_151n }];
+    const emis: Ventilation[] = [];
+    let reste = facture;
+    for (const m of [17_495n, null]) {
+      const du = reste.reduce((a, v) => a + v.base_ht_cents + v.tva_cents, 0n);
+      const t = totauxFacture(lignesAvoirMontant(reste, m ?? du, 'assujetti', false, 'A'), 0, 'assujetti');
+      emis.push(t.ventilation);
+      reste = netParTaux(facture, [], emis);
+    }
+    expect(reste).toEqual([]);
+  });
+  it('propriété : un avoir partiel puis « tout le reste » solde toujours chaque taux exactement (1 000 factures à deux taux)', () => {
+    let a = 11;
+    const r = (n: number) => { a = (a * 1103515245 + 12345) % 2147483648; return a % n; };
+    let verifies = 0;
+    for (let i = 0; i < 1_000; i++) {
+      const b1 = BigInt(100 + r(500_000)), b2 = BigInt(100 + r(500_000));
+      const facture = [{ taux_bp: 1_000, base_ht_cents: b1, tva_cents: arrondi(b1 * 1_000n, 10_000n) },
+        { taux_bp: 2_000, base_ht_cents: b2, tva_cents: arrondi(b2 * 2_000n, 10_000n) }];
+      const total = facture.reduce((x, v) => x + v.base_ht_cents + v.tva_cents, 0n);
+      let a1: Ventilation;
+      try { a1 = totauxFacture(lignesAvoirMontant(facture, BigInt(1 + r(Number(total) - 1)), 'assujetti', false, 'A'), 0, 'assujetti').ventilation; } catch (e) {
+        expect((e as Error).message).toMatch(/pas atteignable/);
+        continue;
+      }
+      const reste = netParTaux(facture, [], [a1]);
+      const du = reste.reduce((x, v) => x + v.base_ht_cents + v.tva_cents, 0n);
+      const a2 = totauxFacture(lignesAvoirMontant(reste, du, 'assujetti', false, 'A'), 0, 'assujetti').ventilation;
+      expect(netParTaux(facture, [], [a1, a2])).toEqual([]);
+      verifies++;
+    }
+    expect(verifies).toBeGreaterThan(900);
+  });
+  it('net hérité d’une déduction (TVA ≠ arrondi de la base : 150,39 HT + 15,03 à 10 %) : avoir partiel refusé avec une issue', () => {
+    // L'issue (avoir sur la totalité) passe par l'annulation exacte (lignesAvoirTotal, mêmes lignes et déductions), pas par un montant.
+    const net = [{ taux_bp: 1_000, base_ht_cents: 15_039n, tva_cents: 1_503n }];
+    expect(() => lignesAvoirMontant(net, 5_000n, 'assujetti', false, 'A')).toThrow(/avoir sur la totalité, puis une nouvelle facture/);
   });
   it('propriété : tout montant atteignable reste exact sur deux taux (2 000 cas)', () => {
     let a = 3;
@@ -349,5 +404,28 @@ describe('Factur-X (XML CII, préparé)', () => {
       totalTtcCents: ta.totalTtcCents, deductions: [], netAPayerCents: ta.totalTtcCents, factureOrigine: null,
     });
     expect(x).toMatch(/<ram:TypeCode>VAT<\/ram:TypeCode><ram:ExemptionReason>Autoliquidation<\/ram:ExemptionReason><ram:BasisAmount>1000.00<\/ram:BasisAmount><ram:CategoryCode>AE<\/ram:CategoryCode><ram:ExemptionReasonCode>VATEX-EU-AE<\/ram:ExemptionReasonCode><ram:RateApplicablePercent>/);
+  });
+});
+
+describe('Taux de TVA à l’émission d’une facture (mêmes règles que le devis)', () => {
+  const actifs = [{ taux_bp: 0, attestation_requise: false }, { taux_bp: 1000, attestation_requise: true }, { taux_bp: 2000, attestation_requise: false }];
+  const cles = (m: { cle: string; bloquant: boolean }[]) => m.filter((x) => x.bloquant).map((x) => x.cle);
+  it('assujetti : une ligne à 0 % sans mention est bloquante (facture libre)', () => {
+    expect(cles(controlesTauxFacture('libre', 'assujetti', false, [{ designation: 'Peinture', tauxTvaBp: 0 }], actifs))).toEqual(['taux_zero']);
+  });
+  it('assujetti : taux réduit avec attestation requise bloquant, taux absent des Paramètres bloquant', () => {
+    expect(cles(controlesTauxFacture('finale', 'assujetti', false, [{ designation: 'A', tauxTvaBp: 1000 }], actifs))).toEqual(['attestation_tva']);
+    expect(cles(controlesTauxFacture('libre', 'assujetti', false, [{ designation: 'A', tauxTvaBp: 850 }], actifs))).toEqual(['taux_inactif']);
+  });
+  it('assujetti à 20 % : rien à signaler', () => {
+    expect(controlesTauxFacture('acompte', 'assujetti', false, [{ designation: 'A', tauxTvaBp: 2000 }], actifs)).toEqual([]);
+  });
+  it('franchise : un taux non nul est bloquant, 0 % accepté', () => {
+    expect(cles(controlesTauxFacture('libre', 'franchise', false, [{ designation: 'A', tauxTvaBp: 2000 }], actifs))).toEqual(['taux_franchise']);
+    expect(controlesTauxFacture('libre', 'franchise', false, [{ designation: 'A', tauxTvaBp: 0 }], actifs)).toEqual([]);
+  });
+  it('avoir et autoliquidation : pas de contrôle de taux', () => {
+    expect(controlesTauxFacture('avoir', 'assujetti', false, [{ designation: 'A', tauxTvaBp: 0 }], actifs)).toEqual([]);
+    expect(controlesTauxFacture('libre', 'assujetti', true, [{ designation: 'A', tauxTvaBp: 0 }], actifs)).toEqual([]);
   });
 });

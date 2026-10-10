@@ -1,7 +1,6 @@
 # H'DECOR : cadrage (Phase 0)
 
-> Statut : **en attente de ta validation**. Aucune ligne d'application n'est écrite.
-> Seuls le schéma SQL et ses tests existent, parce qu'un schéma « avec RLS » qui n'a jamais tourné ne prouve rien.
+> Statut : **validé** (Phase 0), puis appliqué des Phases 1 à 8. Document d'origine, conservé tel quel ; les écarts décidés depuis sont dans `docs/SUIVI.md`.
 
 ---
 
@@ -41,9 +40,10 @@ Next.js 16.4 sur Vercel (App Router, rendu serveur)
   ├─ app/(app)/… ......... pages protégées : la session est vérifiée dans la couche d'accès aux données (DAL)
   ├─ Server Actions ...... toute écriture : zod → DAL → Supabase avec le jeton de Yorick (la RLS s'applique)
   ├─ src/domain/ ......... TOUS les calculs (surfaces, peinture, pots, TVA, totaux, acomptes) : fonctions pures testées
-  ├─ src/server/pdf/ ..... PDF @react-pdf/renderer (charte H'DECOR), empreinte SHA-256
-  ├─ src/server/email/ ... Resend (PDF joint + lien sécurisé)
-  └─ src/server/admin.ts . clé de service : liens publics, cron de relances (seul fichier autorisé)
+  ├─ src/lib/pdf/ ........ PDF générés avec pdf-lib (charte H'DECOR), empreinte SHA-256
+  ├─ src/lib/email.ts .... Resend, appelé par son API (fetch) : PDF joint + lien sécurisé
+  └─ src/lib/supabase/admin.ts . clé de service : liens publics, fichiers, tâches planifiées
+                            (fichiers autorisés listés dans eslint.config.mjs)
         │
         ▼
 Supabase (UE)
@@ -56,6 +56,8 @@ Supabase (UE)
 ### Versions vérifiées le 08/10/2026 sur le registre npm
 `next` 16.4.0, `@supabase/supabase-js` 2.117.3, `@supabase/ssr` 0.12.7, `@react-pdf/renderer` 4.9.0, `zod` 4.6.5, `tailwindcss` 4.3.3, `vitest` 5.0.3, `@playwright/test` 1.64.0, `resend` 6.32.1.
 
+> **Écart de réalisation (constaté en Phase 8)** : les PDF sont produits avec `pdf-lib` 1.17.1 (et non `@react-pdf/renderer`), Resend est appelé par son API HTTP (sans le paquet `resend`), et le code serveur est rangé dans `src/lib/` (et non `src/server/`). Les versions réellement utilisées sont celles de `package.json`.
+
 Ce qui change dans Next 16 (lu dans la documentation fournie avec le paquet) :
 - le fichier `middleware.ts` est **déprécié** et devient `proxy.ts` ;
 - la documentation recommande une **couche d'accès aux données (DAL)**. Le proxy ne sert qu'à des vérifications optimistes, jamais à l'autorisation.
@@ -65,7 +67,7 @@ Le mode `cacheComponents` reste **désactivé** : toutes les données de l'appli
 ### Règles d'architecture
 1. **Un calcul n'existe qu'à un seul endroit : `src/domain/`.** L'interface, le PDF et le serveur appellent les mêmes fonctions. La base ne recalcule pas : elle **contrôle** à l'émission (somme des lignes, ventilation, arrondi de la TVA par taux, net à payer). C'est un garde-fou, pas une seconde implémentation.
 2. **Toute écriture passe par une Server Action** : validation zod, puis vérification de session dans la DAL, puis requête avec le jeton de l'utilisateur. Aucune écriture ne court-circuite la RLS.
-3. **La clé de service n'apparaît que dans `src/server/admin.ts`** (`import 'server-only'`). Une règle ESLint interdit de l'importer ailleurs. Elle n'appelle que les fonctions par jeton et le cron.
+3. **La clé de service n'est utilisée que par les fichiers autorisés** (`src/lib/supabase/admin.ts` et la liste de `eslint.config.mjs` : stockage des fichiers, liens publics, tâches planifiées, webhook Stripe), tous `import 'server-only'`. Une règle ESLint interdit de l'importer ailleurs.
 4. **Documents émis :**
    - le PDF est généré **avant** l'émission ;
    - son empreinte est figée en base ;

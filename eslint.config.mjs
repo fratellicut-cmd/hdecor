@@ -7,6 +7,7 @@ const ADMIN_AUTORISE = [
   'src/lib/supabase/admin.ts',
   'src/lib/stockage-admin.ts',
   'src/lib/stockage.ts',
+  'src/lib/logo.ts',
   'src/lib/devis-public.ts',
   'src/lib/facture-publique.ts',
   'src/app/api/cron/**',

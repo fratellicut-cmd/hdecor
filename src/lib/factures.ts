@@ -1,4 +1,6 @@
 import 'server-only';
+import { logoOuErreur } from '@/lib/logo';
+import type { Logo } from '@/lib/pdf/commun';
 import { verifierSession } from '@/lib/dal';
 import { envPublique } from '@/lib/env';
 import { clientServeur } from '@/lib/supabase/serveur';
@@ -8,7 +10,7 @@ import { copieChantier, copieClient, copieEmetteur, type CopieChantier, type Cop
 import { aujourdHuiParis } from '@/domain/dates';
 import { ajouterJours } from '@/domain/devis-document';
 import {
-  controlerMentionsFacture, ErreurFacture, finRetractation, netAPayer, textesAVerifierFacture, totauxFacture,
+  controlerMentionsFacture, controlesTauxFacture, ErreurFacture, finRetractation, netAPayer, textesAVerifierFacture, totauxFacture,
   type CopieEmetteurFacture, type Deduction, type LigneFacture, type TypeFacture,
 } from '@/domain/factures';
 import type { DonneesPdfFacture } from '@/lib/pdf/facture';
@@ -121,6 +123,7 @@ export type PreparationFacture = {
   textesAVerifier: string[];
   /** Dernier jour du délai de rétractation si la facture est émise pendant ce délai (aucun paiement demandé avant le lendemain). */
   retractationJusquau: string | null;
+  logo: Logo | null;
 };
 
 /** Fin du délai de rétractation du devis de la facture (signé hors établissement par un particulier), sinon null. */
@@ -131,10 +134,12 @@ export function finRetractationFacture(c: Pick<FactureComplete, 'devis'>, typeCl
 
 /** Copies figées (à la date d'émission) et contrôle des mentions : rien n'est inventé pour combler un manque. */
 export async function preparerEmissionFacture(sb: Client, c: FactureComplete, dateIso: string): Promise<PreparationFacture> {
-  const [{ data: p, error }, { data: assurances }] = await Promise.all([
+  const [{ data: p, error }, { data: assurances }, { data: taux, error: eTaux }] = await Promise.all([
     sb.from('parametres_entreprise').select('*').eq('organisation_id', c.facture.organisation_id).single(),
     sb.from('assurances').select('type, assureur, numero_contrat, debut, fin, zone_couverte'),
+    sb.from('taux_tva').select('taux_bp, attestation_requise').eq('actif', true),
   ]);
+  if (eTaux) throw new ErreurPreparationFacture('Taux de TVA illisibles : réessayez.');
   if (error || !p) throw new ErreurPreparationFacture('Paramètres de l’entreprise illisibles : réessayez.');
   if (!c.client || c.client.anonymise_le) throw new ErreurPreparationFacture('Client introuvable ou anonymisé.');
   const emetteur: CopieEmetteurFacture = {
@@ -154,13 +159,23 @@ export async function preparerEmissionFacture(sb: Client, c: FactureComplete, da
     date_emission: dateIso, date_echeance: ajouterJours(dateIso, f.delai_paiement_jours!), fin_retractation: fin,
   };
   return {
-    emetteur, client, chantier, manques: controlerMentionsFacture(emetteur, client, chantier, aControler),
-    textesAVerifier: textesAVerifierFacture(emetteur, client, aControler), retractationJusquau: fin && dateIso <= fin ? fin : null,
+    emetteur, client, chantier,
+    manques: [
+      ...controlerMentionsFacture(emetteur, client, chantier, aControler),
+      // Mêmes règles de taux que le devis (0 % non justifié, taux absent, taux réduit sans attestation) ;
+      // un avoir reprend les taux de la facture corrigée ; en autoliquidation, aucune TVA n'est facturée.
+      ...controlesTauxFacture(f.type, f.regime_tva, f.autoliquidation!, c.lignes.filter((l) => l.type === 'ligne')
+        .map((l) => ({ designation: l.designation, tauxTvaBp: l.taux_tva_bp })), taux ?? []),
+    ],
+    // Mention d'autoliquidation (texte des Paramètres) : plus rappelée une fois la validation des textes datée, comme sur le devis.
+    textesAVerifier: textesAVerifierFacture(emetteur, client, aControler)
+      .filter((t) => !(p.textes_legaux_valides_le && t.startsWith('Mention d’autoliquidation'))), retractationJusquau: fin && dateIso <= fin ? fin : null,
+    logo: await logoOuErreur(p.organisation_id, p.logo_chemin, (m) => new ErreurPreparationFacture(m)),
   };
 }
 
 /** Données du PDF (aperçu ou émission) depuis la facture et les copies. */
-export function donneesPdfFacture(c: FactureComplete, prep: Pick<PreparationFacture, 'emetteur' | 'client' | 'chantier' | 'retractationJusquau'>,
+export function donneesPdfFacture(c: FactureComplete, prep: Pick<PreparationFacture, 'emetteur' | 'client' | 'chantier' | 'retractationJusquau' | 'logo'>,
   o: { numero: string | null; dateEmission: string; dateEcheance: string; brouillon: boolean }): DonneesPdfFacture {
   const f = c.facture;
   return {
@@ -174,6 +189,7 @@ export function donneesPdfFacture(c: FactureComplete, prep: Pick<PreparationFact
     lignes: c.lignes.map(ligneFactureDomaine), deductions: deductionsDomaine(f.deductions), ventilationsDeduites: c.ventilationsDeduites, notesClient: f.notes_client,
     paiementApresLe: prep.retractationJusquau ? ajouterJours(prep.retractationJusquau, 1) : null,
     urlConfidentialite: `${envPublique.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '')}/confidentialite`,
+    logo: prep.logo,
   };
 }
 

@@ -1,4 +1,5 @@
 import 'server-only';
+import { logoOuErreur } from '@/lib/logo';
 import { verifierSession } from '@/lib/dal';
 import { envPublique } from '@/lib/env';
 import { clientServeur } from '@/lib/supabase/serveur';
@@ -138,16 +139,19 @@ export async function preparerEmission(sb: Client, c: DevisComplet, dateIso: str
   const acompteSignature = c.echeances.length
     ? c.echeances.filter((e) => e.declencheur === 'signature').reduce((a, e) => a + e.pourcentage_bp, 0) : c.devis.acompte_pct_bp!;
   manques.push(...signauxRetractation({ retractation, dateEmission: dateIso, dateDebutTravaux: c.devis.date_debut_travaux, acompteSignatureBp: acompteSignature }));
-  const textes: string[] = [TEXTES_A_VERIFIER.devis_recu];
-  if (emetteur.mediateur.nom) textes.push(TEXTES_A_VERIFIER.mediateur);
-  if (retractation) textes.push(TEXTES_A_VERIFIER.retractation, TEXTES_A_VERIFIER.execution_anticipee);
+  // Textes légaux (Paramètres) : à confirmer à l'émission tant que le comptable ne les a pas validés.
+  const textes: string[] = [];
+  if (!p.textes_legaux_valides_le) {
+    textes.push(TEXTES_A_VERIFIER.devis_recu);
+    if (emetteur.mediateur.nom) textes.push(TEXTES_A_VERIFIER.mediateur);
+    if (retractation) textes.push(TEXTES_A_VERIFIER.retractation, TEXTES_A_VERIFIER.execution_anticipee);
+  }
   if (emetteur.regime_tva === 'franchise' && p.mention_franchise_a_verifier) textes.push('Mention de franchise de TVA');
   return {
     emetteur, client, chantier, manques,
     aCompleter: c.lignes.filter(aCompleter).map((l) => l.designation),
     textesAVerifier: textes,
-    // Logo : dépôt prévu dans les Paramètres (fichier officiel à fournir), pas encore disponible.
-    logo: null,
+    logo: await logoOuErreur(p.organisation_id, p.logo_chemin, (m) => new ErreurPreparation(m)),
   };
 }
 
@@ -187,9 +191,10 @@ export function posteAReprendre(c: { poste: PosteCalc; resultat: ResultatPoste }
     designation: p.libelle,
     description,
     surfaceMm2: r.surfaceMm2,
-    coutMatiereCents: r.coutMatiereCents,
+    // Prévu (pilotage) : seulement si son calcul est complet ; un prévu partiel n'est jamais présenté comme sûr.
+    coutMatiereCents: r.incomplet.matiere || r.incomplet.quantite ? null : r.coutMatiereCents,
     coutMainOeuvreCents: r.coutMainOeuvreCents,
-    minutes: r.temps?.minutes ?? null,
+    minutes: r.incomplet.temps || !r.temps ? null : r.temps.minutes,
     incomplet: r.incomplet.quantite || r.incomplet.temps || r.incomplet.matiere,
     // Raison d'un prix non calculé : montrée sur la ligne « à compléter ».
     origine: { poste_id: p.id, chantier_id: chantierId, ...(r.manques[0] ? { manque: r.manques[0] } : 'manque' in p.surface ? { manque: p.surface.manque } : {}) },
