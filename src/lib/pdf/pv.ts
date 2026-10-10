@@ -1,9 +1,10 @@
 import 'server-only';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
-import { A4, ALERTE, GRIS, MARGE, aDroite, ecrire, nouvellePage, place, texteSur, trait, type Contexte } from './commun';
+import { A4, ALERTE, GRIS, MARGE, aDroite, dessinerLogo, ecrire, nouvellePage, place, texteSur, trait, type Contexte, type Logo } from './commun';
 import { identiteEmetteur, lignesAdresse, type CopieChantier, type CopieClient, type CopieEmetteur } from '@/domain/devis-document';
-import { RAPPEL_RECEPTION, dateLimiteLevee, texteDecision, type Reserve } from '@/domain/pv';
+import { dateLimiteLevee, texteDecision, type Reserve } from '@/domain/pv';
 import { formaterDate, formaterDateHeure } from '@/domain/formats';
+import { texteLegal } from '@/domain/textes-legaux';
 
 export type DonneesPv = {
   emetteur: CopieEmetteur;
@@ -15,6 +16,7 @@ export type DonneesPv = {
   reserves: Reserve[];
   delaiLeveeJours: number | null;
   observations: string | null;
+  logo?: Logo | null;
 };
 
 export type SignaturesPv = {
@@ -36,7 +38,10 @@ export async function pdfPv(d: DonneesPv): Promise<Uint8Array> {
   const c: Contexte = { doc, page: doc.addPage([A4.l, A4.h]), y: A4.h - MARGE, normal: await doc.embedFont(StandardFonts.Helvetica),
     gras: await doc.embedFont(StandardFonts.HelveticaBold), italique: await doc.embedFont(StandardFonts.HelveticaOblique), basPage: MARGE + 14 };
 
-  identiteEmetteur(d.emetteur).forEach((l, i) => ecrire(c, l, { taille: i === 0 ? 12 : 9, gras: i === 0 }));
+  const hautEntete = c.y;
+  const xTexte = await dessinerLogo(c, d.logo);
+  identiteEmetteur(d.emetteur).forEach((l, i) => ecrire(c, l, { x: xTexte, taille: i === 0 ? 12 : 9, gras: i === 0 }));
+  c.y = Math.min(c.y, hautEntete - (xTexte > MARGE ? 70 : 0));
   c.y -= 10;
   ecrire(c, 'PROCÈS-VERBAL DE RÉCEPTION DES TRAVAUX', { taille: 15, gras: true });
   c.y -= 6;
@@ -74,7 +79,7 @@ export async function pdfPv(d: DonneesPv): Promise<Uint8Array> {
     ecrire(c, d.observations);
   }
   c.y -= 8;
-  ecrire(c, RAPPEL_RECEPTION, { taille: 8.5, couleur: ALERTE });
+  ecrire(c, texteLegal('rappel_reception', d.emetteur.textes), { taille: 8.5, couleur: ALERTE });
   c.y -= 10;
 
   // Cadres de signature (vides) : les tracés sont apposés sur une page ajoutée à CE document (pdfPvSigne).

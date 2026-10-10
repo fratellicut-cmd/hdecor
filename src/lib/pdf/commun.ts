@@ -78,3 +78,23 @@ export function place(c: Contexte, hauteur: number): boolean {
   if (c.y - hauteur < c.basPage) { nouvellePage(c); return true; }
   return false;
 }
+
+/** Logo de l'entreprise (PNG ou JPEG, contrôlé au dépôt). */
+export type Logo = { octets: Uint8Array; type: 'png' | 'jpg' };
+
+/**
+ * Logo en haut à gauche, 70 pt au plus ; renvoie l'abscisse du texte qui suit.
+ * Un logo illisible n'empêche jamais un document : il est ignoré (signalé).
+ */
+export async function dessinerLogo(c: Contexte, logo: Logo | null | undefined): Promise<number> {
+  if (!logo) return MARGE;
+  try {
+    const image = logo.type === 'png' ? await c.doc.embedPng(logo.octets) : await c.doc.embedJpg(logo.octets);
+    const echelle = Math.min(70 / image.width, 70 / image.height);
+    c.page.drawImage(image, { x: MARGE, y: c.y - image.height * echelle, width: image.width * echelle, height: image.height * echelle });
+    return MARGE + image.width * echelle + 10;
+  } catch (e) {
+    console.error('Logo illisible, document produit sans logo', e instanceof Error ? e.message : e);
+    return MARGE;
+  }
+}

@@ -1,3 +1,4 @@
+import { chargerLogo } from '@/lib/logo';
 import 'server-only';
 import { verifierSession } from '@/lib/dal';
 import { envPublique } from '@/lib/env';
@@ -138,16 +139,19 @@ export async function preparerEmission(sb: Client, c: DevisComplet, dateIso: str
   const acompteSignature = c.echeances.length
     ? c.echeances.filter((e) => e.declencheur === 'signature').reduce((a, e) => a + e.pourcentage_bp, 0) : c.devis.acompte_pct_bp!;
   manques.push(...signauxRetractation({ retractation, dateEmission: dateIso, dateDebutTravaux: c.devis.date_debut_travaux, acompteSignatureBp: acompteSignature }));
-  const textes: string[] = [TEXTES_A_VERIFIER.devis_recu];
-  if (emetteur.mediateur.nom) textes.push(TEXTES_A_VERIFIER.mediateur);
-  if (retractation) textes.push(TEXTES_A_VERIFIER.retractation, TEXTES_A_VERIFIER.execution_anticipee);
+  // Textes légaux (Paramètres) : à confirmer à l'émission tant que le comptable ne les a pas validés.
+  const textes: string[] = [];
+  if (!p.textes_legaux_valides_le) {
+    textes.push(TEXTES_A_VERIFIER.devis_recu);
+    if (emetteur.mediateur.nom) textes.push(TEXTES_A_VERIFIER.mediateur);
+    if (retractation) textes.push(TEXTES_A_VERIFIER.retractation, TEXTES_A_VERIFIER.execution_anticipee);
+  }
   if (emetteur.regime_tva === 'franchise' && p.mention_franchise_a_verifier) textes.push('Mention de franchise de TVA');
   return {
     emetteur, client, chantier, manques,
     aCompleter: c.lignes.filter(aCompleter).map((l) => l.designation),
     textesAVerifier: textes,
-    // Logo : dépôt prévu dans les Paramètres (fichier officiel à fournir), pas encore disponible.
-    logo: null,
+    logo: await chargerLogo(p.organisation_id, p.logo_chemin),
   };
 }
 

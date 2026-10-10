@@ -1,6 +1,7 @@
 import 'server-only';
 import { clientServeur } from '@/lib/supabase/serveur';
 import { lire } from '@/lib/stockage';
+import { chargerLogo } from '@/lib/logo';
 import { copieChantier, copieClient, copieEmetteur } from '@/domain/devis-document';
 import type { Reserve } from '@/domain/pv';
 import type { DonneesPv } from '@/lib/pdf/pv';
@@ -51,6 +52,7 @@ export async function donneesPdfPv(sb: Sb, c: PvCharge): Promise<DonneesPv | { e
     reserves: c.pv.reserves.map((r) => ({ description: r.description })),
     delaiLeveeJours: c.pv.delai_levee_jours,
     observations: c.pv.observations,
+    logo: await chargerLogo(c.pv.organisation_id, p.logo_chemin),
   };
 }
 

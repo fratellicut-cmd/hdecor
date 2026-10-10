@@ -3,13 +3,14 @@ import QRCode from 'qrcode';
 import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import type { Regime, Ventilation } from '@/domain/devis';
 import {
-  ErreurFacture, formaterIban, libelleDatesPrestation, netParTaux, LIBELLES_TYPE_FACTURE, MENTION_AUTOLIQUIDATION, mentionIndemnite, mentionPenalites, totalLigneFacture, totauxFacture,
+  ErreurFacture, formaterIban, libelleDatesPrestation, netParTaux, LIBELLES_TYPE_FACTURE, mentionIndemnite, mentionPenalites, totalLigneFacture, totauxFacture,
   type CopieEmetteurFacture, type Deduction, type LigneFacture, type TypeFacture,
 } from '@/domain/factures';
+import { texteLegal } from '@/domain/textes-legaux';
 import { formaterQuantiteE4, identiteEmetteur, lignesAdresse, nomAvecForme, texteAssurance, UNITES, type CopieChantier, type CopieClient } from '@/domain/devis-document';
 import { payloadVirementSepa } from '@/domain/virement';
 import { formaterDate, formaterEuros, formaterTaux } from '@/domain/formats';
-import { A4, aDroite, ALERTE, ANTHRACITE, couper, DORE, ecrire, GRIS, GRIS_CLAIR, MARGE, nouvellePage, place, texteSur, type Contexte } from './commun';
+import { A4, aDroite, ALERTE, ANTHRACITE, couper, DORE, dessinerLogo, ecrire, GRIS, GRIS_CLAIR, MARGE, nouvellePage, place, texteSur, type Contexte, type Logo } from './commun';
 
 export type DonneesPdfFacture = {
   /** Null : aperçu d'un brouillon. */
@@ -39,6 +40,7 @@ export type DonneesPdfFacture = {
   urlConfidentialite?: string | null;
   /** Contrat hors établissement émis pendant le délai de rétractation : premier jour où un paiement peut être demandé (pas de QR). */
   paiementApresLe?: string | null;
+  logo?: Logo | null;
 };
 
 export function titreFacture(type: TypeFacture, numero: string | null): string {
@@ -87,7 +89,8 @@ export async function pdfFacture(d: DonneesPdfFacture): Promise<Uint8Array> {
 
   // ---- En-tête : émetteur à gauche, client à droite
   const hautEntete = c.y;
-  identiteEmetteur(d.emetteur).forEach((l, i) => ecrire(c, l, { largeur: 250, taille: i === 0 ? 12 : 9, gras: i === 0 }));
+  const xTexte = await dessinerLogo(c, d.logo);
+  identiteEmetteur(d.emetteur).forEach((l, i) => ecrire(c, l, { x: xTexte, largeur: 250 - (xTexte - MARGE), taille: i === 0 ? 12 : 9, gras: i === 0 }));
   const basEmetteur = c.y;
   c.y = hautEntete - 70;
   const xClient = MARGE + 290;
@@ -216,7 +219,7 @@ export async function pdfFacture(d: DonneesPdfFacture): Promise<Uint8Array> {
     if (detail) { c.page.drawText(texteSur(c.normal, detail), { x: xLib + 8, y: c.y - 6, size: 8, font: c.normal, color: GRIS }); c.y -= 11; }
   }
   if (sansTva && d.emetteur.mention_franchise) ecrire(c, d.emetteur.mention_franchise, { gras: true, taille: 9.5, x: xLib });
-  if (d.autoliquidation) ecrire(c, MENTION_AUTOLIQUIDATION, { gras: true, taille: 9.5, x: xLib, largeur: 300 });
+  if (d.autoliquidation) ecrire(c, texteLegal('autoliquidation', d.emetteur.textes), { gras: true, taille: 9.5, x: xLib, largeur: 300 });
   c.y -= 8;
   if (d.notesClient) { ecrire(c, d.notesClient, { taille: 9.5 }); c.y -= 4; }
 

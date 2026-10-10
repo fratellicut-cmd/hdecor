@@ -154,3 +154,22 @@ Limites connues :
 - **Photos** : JPEG uniquement côté serveur (le téléphone convertit) ; une photo HEIC que le navigateur ne sait pas lire est refusée avec un message. Export limité à 200 photos (archive) et 40 (galerie). L'orientation EXIF est respectée par la réduction dans le navigateur ; un JPEG déposé tel quel (document) garde son orientation d'origine.
 - **Unicité de la demande d'avis par chantier** : contrôlée par l'application (la base garantit une seule demande par facture).
 - **Confort reporté (testeur-chantier)** : bouton « Partager » vers la feuille de partage du téléphone et montage « avant | après » au format 4:5 pour les réseaux sociaux ; étoile « Galerie » en un appui sur la vignette ; message de demande d'avis modifiable avant partage et formule « Madame / Monsieur » ; liste de fin hors ligne (appui gardé en attente).
+
+Clôture de la Phase 7 (fusionnée dans main le 10/10/2026, commit de fusion 49277a7, dernier commit de la branche 2666f7f) :
+
+| Agent | Verdict | Boucle | Commit audité |
+|---|---|---|---|
+| auditeur-legal | APPROUVÉ | 2 | b389a4e (remarques non bloquantes traitées dans b0d758b) |
+| relecteur-code | APPROUVÉ | 2 | b389a4e |
+| testeur-chantier | APPROUVÉ | 2 | b389a4e (retours de confort traités dans 2666f7f) |
+| securite-rgpd | APPROUVÉ | 3 | 2666f7f |
+
+Mesures sur 2666f7f : Vitest 730/730, SQL 409/409 (shim et gotrue), e2e 74/74, typecheck, lint et build sans erreur ni avertissement.
+
+## Phase 8 (recette finale) : décisions de Yorick (10/10/2026)
+
+- **Logo** : dépôt dans Réglages, imprimé sur devis, factures et PV.
+- **Textes légaux** : modifiables dans Réglages, texte actuel par défaut, marqués « À VÉRIFIER » jusqu'à la validation du comptable.
+- **Annotation des photos et mode sombre** : reportés (hors recette).
+- **Attestation de TVA à taux réduit** : reportée ; les taux réduits restent bloqués, avec un message, tant qu'elle n'existe pas.
+- **Démonstration** : base locale séparée (`hdecor_demo`) seulement.

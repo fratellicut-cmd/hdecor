@@ -10,6 +10,8 @@ import {
 } from '@/lib/validation/parametres';
 import { CODES_MESSAGES, controlerDelaisRelances, schemaModeleMessage } from '@/lib/validation/messages';
 import { aujourdHuiParis } from '@/domain/dates';
+import { lireTextesStockes } from '@/domain/devis-document';
+import { CODES_TEXTES, lireTexte, type TextesLegaux } from '@/domain/textes-legaux';
 import type { MiseAJour } from '@/lib/supabase/types';
 
 const ECHEC = 'L’enregistrement a échoué. Vérifiez la connexion et réessayez.';
@@ -153,4 +155,36 @@ export async function enregistrerModeleMessage(_: EtatFormulaire, formData: Form
   if (error || !data?.length) return { message: ECHEC, valeurs: valeursTexte(formData) };
   revalidatePath('/parametres/messages');
   return { succes: OK };
+}
+
+/**
+ * Textes légaux des documents. Un texte vide ou identique au texte par défaut
+ * n'est pas enregistré. Un texte modifié après la validation du comptable
+ * remet la validation à faire (sauf nouvelle date saisie dans le même envoi).
+ */
+export async function enregistrerTextes(_: EtatFormulaire, formData: FormData): Promise<EtatFormulaire> {
+  const session = await verifierSession();
+  const erreurs: Record<string, string> = {};
+  const textes: TextesLegaux = {};
+  for (const code of CODES_TEXTES) {
+    const lu = lireTexte(code, String(formData.get(code) ?? ''));
+    if ('erreur' in lu) erreurs[code] = lu.erreur;
+    else if (lu.texte) textes[code] = lu.texte;
+  }
+  const saisieDate = String(formData.get('textes_legaux_valides_le') ?? '').trim();
+  const date = saisieDate === '' ? null : z.iso.date().safeParse(saisieDate);
+  if (date && (!date.success || date.data > aujourdHuiParis())) erreurs.textes_legaux_valides_le = 'Date invalide (au plus tard aujourd’hui).';
+  if (Object.keys(erreurs).length) return { erreurs, valeurs: valeursTexte(formData) };
+  const supabase = await clientServeur();
+  const { data: actuel, error: lecture } = await supabase.from('parametres_entreprise')
+    .select('textes_legaux, textes_legaux_valides_le').eq('organisation_id', session.organisationId).single();
+  if (lecture || !actuel) return { message: ECHEC, valeurs: valeursTexte(formData) };
+  const valideLe = date?.success ? date.data : null;
+  const modifies = JSON.stringify(lireTextesStockes(actuel.textes_legaux)) !== JSON.stringify(lireTextesStockes(textes));
+  const aRefaire = modifies && valideLe !== null && valideLe === actuel.textes_legaux_valides_le;
+  if (await mettreAJour(session.organisationId, { textes_legaux: textes, textes_legaux_valides_le: aRefaire ? null : valideLe })) {
+    return { message: ECHEC, valeurs: valeursTexte(formData) };
+  }
+  revalidatePath('/parametres', 'layout');
+  return { succes: aRefaire ? 'Enregistré. Textes modifiés : la validation du comptable est à refaire.' : OK };
 }

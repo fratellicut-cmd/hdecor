@@ -114,6 +114,24 @@ export function deductionsDisponibles(factures: FactureDuDevis[], sauf?: string)
 // Lignes depuis le devis accepté
 // --------------------------------------------------------------------------
 
+/** Cumul des acomptes ÉMIS d'un devis (hors la facture en cours d'émission), en points de base. */
+export const cumulAcomptesEmis = (factures: { id: string; type: TypeFacture; statut: string; acomptePctBp: number | null }[], sauf: string) =>
+  factures.filter((f) => f.type === 'acompte' && f.statut === 'emise' && f.id !== sauf).reduce((a, f) => a + (f.acomptePctBp ?? 0), 0);
+
+/**
+ * Acompte à émettre : son montant a été calculé sur un cumul d'acomptes
+ * précédents (base en cumulé). Ce cumul doit être celui des acomptes émis ;
+ * sinon le montant s'écarterait de l'échéancier : message, sinon null.
+ */
+export function controlerCumulAcompte(cumulCalculBp: number | null, cumulEmisBp: number): string | null {
+  if (cumulCalculBp === null || cumulCalculBp === cumulEmisBp) return null;
+  return cumulEmisBp < cumulCalculBp
+    ? `Ce brouillon d’acompte a été calculé après d’autres acomptes (${formaterTaux(cumulCalculBp)}) dont seuls ${formaterTaux(cumulEmisBp)} sont émis. `
+      + 'Émettez d’abord l’acompte précédent, ou, s’il a été supprimé, supprimez ce brouillon et recréez-le : son montant sera exact.'
+    : `Des acomptes ont été émis depuis la création de ce brouillon (${formaterTaux(cumulEmisBp)} au lieu de ${formaterTaux(cumulCalculBp)}) : `
+      + 'supprimez ce brouillon et recréez-le pour un montant exact.';
+}
+
 /**
  * Facture d'acompte d'une échéance (ou de l'acompte du devis) : une ligne par
  * taux, base de l'échéance (en cumulé, voir ventilationEcheance), quantité 1,
@@ -373,8 +391,6 @@ export function textesAVerifierFacture(e: CopieEmetteurFacture, c: CopieClient, 
   if (f.regime_tva === 'franchise') t.push('Mention de franchise de TVA');
   return t;
 }
-
-export const MENTION_AUTOLIQUIDATION = 'Autoliquidation : TVA due par le preneur (sous-traitance dans le secteur du bâtiment).';
 
 export function mentionPenalites(p: ConditionsPaiement): string | null {
   if (p.taux_penalites_bp === null) return null;

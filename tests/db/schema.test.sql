@@ -801,7 +801,7 @@ select tests.egal(
   (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prokind = 'f' and p.prorettype <> 'trigger'::regtype
      and has_function_privilege('authenticated', p.oid, 'execute')),
-  'archiver_pv_signe,aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,copier_poste,date_iso_valide,deductions_bien_formees,definir_preparations,deplacer_ligne_devis,deplacer_ligne_facture,dupliquer_devis,dupliquer_piece,effacer_client,emettre_devis,emettre_facture,emettre_facture_attendue,enregistrer_facturx,est_membre,importer_produits,initialiser_categories_depenses,lever_reserve,marquer_facture_envoyee,nouvelle_version_devis,numero_devis_previsionnel,numero_facture_previsionnel,organisation_du_chemin,presenter_pv,rechercher_clients,refuser_devis,remplacer_achats_devis,reserves_valides,signer_devis_sur_place,signer_pv_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,ventilation_attendue,ventilation_bien_formee',
+  'archiver_pv_signe,aujourd_hui_paris,chemin_de_l_organisation,chemin_du_chantier,confirmer_valeurs,copier_poste,date_iso_valide,deductions_bien_formees,definir_preparations,deplacer_ligne_devis,deplacer_ligne_facture,dupliquer_devis,dupliquer_piece,effacer_client,emettre_devis,emettre_facture,emettre_facture_attendue,enregistrer_facturx,est_membre,importer_produits,initialiser_categories_depenses,lever_reserve,marquer_facture_envoyee,nouvelle_version_devis,numero_devis_previsionnel,numero_facture_previsionnel,organisation_du_chemin,presenter_pv,rechercher_clients,refuser_devis,remplacer_achats_devis,reserves_valides,signer_devis_sur_place,signer_pv_sur_place,solde_avoir,solde_devis,solde_facture,supprimer_chantier,texte_recherche,textes_legaux_valides,ventilation_attendue,ventilation_bien_formee',
   'sécurité : liste COMPLÈTE des fonctions appelables par une session');
 select tests.echoue($$select public.purger_journal_audit(now() - interval '20 years')$$, 'permission denied',
   'sécurité : purge du journal réservée au serveur');
@@ -2233,6 +2233,29 @@ select tests.egal(public.purger_notifications() >= 1, true, 'conservation : purg
 reset role;
 select tests.egal((select array_agg(cle order by cle) from public.notifications where cle like 'test-purge:%'), array['test-purge:recente'],
   'conservation : notifications de plus de 90 jours supprimées, les récentes gardées');
+
+-- Phase 8 : textes légaux modifiables, logo, cumul des acomptes.
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select tests.echoue($$update public.parametres_entreprise set textes_legaux = '{"inconnu":"x"}' where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'$$,
+  'textes_legaux_forme', 'textes légaux : clé inconnue refusée');
+select tests.echoue($$update public.parametres_entreprise set textes_legaux = jsonb_build_object('devis_recu', 'a' || chr(7) || 'b') where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'$$,
+  'textes_legaux_forme', 'textes légaux : caractère de contrôle refusé');
+select tests.echoue($$update public.parametres_entreprise set textes_legaux = '{"devis_recu":"   "}' where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'$$,
+  'textes_legaux_forme', 'textes légaux : texte vide refusé');
+select tests.egal(tests.lignes($$update public.parametres_entreprise set textes_legaux = jsonb_build_object('devis_recu', 'Devis reçu.' || chr(10) || 'Merci.')
+  where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'$$), 1::bigint, 'textes légaux : texte personnalisé sur plusieurs lignes accepté');
+select tests.echoue($$update public.parametres_entreprise set logo_chemin = 'aaaaaaaa-0000-0000-0000-00000000000a/logo/x.svg' where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'$$,
+  'logo_chemin_range', 'logo : rangé sous logo/<uuid>.(png|jpg), jamais un SVG');
+select tests.echoue($$update public.parametres_entreprise set logo_chemin = 'aaaaaaaa-0000-0000-0000-00000000000b/logo/aaaaaaaa-0000-0000-0000-0000000000c1.png' where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'$$,
+  'logo_chemin', 'logo : dans le dossier de l''organisation seulement');
+select tests.egal(tests.lignes($$update public.parametres_entreprise set logo_chemin = 'aaaaaaaa-0000-0000-0000-00000000000a/logo/aaaaaaaa-0000-0000-0000-0000000000c1.png', textes_legaux = '{}'
+  where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a'$$), 1::bigint, 'logo : chemin rangé accepté');
+update public.parametres_entreprise set logo_chemin = null where organisation_id = 'aaaaaaaa-0000-0000-0000-00000000000a';
+reset role;
+select tests.egal(has_column_privilege('authenticated', 'public.factures', 'acompte_cumul_avant_bp', 'INSERT')
+  and not has_column_privilege('authenticated', 'public.factures', 'acompte_cumul_avant_bp', 'UPDATE'), true,
+  'acompte : cumul de calcul fixé à la création, jamais modifié par une session');
 
 -- Triggers : même le propriétaire de la base ne modifie pas une facture émise
 reset role;

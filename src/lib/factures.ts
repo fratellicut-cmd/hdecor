@@ -1,3 +1,5 @@
+import { chargerLogo } from '@/lib/logo';
+import type { Logo } from '@/lib/pdf/commun';
 import 'server-only';
 import { verifierSession } from '@/lib/dal';
 import { envPublique } from '@/lib/env';
@@ -121,6 +123,7 @@ export type PreparationFacture = {
   textesAVerifier: string[];
   /** Dernier jour du délai de rétractation si la facture est émise pendant ce délai (aucun paiement demandé avant le lendemain). */
   retractationJusquau: string | null;
+  logo: Logo | null;
 };
 
 /** Fin du délai de rétractation du devis de la facture (signé hors établissement par un particulier), sinon null. */
@@ -156,11 +159,12 @@ export async function preparerEmissionFacture(sb: Client, c: FactureComplete, da
   return {
     emetteur, client, chantier, manques: controlerMentionsFacture(emetteur, client, chantier, aControler),
     textesAVerifier: textesAVerifierFacture(emetteur, client, aControler), retractationJusquau: fin && dateIso <= fin ? fin : null,
+    logo: await chargerLogo(p.organisation_id, p.logo_chemin),
   };
 }
 
 /** Données du PDF (aperçu ou émission) depuis la facture et les copies. */
-export function donneesPdfFacture(c: FactureComplete, prep: Pick<PreparationFacture, 'emetteur' | 'client' | 'chantier' | 'retractationJusquau'>,
+export function donneesPdfFacture(c: FactureComplete, prep: Pick<PreparationFacture, 'emetteur' | 'client' | 'chantier' | 'retractationJusquau' | 'logo'>,
   o: { numero: string | null; dateEmission: string; dateEcheance: string; brouillon: boolean }): DonneesPdfFacture {
   const f = c.facture;
   return {
@@ -174,6 +178,7 @@ export function donneesPdfFacture(c: FactureComplete, prep: Pick<PreparationFact
     lignes: c.lignes.map(ligneFactureDomaine), deductions: deductionsDomaine(f.deductions), ventilationsDeduites: c.ventilationsDeduites, notesClient: f.notes_client,
     paiementApresLe: prep.retractationJusquau ? ajouterJours(prep.retractationJusquau, 1) : null,
     urlConfidentialite: `${envPublique.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '')}/confidentialite`,
+    logo: prep.logo,
   };
 }
 
