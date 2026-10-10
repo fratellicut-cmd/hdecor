@@ -37,7 +37,7 @@ export function dateLimiteLevee(dateReception: string, delaiJours: number | null
 export function engagementClient(reserves: Reserve[], dateLimite: string | null): string {
   if (!reserves.length) return 'En signant, vous confirmez que les travaux sont terminés et que vous les acceptez sans réserve.';
   const [a, m, j] = (dateLimite ?? '').split('-');
-  const quand = dateLimite ? ` avant le ${j}/${m}/${a}` : '';
+  const quand = dateLimite ? ` au plus tard le ${j}/${m}/${a}` : '';
   return `En signant, vous acceptez les travaux, sauf ${reserves.length > 1 ? `les ${reserves.length} points listés` : 'le point listé'}, `
     + `que l’entreprise doit reprendre${quand}.`;
 }

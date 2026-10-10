@@ -2,7 +2,7 @@ import 'server-only';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { A4, ALERTE, GRIS, MARGE, aDroite, ecrire, nouvellePage, place, texteSur, trait, type Contexte } from './commun';
 import { identiteEmetteur, lignesAdresse, type CopieChantier, type CopieClient, type CopieEmetteur } from '@/domain/devis-document';
-import { RAPPEL_RECEPTION, texteDecision, type Reserve } from '@/domain/pv';
+import { RAPPEL_RECEPTION, dateLimiteLevee, texteDecision, type Reserve } from '@/domain/pv';
 import { formaterDate, formaterDateHeure } from '@/domain/formats';
 
 export type DonneesPv = {
@@ -65,7 +65,7 @@ export async function pdfPv(d: DonneesPv): Promise<Uint8Array> {
     d.reserves.forEach((r, i) => ecrire(c, `${i + 1}. ${r.description}`, { x: MARGE + 10 }));
     if (d.delaiLeveeJours) {
       c.y -= 2;
-      ecrire(c, `L’entreprise s’engage à lever ces réserves dans un délai de ${d.delaiLeveeJours} jour${d.delaiLeveeJours > 1 ? 's' : ''} à compter de la réception.`);
+      ecrire(c, `L’entreprise s’engage à lever ces réserves dans un délai de ${d.delaiLeveeJours} jour${d.delaiLeveeJours > 1 ? 's' : ''} à compter de la réception, soit au plus tard le ${formaterDate(dateLimiteLevee(d.dateReception, d.delaiLeveeJours)!)}.`);
     }
   }
   if (d.observations) {
@@ -104,7 +104,7 @@ export async function pdfPvSigne(presente: Uint8Array, s: SignaturesPv): Promise
   const c: Contexte = { doc, page: doc.addPage([A4.l, A4.h]), y: A4.h - MARGE, normal: await doc.embedFont(StandardFonts.Helvetica),
     gras: await doc.embedFont(StandardFonts.HelveticaBold), italique: await doc.embedFont(StandardFonts.HelveticaOblique), basPage: MARGE + 14 };
   ecrire(c, 'PAGE DE SIGNATURES DU PROCÈS-VERBAL DE RÉCEPTION', { taille: 13, gras: true });
-  ecrire(c, `Elle se rapporte au procès-verbal des page${n > 1 ? 's' : ''} 1${n > 1 ? ` à ${n}` : ''} de ce document, présenté au maître d’ouvrage et signé sur place.`, { taille: 9.5 });
+  ecrire(c, `Elle se rapporte au procès-verbal ${n > 1 ? `des pages 1 à ${n}` : 'de la page 1'} de ce document (numérotées sur ${n}), présenté au maître d’ouvrage et signé sur place.`, { taille: 9.5 });
   c.y -= 12;
   const haut = c.y;
   const colonnes = [{ x: MARGE, titre: 'Le maître d’ouvrage', nom: s.nom, image: s.client }, { x: A4.l / 2 + 10, titre: 'L’entreprise', nom: s.entrepriseNom, image: s.entreprise }];
@@ -118,7 +118,7 @@ export async function pdfPvSigne(presente: Uint8Array, s: SignaturesPv): Promise
   c.y = haut - 32 - HAUTEUR_SIGNATURE - 12;
   ecrire(c, `Signé sur place le ${formaterDateHeure(s.signeLe)} par ${s.nom}, mention : « ${s.mention} ».`, { taille: 9 });
   ecrire(c, `Empreinte SHA-256 du procès-verbal présenté et signé (pages 1${n > 1 ? ` à ${n}` : ''}) : ${s.documentSha256}`, { taille: 7.5, couleur: GRIS });
-  const pages = doc.getPages();
-  aDroite(c.page, c.normal, `${pages.length} / ${pages.length}`, A4.l - MARGE, MARGE - 14, 8, GRIS);
+  // Les pages présentées gardent leur numérotation (empreinte) : celle-ci est désignée comme page jointe.
+  aDroite(c.page, c.normal, 'Page de signatures jointe', A4.l - MARGE, MARGE - 14, 8, GRIS);
   return doc.save();
 }

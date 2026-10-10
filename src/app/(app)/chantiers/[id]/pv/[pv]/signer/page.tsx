@@ -32,7 +32,7 @@ export default async function PageSignerPv({ params }: PageProps<'/chantiers/[id
       <p className="font-semibold">{texteDecision(c.pv.reserves)}</p>
       {c.pv.travaux ? <p><span className="font-semibold">Travaux réceptionnés : </span>{c.pv.travaux}</p> : null}
       {c.pv.reserves.length ? <ol className="list-decimal pl-6">{c.pv.reserves.map((r, i) => <li key={i}>{r.description}</li>)}</ol> : null}
-      {limite ? <p>Réserves à lever avant le <strong>{formaterDate(limite)}</strong>.</p> : null}
+      {limite ? <p>Réserves à lever au plus tard le <strong>{formaterDate(limite)}</strong>.</p> : null}
       <FormulaireSignaturePv engagement={engagementClient(c.pv.reserves, limite)} id={c.pv.id} documentSha256={c.pv.pdf_sha256} lienPdf={`/chantiers/${c.chantier.id}/pv/${c.pv.id}/pdf`}
         nomParDefaut={c.client && c.client.type === 'particulier' && !c.client.anonymise_le ? nomAffiche(c.client) : ''} entreprise={e?.raison_sociale ?? ''} />
       <NoticeSignature entreprise={e?.raison_sociale ?? ''} document="le procès-verbal signé" />

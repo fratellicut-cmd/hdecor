@@ -63,7 +63,7 @@ export default function PageConfidentialite() {
             désactive le lien précédent, et l’entreprise peut le désactiver à tout moment.</li>
           <li>Procès-verbal de réception signé : conservé pendant la durée des garanties dues par l’entreprise. <BadgeAVerifier /></li>
           <li>Photos du chantier : effacées avec votre fiche en cas de demande d’effacement ; l’historique de votre accord de diffusion
-            est conservé comme preuve. <BadgeAVerifier /></li>
+            est conservé comme preuve avec la fiche du chantier, et supprimé avec elle. <BadgeAVerifier /></li>
           <li>Notifications internes de l’entreprise (devis ouvert, paiement reçu…) : effacées après 90 jours, et dès l’effacement de votre fiche.</li>
         </ul>
       </Section>

@@ -68,7 +68,7 @@ export default async function PagePv({ params, searchParams }: PageProps<'/chant
                   </li>
                 ))}
               </ol>
-              {pv.delai_levee_jours ? <p className="mt-2 text-sm text-encre-douce">À lever avant le {formaterDate(dateLimiteLevee(pv.date_reception, pv.delai_levee_jours)!)} ({pv.delai_levee_jours} jours après la réception).</p> : null}
+              {pv.delai_levee_jours ? <p className="mt-2 text-sm text-encre-douce">À lever au plus tard le {formaterDate(dateLimiteLevee(pv.date_reception, pv.delai_levee_jours)!)} ({pv.delai_levee_jours} jours après la réception).</p> : null}
             </Carte>
           ) : null}
         </>

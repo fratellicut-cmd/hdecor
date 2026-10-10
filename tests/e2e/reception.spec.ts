@@ -32,7 +32,7 @@ test('PV de réception : réserves, présentation, signature sur place (client e
   await expect(page.getByRole('heading', { name: /Réception des travaux du/ })).toBeVisible();
   await page.getByLabel('Nom et prénom du client').fill('Alice Martin');
   await page.getByLabel(/Écrivez « Lu et approuvé »/).fill('lu et approuve');
-  await expect(page.getByText('En signant, vous acceptez les travaux, sauf les 2 points listés, que l’entreprise doit reprendre avant le')).toBeVisible();
+  await expect(page.getByText('En signant, vous acceptez les travaux, sauf les 2 points listés, que l’entreprise doit reprendre au plus tard le')).toBeVisible();
   // Étape 1 : le client seul (un seul cadre à l'écran).
   await expect(page.getByRole('img', { name: 'Signature de l’entreprise' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Valider la signature du client' }).click();

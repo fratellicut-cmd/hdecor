@@ -166,6 +166,12 @@ begin
        select 1 from public.devis d where d.id = new.devis_id and d.chantier_id = new.chantier_id and d.statut = 'accepte') then
     raise exception 'Le devis rattaché doit être un devis signé de ce chantier.' using errcode = 'P0001';
   end if;
+  -- Avant signature, aucune levée : une réserve ne se lève qu'après la réception, par lever_reserve.
+  if (tg_op = 'INSERT' or not (old.statut = 'signe' or old.signature_id is not null))
+     and exists (select 1 from jsonb_array_elements(new.reserves) r
+                 where r ->> 'levee_le' is not null or r ->> 'levee_note' is not null) then
+    raise exception 'Une réserve ne peut être levée qu''après la signature du PV.' using errcode = 'P0001';
+  end if;
   if tg_op = 'INSERT' then
     if new.statut <> 'brouillon' or new.signature_id is not null then
       raise exception 'Un PV se crée en brouillon.' using errcode = 'P0001';
@@ -182,6 +188,15 @@ begin
                   where n.r ->> 'description' is distinct from o.r ->> 'description'
                      or (o.r ->> 'levee_le') is not null and n.r is distinct from o.r) then
       raise exception 'Ce PV est signé : seule la levée d''une réserve peut encore être notée.' using errcode = 'P0001';
+    end if;
+    -- Levée nouvelle : datée, entre la réception et aujourd'hui (contrôle refait ici, quel que soit le chemin d'écriture).
+    if exists (select 1 from jsonb_array_elements(new.reserves) with ordinality n(r, i)
+               join jsonb_array_elements(old.reserves) with ordinality o(r, i) using (i)
+               where n.r is distinct from o.r
+                 and case when coalesce(public.date_iso_valide(n.r ->> 'levee_le'), false)
+                          then (n.r ->> 'levee_le')::date not between new.date_reception and public.aujourd_hui_paris()
+                          else true end) then
+      raise exception 'Date de levée invalide : entre la réception et aujourd''hui.' using errcode = 'P0001';
     end if;
     return new;
   end if;
@@ -561,6 +576,8 @@ begin
         or n.lien in (select '/chantiers/' || c.id from public.chantiers c where c.client_id = new.id)
         or n.cle in (select 'rappel:' || r.id from public.rappels r
                      where r.chantier_id in (select c.id from public.chantiers c where c.client_id = new.id)
+                        or r.evenement_id in (select e.id from public.evenements e
+                                              where e.chantier_id in (select c.id from public.chantiers c where c.client_id = new.id))
                         or (r.document_type = 'devis' and r.document_id in (select d.id from public.devis d where d.client_id = new.id))
                         or (r.document_type = 'facture' and r.document_id in (select f.id from public.factures f where f.client_id = new.id))));
   end if;

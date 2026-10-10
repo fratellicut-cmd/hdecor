@@ -10,7 +10,7 @@ describe('PV de réception', () => {
   it('engagement du client en langage courant', () => {
     expect(engagementClient([], null)).toBe('En signant, vous confirmez que les travaux sont terminés et que vous les acceptez sans réserve.');
     expect(engagementClient([{ description: 'a' }, { description: 'b' }], '2026-10-25'))
-      .toBe('En signant, vous acceptez les travaux, sauf les 2 points listés, que l’entreprise doit reprendre avant le 25/10/2026.');
+      .toBe('En signant, vous acceptez les travaux, sauf les 2 points listés, que l’entreprise doit reprendre au plus tard le 25/10/2026.');
     expect(engagementClient([{ description: 'a' }], null)).toBe('En signant, vous acceptez les travaux, sauf le point listé, que l’entreprise doit reprendre.');
   });
   it('réserves saisies une par ligne : puces et numéros retirés, lignes vides ignorées', () => {

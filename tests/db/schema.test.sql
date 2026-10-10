@@ -2073,6 +2073,11 @@ select tests.echoue($$select public.signer_pv_sur_place('aaaaaaaa-0000-0000-0000
   repeat('2', 64), null, null)$$, 'Tracés de signature invalides', 'PV : tracés rangés dans le dossier du PV');
 select tests.echoue($$select public.lever_reserve('aaaaaaaa-0000-0000-0000-0000000b7101', 0, public.aujourd_hui_paris(), null)$$,
   'PV signé', 'PV : pas de levée de réserve avant la signature');
+select tests.echoue($$update public.pv_reception set reserves = '[{"description":"Reprendre l''angle du plafond","levee_le":"2000-01-01","levee_note":"déjà levée"},{"description":"Plinthe tachée"}]'
+  where id = 'aaaaaaaa-0000-0000-0000-0000000b7101'$$, 'qu''après la signature', 'PV brouillon : aucune levée écrite avant la signature (levée antidatée)');
+select tests.echoue($$insert into public.pv_reception (organisation_id, chantier_id, date_reception, avec_reserves, reserves)
+  values ('aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca001', public.aujourd_hui_paris(), true, '[{"description":"x","levee_note":"faite"}]')$$,
+  'qu''après la signature', 'PV : création sans aucune levée');
 insert into public.pv_reception (id, organisation_id, chantier_id, date_reception)
 values ('aaaaaaaa-0000-0000-0000-0000000b7201', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca001', public.aujourd_hui_paris() + 3);
 select public.presenter_pv('aaaaaaaa-0000-0000-0000-0000000b7201',
@@ -2105,6 +2110,13 @@ select tests.echoue($$delete from public.pv_reception where id = 'aaaaaaaa-0000-
   'PV signé ne peut pas être supprimé', 'PV signé non supprimable');
 select tests.echoue($$update public.pv_reception set reserves = jsonb_set(reserves, '{1}', (reserves -> 1) || '{"levee_le":"2026-10-01"}')
   where id = 'aaaaaaaa-0000-0000-0000-0000000b7101'$$, 'Ce PV est signé', 'PV signé : une levée ne s''écrit que par lever_reserve (contrôle de date)');
+-- Même avec le verrou de levée posé à la main (hors API), la date reste contrôlée par le déclencheur.
+select set_config('hdecor.levee', 'on', false);
+select tests.echoue($$update public.pv_reception set reserves = jsonb_set(reserves, '{1}', (reserves -> 1) || '{"levee_le":"2099-01-01"}')
+  where id = 'aaaaaaaa-0000-0000-0000-0000000b7101'$$, 'Date de levée invalide', 'PV signé : levée future refusée par le déclencheur');
+select tests.echoue($$update public.pv_reception set reserves = jsonb_set(reserves, '{1}', (reserves -> 1) || '{"levee_le":"2000-01-01"}')
+  where id = 'aaaaaaaa-0000-0000-0000-0000000b7101'$$, 'Date de levée invalide', 'PV signé : levée antérieure à la réception refusée par le déclencheur');
+select set_config('hdecor.levee', '', false);
 reset role;
 select tests.egal(public.reserves_valides('[{"description":"x","levee_le":"2099-02-31"}]'), false, 'PV : une date de levée inexistante (31/02) est refusée');
 select tests.egal(public.reserves_valides('[{"description":"x","levee_le":"2026-02-28"}]'), true, 'PV : date de levée réelle acceptée');
@@ -2196,10 +2208,18 @@ values ('aaaaaaaa-0000-0000-0000-00000000000a', 'attestation_tva', 'aaaaaaaa-000
 select tests.egal((select count(*) from public.notifications where type = 'devis_signe'),
   (select count(*) from public.signatures where document_type = 'devis' and methode = 'lien'),
   'notifications : une par devis signé à distance, aucune pour une attestation ou une signature sur place');
+insert into public.evenements (id, organisation_id, chantier_id, type, titre, debut, fin)
+values ('aaaaaaaa-0000-0000-0000-0000000e7901', 'aaaaaaaa-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-0000000ca001', 'rendez_vous', 'RDV Durand', now(), now());
+insert into public.rappels (id, organisation_id, type, echeance, titre, evenement_id)
+values ('aaaaaaaa-0000-0000-0000-0000000e7902', 'aaaaaaaa-0000-0000-0000-00000000000a', 'libre', now(), 'Appeler M. Durand', 'aaaaaaaa-0000-0000-0000-0000000e7901');
+insert into public.notifications (organisation_id, type, titre, lien, cle)
+values ('aaaaaaaa-0000-0000-0000-00000000000a', 'rappel', 'Rappel : Appeler M. Durand', '/planning', 'rappel:aaaaaaaa-0000-0000-0000-0000000e7902');
 select tests.egal((select count(*) from public.notifications where cle like 'test-rgpd:%'), 1::bigint, 'RGPD : notification du client présente avant effacement');
 update public.clients set anonymise_le = now() where id = 'aaaaaaaa-0000-0000-0000-0000000c0001';
 select tests.egal((select count(*) from public.notifications where cle like 'test-rgpd:%'), 0::bigint,
   'RGPD : à l''anonymisation, les notifications du client sont supprimées');
+select tests.egal((select count(*) from public.notifications where cle = 'rappel:aaaaaaaa-0000-0000-0000-0000000e7902'), 0::bigint,
+  'RGPD : notification d''un rappel lié à un rendez-vous du chantier supprimée aussi');
 update public.clients set anonymise_le = null where id = 'aaaaaaaa-0000-0000-0000-0000000c0001';
 
 -- Conservation : notifications de plus de 90 jours purgées par la tâche du serveur seulement.
