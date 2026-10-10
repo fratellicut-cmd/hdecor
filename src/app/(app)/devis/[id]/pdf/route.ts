@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { chargerDevis, donneesPdf, preparerEmission } from '@/lib/devis';
+import { chargerDevis, donneesPdf, ErreurPreparation, preparerEmission } from '@/lib/devis';
 import { clientServeur } from '@/lib/supabase/serveur';
 import { verifierSession } from '@/lib/dal';
 import { lire } from '@/lib/stockage';
@@ -32,6 +32,7 @@ export async function GET(requete: Request, { params }: RouteContext<'/devis/[id
       return pdf(await pdfDevis(donneesPdf(c, prep, { numero: null, dateEmission: date, brouillon: true })), 'apercu-devis');
     } catch (e) {
       console.error('Aperçu du devis', e instanceof Error ? e.message : e);
+      if (e instanceof ErreurPreparation) return texte(e.message, 503);
       return texte('L’aperçu n’a pas pu être créé : vérifiez le client et les lignes du devis.', 500);
     }
   }

@@ -14,6 +14,10 @@ export async function GET() {
     console.error('Aperçu du logo', e instanceof Error ? e.message : e);
     return new Response('Logo momentanément illisible : réessayez.', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
   }
+  if (p?.logo_chemin && !octets) {
+    console.error('Aperçu du logo : fichier illisible', session.organisationId);
+    return new Response('Logo momentanément illisible : réessayez.', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+  }
   if (!octets) return new Response('Aucun logo.', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
   return new Response(Buffer.from(octets), {
     headers: { 'Content-Type': p!.logo_chemin!.endsWith('.png') ? 'image/png' : 'image/jpeg', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' },
