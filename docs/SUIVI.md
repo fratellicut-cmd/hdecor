@@ -215,7 +215,7 @@ Branche `phase-8`, dernier commit audité par chef-de-projet : 8dbeed7.
 | qa-calculs | APPROUVÉ | 3 | a6e9af7 |
 | relecteur-code | APPROUVÉ | 2 | ec35949 (remarques traitées dans de1932f) |
 | testeur-chantier | APPROUVÉ | 2 | 1caccbc (confort traité dans 3052ac6) |
-| chef-de-projet | Bloquant documentaire (ce bilan) | 1 | 8dbeed7 |
+| chef-de-projet | APPROUVÉ | 2 | b1e636a (boucle 1 sur 8dbeed7 : bilan de SUIVI manquant, ajouté) |
 
 Mesures sur l'état final : Vitest 766/766 ; SQL 424/424 (shim et gotrue) et 4 tests de concurrence ; e2e 81/81 (3052ac6, puis 8dbeed7 ne change qu'une ligne du test de sauvegarde) ; typecheck, lint et build sans erreur ni avertissement ; démo chargée (7/7) et « conforme » ; sauvegarde et restauration : tous les contrôles OK.
 
