@@ -23,6 +23,7 @@ Chaque étape **non répétée** sur un vrai projet est signalée comme telle : 
 1. Créer le projet en **région UE** (Paris ou Francfort). Noter la région dans `docs/rgpd/registre-traitements.md` (sous-traitants).
 2. Accepter le contrat de sous-traitance (DPA) de Supabase.
 3. Appliquer les migrations : `npx supabase@2.120.0 link --project-ref <ref>` puis `npx supabase@2.120.0 db push`. Il n'y a pas de migration « retour arrière » : en cas d'erreur, une **nouvelle** migration corrige la précédente. Avant chaque `db push` en production, faire une sauvegarde (tableau de bord > Database > Backups).
+   - **Sans terminal** (premier déploiement seulement, projet vide) : SQL Editor > coller et exécuter `deploiement/01-migrations.sql` (les 27 migrations en une transaction, puis l'historique `supabase_migrations.schema_migrations` tel que l'écrit `db push` 2.120.0 : un futur `db push` ne les rejoue pas). Fichier généré par `bash scripts/deploiement/generer-migrations.sh` ; à régénérer si une migration est ajoutée avant le déploiement. Pour le compte de Yorick (§ 3) : créer l'utilisateur dans Authentication > Users (« Auto Confirm User » coché), puis exécuter `deploiement/02-compte-yorick.sql` après y avoir remplacé l'email.
 4. **Authentification**. Reporter les réglages de `supabase/config.toml`, au choix :
    - avec `npx supabase@2.120.0 config push` ;
    - ou à la main dans le tableau de bord. Réglages à reporter :
